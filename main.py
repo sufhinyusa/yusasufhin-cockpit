@@ -43,39 +43,39 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # -----------------------------------------------------------------------------
 # 1. ÖN YÜZ & STATİK SAYFA YÖNLENDİRMELERİ
 # -----------------------------------------------------------------------------
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root_index():
     return FileResponse(STATIC_DIR / "index.html")
 
-@app.get("/lab")
+@app.api_route("/lab", methods=["GET", "HEAD"])
 async def lab_page():
     return FileResponse(STATIC_DIR / "lab.html")
 
-@app.get("/fabrika")
+@app.api_route("/fabrika", methods=["GET", "HEAD"])
 async def fabrika_page():
     return FileResponse(STATIC_DIR / "fabrika.html")
 
-@app.get("/manifest.json")
+@app.api_route("/manifest.json", methods=["GET", "HEAD"])
 async def get_manifest():
     return FileResponse(STATIC_DIR / "manifest.json", media_type="application/manifest+json")
 
-@app.get("/sw.js")
+@app.api_route("/sw.js", methods=["GET", "HEAD"])
 async def get_sw():
     return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript")
 
-@app.get("/site.css")
+@app.api_route("/site.css", methods=["GET", "HEAD"])
 async def get_site_css():
     return FileResponse(STATIC_DIR / "site.css", media_type="text/css")
 
-@app.get("/site.js")
+@app.api_route("/site.js", methods=["GET", "HEAD"])
 async def get_site_js():
     return FileResponse(STATIC_DIR / "site.js", media_type="application/javascript")
 
-@app.get("/app.js")
+@app.api_route("/app.js", methods=["GET", "HEAD"])
 async def get_app_js():
     return FileResponse(STATIC_DIR / "app.js", media_type="application/javascript")
 
-@app.get("/fabrika_icon.svg")
+@app.api_route("/fabrika_icon.svg", methods=["GET", "HEAD"])
 async def get_icon():
     return FileResponse(STATIC_DIR / "fabrika_icon.svg", media_type="image/svg+xml")
 
@@ -84,13 +84,13 @@ async def get_icon():
 # -----------------------------------------------------------------------------
 ACTIVE_TOKENS = set(["dev_master_token_2026"])
 
-@app.get("/api/auth/public_info")
+@app.api_route("/api/auth/public_info", methods=["GET", "HEAD"])
 async def public_info():
     """Genel sistem ve ağ geçidi durumunu sunar."""
     return {
         "status": "online",
         "domain": "https://yusasufhin.com/",
-        "platform": "Koyeb Global Edge (7/24 Kesintisiz Bulut)",
+        "platform": "Render Cloud Edge (7/24 Kesintisiz Bulut)",
         "version": "2026.11",
         "timestamp": time.time(),
         "uptime_sla": "99.99%",
