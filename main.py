@@ -48,8 +48,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_REQ_COUNT = 0
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    global _REQ_COUNT
+    _REQ_COUNT += 1
+    if _REQ_COUNT % 50 == 0:
+        import gc
+        gc.collect()
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
