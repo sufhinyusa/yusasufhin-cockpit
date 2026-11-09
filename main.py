@@ -32,14 +32,38 @@ app = FastAPI(
     version="2026.11"
 )
 
-# CORS Ayarları
+# CORS Ayarları (Özel Origin Kısıtlaması & CSRF Koruması)
+ALLOWED_ORIGINS = [
+    "https://yusasufhin.com",
+    "https://yusasufhin-cockpit.onrender.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "media-src 'self' blob:; "
+        "connect-src 'self' wss: https:;"
+    )
+    return response
 
 # Statik Dosyaları Doğrudan Bağla
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -98,13 +122,69 @@ async def get_icon():
     return FileResponse(STATIC_DIR / "fabrika_icon.svg", media_type="image/svg+xml")
 
 # -----------------------------------------------------------------------------
-# 2. SİSTEM & KİMLİK DOĞRULAMA (AUTH) ENDPOINT'LERİ
+# 2. SİSTEM & KİMLİK DOĞRULAMA (AUTH) ENDPOINT'LERİ (SIFIR BACKDOOR, TTL, RATE LIMIT)
 # -----------------------------------------------------------------------------
-# -----------------------------------------------------------------------------
-# 2. SİSTEM & KİMLİK DOĞRULAMA (AUTH) ENDPOINT'LERİ (SIFIR BACKDOOR, GERÇEK GÜVENLİK)
-# -----------------------------------------------------------------------------
-# Bellekte tutulan aktif oturum token'ları (Başlangıçta boştur; backdoor token YASAKTIR)
-ACTIVE_TOKENS: set = set()
+# Bellekte tutulan oturumlar: {token: {"user": str, "created_at": float, "expires_at": float}}
+ACTIVE_SESSIONS: Dict[str, Dict[str, Any]] = {}
+SESSION_TTL_SEC: float = 86400.0  # 24 saat geçerlilik süresi
+
+# IP bazlı brute-force koruması ve deneme sınırlayıcı
+FAILED_ATTEMPTS: Dict[str, List[float]] = {}
+MAX_FAILED_ATTEMPTS: int = 5
+LOCKOUT_WINDOW_SEC: float = 60.0
+
+# Bilinen, tahmin edilebilir veya ifşa olmuş güvensiz PIN kara listesi
+DISALLOWED_PINS = {"192300", "123456", "000000", "111111", "091091", "654321", "123123", "999999"}
+
+def get_client_ip(req: Request) -> str:
+    """İstemci IP adresini döner."""
+    fwd = req.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return req.client.host if req.client else "127.0.0.1"
+
+def is_rate_limited(ip: str) -> Tuple[bool, int]:
+    """IP adresi için rate limit kontrolü yapar."""
+    now = time.time()
+    attempts = [t for t in FAILED_ATTEMPTS.get(ip, []) if now - t < LOCKOUT_WINDOW_SEC]
+    FAILED_ATTEMPTS[ip] = attempts
+    if len(attempts) >= MAX_FAILED_ATTEMPTS:
+        wait_sec = int(LOCKOUT_WINDOW_SEC - (now - attempts[0]))
+        return True, max(1, wait_sec)
+    return False, 0
+
+def record_failed_attempt(ip: str):
+    """Başarısız oturum denemesini kaydeder."""
+    now = time.time()
+    attempts = [t for t in FAILED_ATTEMPTS.get(ip, []) if now - t < LOCKOUT_WINDOW_SEC]
+    attempts.append(now)
+    FAILED_ATTEMPTS[ip] = attempts
+
+def reset_failed_attempts(ip: str):
+    """Başarılı girişte deneme geçmişini temizler."""
+    if ip in FAILED_ATTEMPTS:
+        del FAILED_ATTEMPTS[ip]
+
+def create_session(user: str = "Yusuf Şahin", prefix: str = "tok") -> str:
+    """24 saat TTL süreli yeni kriptografik oturum tokenı üretir."""
+    token = f"{prefix}_{int(time.time())}_{os.urandom(16).hex()}"
+    now = time.time()
+    ACTIVE_SESSIONS[token] = {
+        "user": user,
+        "created_at": now,
+        "expires_at": now + SESSION_TTL_SEC
+    }
+    return token
+
+def is_session_valid(token: Optional[str]) -> bool:
+    """Token'ın aktifliğini ve süresini kontrol eder."""
+    if not token or token not in ACTIVE_SESSIONS:
+        return False
+    session = ACTIVE_SESSIONS[token]
+    if time.time() > session.get("expires_at", 0):
+        del ACTIVE_SESSIONS[token]
+        return False
+    return True
 
 def get_secret_from_env(key_name: str) -> Optional[str]:
     """Ortam değişkenlerinden veya yerel yapılandırmadan anahtar okur."""
@@ -145,7 +225,7 @@ def get_valid_pins() -> List[str]:
     found = []
     for k in keys:
         s = get_secret_from_env(k)
-        if s and s not in found:
+        if s and s not in found and s not in DISALLOWED_PINS:
             found.append(s)
     return found
 
@@ -155,7 +235,7 @@ async def verify_auth(
 ) -> str:
     """Durum değiştiren ve korumalı tüm uç noktalar için zorunlu token doğrulayıcı."""
     auth_tok = (authorization or "").replace("Bearer ", "").strip() or (token or "").strip()
-    if not auth_tok or auth_tok not in ACTIVE_TOKENS:
+    if not auth_tok or not is_session_valid(auth_tok):
         raise HTTPException(
             status_code=401,
             detail="Yetkilendirme gerekli (Token eksik, geçersiz veya oturum süresi dolmuş)."
@@ -164,16 +244,16 @@ async def verify_auth(
 
 @app.api_route("/api/auth/public_info", methods=["GET", "HEAD"])
 async def public_info():
-    """Genel sistem ve ağ geçidi durumunu sunar."""
+    """Genel sistem ve ağ geçidi durumunu sunar (Kural 1 Uyarınca Doğrulanmış Veriler)."""
     return {
         "status": "online",
         "domain": "https://yusasufhin.com/",
         "platform": "Render Cloud Edge (7/24 Kesintisiz Bulut)",
         "version": "2026.11",
         "timestamp": time.time(),
-        "uptime_sla": "99.99%",
-        "auth_methods": ["password", "pin", "biometric"],
-        "cluster_vram_gb": 48.0,
+        "uptime_sla": "Doğrulanmadı",
+        "auth_methods": ["password", "pin"],
+        "cluster_vram_gb": 0.0,
         "active_services": {
             "web_cockpit": "online",
             "omniroute_waterfall": "online",
@@ -186,66 +266,142 @@ async def public_info():
 
 @app.post("/api/auth/login")
 async def login(req: Request):
+    ip = get_client_ip(req)
+    limited, wait_sec = is_rate_limited(ip)
+    if limited:
+        return JSONResponse(status_code=429, content={"success": False, "message": f"Çok fazla hatalı deneme! Lütfen {wait_sec} saniye bekleyin."})
+
     try:
         body = await req.json()
     except Exception:
         body = {}
     password = str(body.get("password", "")).strip()
+    if not password:
+        record_failed_attempt(ip)
+        return JSONResponse(status_code=400, content={"success": False, "message": "Parola boş olamaz."})
+
     valid_passwords = get_valid_passwords()
-    
     if not valid_passwords:
         return JSONResponse(status_code=500, content={"success": False, "message": "Sunucuda yetkili parola yapılandırılmamış."})
 
-    matched = any(hmac.compare_digest(password, vp) for vp in valid_passwords)
+    pwd_bytes = password.encode("utf-8")
+    matched = any(hmac.compare_digest(pwd_bytes, str(vp).strip().encode("utf-8")) for vp in valid_passwords)
     if matched:
-        token = f"tok_{int(time.time())}_{os.urandom(16).hex()}"
-        ACTIVE_TOKENS.add(token)
+        reset_failed_attempts(ip)
+        token = create_session(user="Yusuf Şahin", prefix="tok")
         return {"success": True, "token": token, "username": "Yusuf Şahin", "message": "Giriş başarılı."}
+
+    record_failed_attempt(ip)
     return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz şifre."})
 
 @app.post("/api/auth/verify_pin")
 async def verify_pin(req: Request):
+    ip = get_client_ip(req)
+    limited, wait_sec = is_rate_limited(ip)
+    if limited:
+        return JSONResponse(status_code=429, content={"success": False, "message": f"Çok fazla hatalı deneme! Lütfen {wait_sec} saniye bekleyin."})
+
     try:
         body = await req.json()
     except Exception:
         body = {}
     pin = str(body.get("pin", "")).strip()
-    valid_pins = get_valid_pins()
-    
-    if not valid_pins:
-        return JSONResponse(status_code=500, content={"success": False, "message": "Sunucuda PIN kodu yapılandırılmamış."})
+    if not pin or pin in DISALLOWED_PINS:
+        record_failed_attempt(ip)
+        return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz veya engellenmiş PIN kodu."})
 
-    matched = any(hmac.compare_digest(pin, vp) for vp in valid_pins)
+    valid_pins = [p for p in get_valid_pins() if p not in DISALLOWED_PINS]
+    if not valid_pins:
+        return JSONResponse(status_code=500, content={"success": False, "message": "Sunucuda geçerli PIN kodu yapılandırılmamış."})
+
+    pin_bytes = pin.encode("utf-8")
+    matched = any(hmac.compare_digest(pin_bytes, str(vp).strip().encode("utf-8")) for vp in valid_pins)
     if matched:
-        token = f"tok_pin_{int(time.time())}_{os.urandom(16).hex()}"
-        ACTIVE_TOKENS.add(token)
+        reset_failed_attempts(ip)
+        token = create_session(user="Yusuf Şahin", prefix="tok_pin")
         return {"success": True, "token": token, "username": "Yusuf Şahin", "message": "PIN doğrulandı."}
+
+    record_failed_attempt(ip)
     return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz PIN kodu."})
 
 @app.api_route("/api/auth/check", methods=["GET", "POST"])
 async def auth_check(authorization: Optional[str] = Header(None)):
     token = (authorization or "").replace("Bearer ", "").strip()
-    if token and token in ACTIVE_TOKENS:
+    if token and is_session_valid(token):
         return {"authenticated": True, "user": "Yusuf Şahin"}
     return JSONResponse(status_code=401, content={"authenticated": False, "user": None})
 
 @app.post("/api/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
     token = (authorization or "").replace("Bearer ", "").strip()
-    if token in ACTIVE_TOKENS:
-        ACTIVE_TOKENS.remove(token)
+    if token in ACTIVE_SESSIONS:
+        del ACTIVE_SESSIONS[token]
     return {"success": True}
 
 @app.post("/api/auth/change_pin")
 async def change_pin(req: Request, token: str = Depends(verify_auth)):
-    return {"success": True, "message": "PIN başarıyla güncellendi."}
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    old_pin = str(body.get("old_pin", "")).strip()
+    new_pin = str(body.get("new_pin", "")).strip()
+
+    valid_pins = [p for p in get_valid_pins() if p not in DISALLOWED_PINS]
+    if not valid_pins:
+        raise HTTPException(status_code=500, detail="Mevcut PIN konfigürasyonu bulunamadı.")
+
+    matched = any(hmac.compare_digest(old_pin.encode("utf-8"), str(vp).strip().encode("utf-8")) for vp in valid_pins)
+    if not matched:
+        raise HTTPException(status_code=401, detail="Mevcut PIN kodu hatalı!")
+
+    if len(new_pin) < 4 or not new_pin.isdigit():
+        raise HTTPException(status_code=400, detail="Yeni PIN en az 4 haneli rakamlardan oluşmalıdır.")
+
+    if new_pin in DISALLOWED_PINS:
+        raise HTTPException(status_code=400, detail="Bu PIN kodu güvenlik gerekçesiyle kullanılamaz.")
+
+    if any(hmac.compare_digest(new_pin.encode("utf-8"), str(vp).strip().encode("utf-8")) for vp in valid_pins):
+        raise HTTPException(status_code=400, detail="Yeni PIN mevcut PIN ile aynı olamaz.")
+
+    # Persona/.env ve .env dosyalarını güncelle
+    candidates = [
+        BASE_DIR / ".env",
+        Path.home() / "Desktop" / "PYTHON PROJECTS" / "Fabrika" / "Persona" / ".env",
+    ]
+    for c in candidates:
+        if c.exists():
+            try:
+                lines = c.read_text(encoding="utf-8").splitlines()
+                new_lines = []
+                found = False
+                for line in lines:
+                    if line.strip().startswith("GATEWAY_PIN="):
+                        new_lines.append(f"GATEWAY_PIN={new_pin}")
+                        found = True
+                    else:
+                        new_lines.append(line)
+                if not found:
+                    new_lines.append(f"GATEWAY_PIN={new_pin}")
+                c.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            except Exception as e:
+                logger.error("PIN kaydedilemedi: %s", e)
+
+    os.environ["GATEWAY_PIN"] = new_pin
+
+    # Tüm eski oturumları feshet ve yeni oturum tokenı üret
+    ACTIVE_SESSIONS.clear()
+    new_tok = create_session(user="Yusuf Şahin", prefix="tok_pin_change")
+    return {"success": True, "token": new_tok, "message": "PIN başarıyla güncellendi ve eski oturumlar kapatıldı."}
 
 @app.post("/api/auth/biometric/register")
 @app.post("/api/auth/biometric/login")
-async def biometric_auth(req: Request, token: str = Depends(verify_auth)):
-    new_token = f"tok_bio_{int(time.time())}_{os.urandom(16).hex()}"
-    ACTIVE_TOKENS.add(new_token)
-    return {"success": True, "token": new_token, "message": "Biyometrik kilit devrede."}
+async def biometric_auth(req: Request):
+    """Biyometrik WebAuthn sunucu doğrulaması henüz aktif değildir."""
+    raise HTTPException(
+        status_code=501,
+        detail="Biyometrik WebAuthn sunucu doğrulaması henüz aktif değildir. Lütfen PIN veya parola kullanın."
+    )
 
 # -----------------------------------------------------------------------------
 # 3. SİSTEM İSTATİSTİKLERİ & LİNK HAVUZU
@@ -275,14 +431,15 @@ async def get_system_stats():
             pass
 
     return {
-        "cpu": 8.4,
-        "ram": 34.2,
+        "cpu": None,
+        "ram": None,
         "status": "online",
         "mimar": "LHH Manager Hazır",
         "kys": "Kod Hastanesi Aktif",
         "link_pool_count": link_count,
         "rea_score": rea_score,
         "rea_scans": rea_scans,
+        "telemetry": "Veri Yok (Canlı CPU/RAM telemetrisi bağlı değil)",
         "tunnel": {
             "active": True,
             "url": "https://yusasufhin.com",
@@ -372,7 +529,7 @@ async def get_lab_models():
 async def get_lab_history(limit: int = Query(12)):
     return {"items": [], "count": 0}
 
-@app.post("/api/lab/generate")
+@app.post("/api/lab/generate", dependencies=[Depends(verify_auth)])
 async def generate_lab_video(req: Request):
     body = await req.json()
     model_id = body.get("model_id", "hailuo")
@@ -439,8 +596,8 @@ async def studio_video_generate(req: Request):
 
     # Dürüst Durum Makinesi (Kural 1 Uyarınca Gerçek Durum Bildirimi)
     stages = [
-        {"ad": "1. Senaryo & Astrolojik Analiz", "durum": "tamamlandi"},
-        {"ad": "2. Ses Tasarımı & TTS", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
+        {"ad": "1. Senaryo & Astrolojik Analiz", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
+        {"ad": "2. Ses Tasarımı & TTS", "durum": "beklemede"},
         {"ad": "3. 3D & Stok Kurgu Montajı", "durum": "beklemede"},
         {"ad": "4. GPU Render", "durum": "beklemede"},
         {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "beklemede"}
@@ -454,16 +611,15 @@ async def studio_video_generate(req: Request):
         "render_target": render_target,
         "aspect_ratio": aspect_ratio,
         "status": "kuyrukta (GPU işçisi bekleniyor)",
-        "progress_pct": 20,
+        "progress_pct": 10,
         "estimated_duration_sec": 45,
         "stages": stages,
         "artifacts": {
             "engine": method,
             "render_target": render_target,
             "status": "Görev bulut kuyruğuna yazıldı; Kaggle / Colab GPU işçisi bekleniyor.",
-            "resolution": "1080x1920 (9:16 Dikey)" if aspect_ratio == "9:16" else "1920x1080 (16:9 Sinematik)",
-            "bitrate": "2800k CBR",
-            "audio_track_origin": "VoiceStudio & Ambient Sound Design"
+            "target_resolution": "1080x1920 (9:16 Dikey)" if aspect_ratio == "9:16" else "1920x1080 (16:9 Sinematik)",
+            "pipeline": "Kuyrukta çalıştırılacak",
         },
         "output_url": None,
         "simulasyon": False,
@@ -558,8 +714,8 @@ async def gpu_mode(req: Request):
 async def omniroute_status():
     return {
         "status": "operational",
-        "cost_sla": "$0.00 (Zero-Cost Free Tier Guarantee)",
-        "verified_providers_count": 16,
+        "cost_sla": "$0.00 (Doğrulanmadı: Ücretsiz kota sınırlarına tabidir)",
+        "verified_providers_count": 4,
         "global_openrouter_endpoints": 375,
         "active_waterfall_tiers": [
             {"tier": 1, "model": "deepseek/deepseek-chat:free", "provider": "DeepSeek / OpenRouter"},
@@ -808,13 +964,17 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @app.websocket("/ws/chat")
-async def websocket_chat(websocket: WebSocket):
+async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None)):
+    if not token or not is_session_valid(token):
+        await websocket.close(code=4401)
+        return
+
     await manager.connect(websocket)
     try:
         welcome = {
-            "type": "agent_reply",
+            "type": "system_notice",
             "sender": "Fabrika Cloud AI",
-            "text": "yusasufhin.com 7/24 Bulut Kokpiti devrede. Mac bilgisayarınız kapalıyken bile tüm komutlarınız işlenir."
+            "text": "yusasufhin.com 7/24 Bulut Kokpiti devrede. Komutlarınız bulut kuyruğuna alınır."
         }
         await websocket.send_text(json.dumps(welcome))
         while True:

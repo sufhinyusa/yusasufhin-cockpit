@@ -68,8 +68,10 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
+  window.esc = esc;
 
   function bosDurum(mesaj) {
     if (!panelsEl) return;
@@ -640,10 +642,10 @@ window.handleStudioVideoSubmit = function(e) {
   taskBadge.className = 'site-badge site-badge-free';
 
   hudLog.innerHTML = `[PRODÜKSİYON BAŞLATILDI]<br>` +
-    `• Hedef Kanal: <strong>${channel}</strong><br>` +
-    `• Metot: <strong>${method}</strong><br>` +
-    `• Donanım: <strong>${renderTarget}</strong><br>` +
-    `• Konu: "${promptVal}"<br>` +
+    `• Hedef Kanal: <strong>${esc(channel)}</strong><br>` +
+    `• Metot: <strong>${esc(method)}</strong><br>` +
+    `• Donanım: <strong>${esc(renderTarget)}</strong><br>` +
+    `• Konu: "${esc(promptVal)}"<br>` +
     `• Durum: Aşama 1/5 Senaryo hazırlanıyor...`;
 
   // Aşama 1: Done
@@ -684,8 +686,8 @@ window.handleStudioVideoSubmit = function(e) {
       taskBadge.className = 'site-badge site-badge-free';
 
       hudLog.innerHTML += `<br>• ✅ <strong>Senaryo ve Prompt Analizi Hazırlandı.</strong><br>` +
-        `• ⏳ <strong>Prodüksiyon Görevi Kuyruğa Alındı:</strong> <code>${task.job_id}</code><br>` +
-        `• Hedef Donanım: <strong>${renderTarget.toUpperCase()}</strong> | Oran: <strong>${aspect}</strong><br>` +
+        `• ⏳ <strong>Prodüksiyon Görevi Kuyruğa Alındı:</strong> <code>${esc(task.job_id)}</code><br>` +
+        `• Hedef Donanım: <strong>${esc(renderTarget).toUpperCase()}</strong> | Oran: <strong>${esc(aspect)}</strong><br>` +
         `• 📡 <em>GPU İşçisi (Kaggle Dual-T4 / Colab) sıradaki işi aldığında render otomatik başlayacaktır.</em>`;
 
       stageArea.innerHTML = `
@@ -693,21 +695,21 @@ window.handleStudioVideoSubmit = function(e) {
           <div style="font-size:2.8rem; margin-bottom:8px;">⏳</div>
           <strong style="color:var(--site-accent);">Görev Bulut Kuyruğuna Yazıldı</strong>
           <p style="margin:4px 0 8px; font-size:0.84rem; color:var(--site-text-dim);">
-            Bilet ID: <code>${task.job_id}</code> | Kanal: <strong>${task.channel}</strong>
+            Bilet ID: <code>${esc(task.job_id)}</code> | Kanal: <strong>${esc(task.channel)}</strong>
           </p>
           <p style="margin:0 0 12px; font-size:0.78rem; color:var(--site-text-muted);">
-            Render Motoru: <strong>${task.method}</strong> &bull; Donanım: <strong>${task.render_target}</strong>
+            Render Motoru: <strong>${esc(task.method)}</strong> &bull; Donanım: <strong>${esc(task.render_target)}</strong>
           </p>
           <span class="site-badge site-badge-free">Sıraya Alındı (Kural 1 Uyumlu Dürüst Kuyruk)</span>
         </div>
       `;
     } else {
-      hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Hata: ${data.error || 'Prodüksiyon başlatılamadı.'}</span>`;
+      hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Hata: ${esc(data.error || 'Prodüksiyon başlatılamadı.')}</span>`;
       taskBadge.textContent = 'Hata';
     }
   })
   .catch(function(err) {
-    hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Ağ Hatası: ${err.message}</span>`;
+    hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
     taskBadge.textContent = 'Hata';
   });
 };
@@ -794,33 +796,33 @@ window.handleAudioSubmit = function(e) {
       if (currentAudioAction === 'identify_music') {
         if (d.matched) {
           hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
-            `• Başlık: <strong>${d.title || 'Bilinmeyen'}</strong><br>` +
-            `• Tür: <strong>${d.genre || '-'}</strong><br>` +
+            `• Başlık: <strong>${esc(d.title || 'Bilinmeyen')}</strong><br>` +
+            `• Tür: <strong>${esc(d.genre || '-')}</strong><br>` +
             `• Güven Skoru: <strong>%${Math.round((d.confidence || 0) * 100)}</strong><br>` +
-            `• İcracılar: ${d.performers ? d.performers.join(', ') : 'Belirtilmedi'}`;
+            `• İcracılar: ${d.performers ? esc(d.performers.join(', ')) : 'Belirtilmedi'}`;
         } else {
           hud.innerHTML = `🔍 <strong>Şarkı Tespiti:</strong><br>` +
-            `• Durum: ${d.status || 'Tamamlandı'}<br>` +
-            `• Sonuç: ${d.message || 'Eşleşen parça bulunamadı.'}`;
+            `• Durum: ${esc(d.status || 'Tamamlandı')}<br>` +
+            `• Sonuç: ${esc(d.message || 'Eşleşen parça bulunamadı.')}`;
         }
       } else if (d.status === 'queued' || (d.message && d.message.includes('kuyruğuna'))) {
         hud.innerHTML = `⏳ <strong>Kuyruğa Alındı (GPU Bekleniyor):</strong><br>` +
-          `• Motor: <strong>${d.engine}</strong><br>` +
-          `• Durum: <em>${d.message}</em><br>` +
-          `• Çıktı Formatı: <code>${d.output_format || d.format || 'wav/mp3'}</code><br>` +
+          `• Motor: <strong>${esc(d.engine)}</strong><br>` +
+          `• Durum: <em>${esc(d.message)}</em><br>` +
+          `• Çıktı Formatı: <code>${esc(d.output_format || d.format || 'wav/mp3')}</code><br>` +
           `• Bilgi: Bulut GPU düğümü bağlandığında otomatik işlenecektir.`;
       } else {
         hud.innerHTML = `✅ <strong>Üretim Tamamlandı:</strong><br>` +
-          `• Motor: <strong>${d.engine}</strong><br>` +
-          `• Mesaj: ${d.message}<br>` +
-          `• Çıktı Formatı: <code>${d.output_format || d.format || 'wav/mp3'}</code>`;
+          `• Motor: <strong>${esc(d.engine)}</strong><br>` +
+          `• Mesaj: ${esc(d.message)}<br>` +
+          `• Çıktı Formatı: <code>${esc(d.output_format || d.format || 'wav/mp3')}</code>`;
       }
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz'}</span>`;
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz')}</span>`;
     }
   })
   .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${err.message}</span>`;
+    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
   });
 };
 
@@ -848,17 +850,17 @@ window.handleOmniRouteSubmit = function(e) {
       var r = resp.result;
       var simBadge = r.simulasyon ? '<span class="site-badge" style="background:#f59e0b;color:#000;">Kılavuz Simülasyon</span>' : '<span class="site-badge" style="background:#10b981;color:#fff;">Canlı Çıkarım</span>';
       hud.innerHTML = `⚡ <strong>OmniRoute Yanıtı ($0.00):</strong> ${simBadge}<br>` +
-        `• Model: <strong>${r.display_name}</strong> (Tier ${r.tier})<br>` +
-        `• Sağlayıcı: ${r.provider}<br>` +
-        `• Gecikme: <strong>${r.latency_ms} ms</strong><br>` +
+        `• Model: <strong>${esc(r.display_name)}</strong> (Tier ${esc(r.tier)})<br>` +
+        `• Sağlayıcı: ${esc(r.provider)}<br>` +
+        `• Gecikme: <strong>${esc(r.latency_ms)} ms</strong><br>` +
         `• Maliyet: <strong>$0.00 (Tamamen Ücretsiz)</strong><br><br>` +
-        `<div style="color:var(--site-text); white-space:pre-wrap;">${r.content}</div>`;
+        `<div style="color:var(--site-text); white-space:pre-wrap;">${esc(r.content)}</div>`;
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || 'Çıkarım başarısız'}</span>`;
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'Çıkarım başarısız')}</span>`;
     }
   })
   .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${err.message}</span>`;
+    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
   });
 };
 
@@ -885,16 +887,16 @@ window.handleHumanizerSubmit = function(e) {
     if (resp.success) {
       var a = resp.analysis;
       var skorText = a.human_score !== null ? `%${a.human_score}` : 'Metin Yok';
-      hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> ${skorText} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
-        `• Temizlenen AI Kalıp Sayısı: <strong>${a.slop_count} adet</strong><br><br>` +
+      hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> ${esc(skorText)} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
+        `• Temizlenen AI Kalıp Sayısı: <strong>${esc(a.slop_count)} adet</strong><br><br>` +
         `<strong>Arındırılmış İnsan Metni:</strong><br><br>` +
-        `<span style="color:var(--site-text); font-family:var(--site-font); font-size:0.92rem; white-space:pre-wrap;">${resp.cleaned_text}</span>`;
+        `<span style="color:var(--site-text); font-family:var(--site-font); font-size:0.92rem; white-space:pre-wrap;">${esc(resp.cleaned_text)}</span>`;
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || 'İşlem başarısız'}</span>`;
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'İşlem başarısız')}</span>`;
     }
   })
   .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${err.message}</span>`;
+    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
   });
 };
 
@@ -908,23 +910,24 @@ window.refreshGpuStatus = function() {
     if (resp.success && resp.status) {
       var s = resp.status;
       hud.innerHTML = `🖥️ <strong>GPU Küme Telemetrisi:</strong><br>` +
-        `• Toplam GPU Belleği: <strong>${s.total_gpu_vram_gb} GB vRAM</strong><br>` +
-        `• Kaggle 32 GB: <strong>${s.kaggle_vram_gb} GB (${s.kaggle_gpu})</strong><br>` +
-        `• Colab GPU: <strong>${s.colab_vram_gb} GB (Bağlı: ${s.colab_connected ? 'Evet' : 'Hayır'})</strong><br>` +
-        `• Aktif Dağıtım Modu: <code>${s.mode}</code><br>` +
-        `• Kalan Ücretsiz Kota: <strong>${s.weekly_quota_remaining_hours} Saat / Hafta</strong><br>` +
-        `• Maliyet: <strong>${s.cost}</strong>`;
+        `• Durum: <strong>${esc(s.cluster_status || 'standby')}</strong><br>` +
+        `• Tahsis Edilen vRAM: <strong>${esc(s.allocated_vram_gb !== undefined ? s.allocated_vram_gb : s.total_gpu_vram_gb)} GB</strong><br>` +
+        `• Aktif Dağıtım Modu: <code>${esc(s.mode)}</code><br>` +
+        `• Bilgi: <em>${esc(s.message || 'Bulut GPU kuyruğu hazır.')}</em>`;
     }
   })
   .catch(function(err) {
-    hud.innerHTML = `Ağ hatası: ${err.message}`;
+    hud.innerHTML = `Ağ hatası: ${esc(err.message)}`;
   });
 };
 
 window.handleGpuModeChange = function(newMode) {
   fetch('/api/gpu/cluster/mode', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+    },
     body: JSON.stringify({ mode: newMode })
   })
   .then(function() { window.refreshGpuStatus(); });

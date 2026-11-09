@@ -15,7 +15,18 @@ sys.path.insert(0, str(REPO_DIR))
 os.environ["FABRIKA_GATEWAY_PASSWORD"] = "test_guclu_parola_9988"
 os.environ["GATEWAY_PIN"] = "784321"
 
-from main import app, ACTIVE_TOKENS, DATA_DIR, MEDIA_DIR
+import main
+from main import app, ACTIVE_SESSIONS, FAILED_ATTEMPTS, MEDIA_DIR
+
+
+@pytest.fixture(autouse=True)
+def isolate_test_environment(tmp_path, monkeypatch):
+    """Testlerin üretim veri dosyalarını (video_jobs, rea_scans) kirletmesini önler."""
+    test_data = tmp_path / "data"
+    test_data.mkdir()
+    monkeypatch.setattr(main, "DATA_DIR", test_data)
+    ACTIVE_SESSIONS.clear()
+    FAILED_ATTEMPTS.clear()
 
 
 @pytest.fixture
@@ -29,7 +40,7 @@ def auth_token(client):
     res = client.post("/api/auth/verify_pin", json={"pin": "784321"})
     assert res.status_code == 200
     token = res.json()["token"]
-    assert token in ACTIVE_TOKENS
+    assert token in ACTIVE_SESSIONS
     return token
 
 
@@ -45,44 +56,60 @@ def test_public_info_endpoint(client):
     res = client.get("/api/auth/public_info")
     assert res.status_code == 200
     assert res.json()["status"] == "online"
+    assert res.json()["cluster_vram_gb"] == 0.0
 
 
 def test_backdoor_pin_rejected(client):
-    """Rastgele 6 haneli PIN veya eski backdoor PIN'leri 401 dönmelidir."""
-    for bad_pin in ["999999", "123456", "091091", "192300", "000000"]:
+    """İfşa olmuş zayıf PIN'ler (192300, 123456 vb.) kesinlikle 401 dönmelidir."""
+    for bad_pin in ["192300", "123456", "091091", "999999", "000000"]:
         res = client.post("/api/auth/verify_pin", json={"pin": bad_pin})
         assert res.status_code == 401, f"PIN {bad_pin} reddedilmeliydi"
 
 
 def test_backdoor_passwords_rejected(client):
-    """Varsayılan veya tahmin edilebilir sabit şifreler 401 dönmelidir."""
+    """Tahmin edilebilir sabit şifreler 401 dönmelidir."""
     for bad_pw in ["admin", "123456", "091091", "password", "root"]:
         res = client.post("/api/auth/login", json={"password": bad_pw})
         assert res.status_code == 401, f"Şifre {bad_pw} reddedilmeliydi"
 
 
-def test_backdoor_master_token_rejected(client):
-    """Sabit dev_master_token_2026 oturum tokenı olarak kabul edilmemelidir."""
-    res = client.get("/api/auth/check", headers={"Authorization": "Bearer dev_master_token_2026"})
+def test_turkish_chars_no_500(client):
+    """Türkçe veya özel karakterli parolalar 500 atmamalı, güvenle 401 dönmelidir."""
+    res = client.post("/api/auth/login", json={"password": "şifre_çğü_öış"})
     assert res.status_code == 401
-    assert res.json()["authenticated"] is False
+    res_pin = client.post("/api/auth/verify_pin", json={"pin": "şifre_ğü"})
+    assert res_pin.status_code == 401
 
 
 def test_legitimate_login(client):
-    """Doğru parola ile oturum açılabilmelidir."""
+    """Doğru parola ile oturum açılabilmeli ve token TTL kaydedilmelidir."""
     res = client.post("/api/auth/login", json={"password": "test_guclu_parola_9988"})
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert data["token"].startswith("tok_")
+    tok = data["token"]
+    assert tok in ACTIVE_SESSIONS
+    assert ACTIVE_SESSIONS[tok]["expires_at"] > ACTIVE_SESSIONS[tok]["created_at"]
+
+
+def test_rate_limiting_locks_out(client):
+    """5 ardışık hatalı denemede IP 429 Too Many Requests ile kilitlenmelidir."""
+    for _ in range(5):
+        res = client.post("/api/auth/verify_pin", json={"pin": "111222"})
+        assert res.status_code in (401, 429)
+    # 6. istek kilitlenmeli
+    res_locked = client.post("/api/auth/verify_pin", json={"pin": "784321"})
+    assert res_locked.status_code == 429
+    assert "Çok fazla hatalı deneme" in res_locked.json()["message"]
 
 
 # -----------------------------------------------------------------------------
 # 2. YETKİLENDİRME (PROTECTED ENDPOINTS) TESTLERİ
 # -----------------------------------------------------------------------------
 def test_protected_endpoints_reject_unauthorized(client):
-    """Token olmadan durum değiştiren uç noktalar 401 dönmelidir."""
+    """Token olmadan durum değiştiren veya korumalı tüm uçlar 401 dönmelidir."""
     endpoints = [
+        ("POST", "/api/lab/generate", {"prompt": "x"}),
         ("POST", "/api/studio/video/generate", {}),
         ("POST", "/api/audio/process", {"action": "voice_clone_tts"}),
         ("POST", "/api/gpu/cluster/mode", {"mode": "kaggle_first"}),
@@ -98,6 +125,39 @@ def test_protected_endpoints_reject_unauthorized(client):
         else:
             res = client.get(path)
         assert res.status_code == 401, f"{path} ucu tokensız 401 dönmeliydi, ancak {res.status_code} döndü"
+
+
+def test_websocket_chat_rejects_unauthorized(client):
+    """Token olmadan WebSocket bağlantısı kabul edilmemeli (4401 ile kapanmalıdır)."""
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/chat") as ws:
+            ws.receive_text()
+
+
+def test_real_change_pin(client, auth_headers):
+    """change_pin eski PIN'i geçersiz kılmalı, yeni PIN'i kaydetmeli ve yeni token üretmelidir."""
+    res = client.post("/api/auth/change_pin", json={"old_pin": "784321", "new_pin": "651239"}, headers=auth_headers)
+    assert res.status_code == 200
+    new_token = res.json()["token"]
+
+    # Eski token iptal edilmiş olmalı
+    res_old = client.get("/api/auth/check", headers=auth_headers)
+    assert res_old.status_code == 401
+
+    # Yeni token geçerli olmalı
+    res_new = client.get("/api/auth/check", headers={"Authorization": f"Bearer {new_token}"})
+    assert res_new.status_code == 200
+
+    # Temizlik: test pinini geri yükle
+    os.environ["GATEWAY_PIN"] = "784321"
+
+
+def test_biometric_returns_501(client):
+    """WebAuthn doğrulanmamışsa sahte token dağıtılmamalı, 501 dönmelidir."""
+    res_login = client.post("/api/auth/biometric/login", json={"bio_id": "test"})
+    assert res_login.status_code == 501
+    res_reg = client.post("/api/auth/biometric/register", json={"device_name": "Mac"})
+    assert res_reg.status_code == 501
 
 
 # -----------------------------------------------------------------------------
@@ -148,7 +208,7 @@ def test_studio_video_honest_state(client, auth_headers):
     task = data["task"]
     assert "kuyrukta" in task["status"]
     assert task["output_url"] is None
-    assert task["progress_pct"] == 20
+    assert task["progress_pct"] == 10
 
 
 def test_audio_honest_queue(client, auth_headers):
@@ -175,19 +235,25 @@ def test_gpu_cluster_honest_standby(client):
 
 def test_rea_scan_and_history_dynamic(client, auth_headers):
     """REA taraması yapılınca skor ve kayıt dinamik hesaplanmalıdır."""
-    # 1. Temiz kod tara
+    # 1. Başlangıçta tarama yoksa Veri Yok dönmeli
+    res_init = client.get("/api/rea/history")
+    assert res_init.status_code == 200
+    assert res_init.json()["toplam_tarama"] == 0
+    assert res_init.json()["ort_skor"] is None
+
+    # 2. Temiz kod tara
     res = client.post("/api/rea/scan", json={"code": "x = 10\ny = 20"}, headers=auth_headers)
     assert res.status_code == 200
     assert res.json()["score"] == 100
 
-    # 2. eval içeren riskli kod tara
+    # 3. eval içeren riskli kod tara
     res_bad = client.post("/api/rea/scan", json={"code": "eval('bad')"}, headers=auth_headers)
     assert res_bad.status_code == 200
     assert res_bad.json()["score"] < 100
 
-    # 3. Geçmişi oku — dinamik olmalı
+    # 4. Geçmişi oku — dinamik 2 olmalı
     res_hist = client.get("/api/rea/history")
     assert res_hist.status_code == 200
     h = res_hist.json()
-    assert h["toplam_tarama"] >= 2
+    assert h["toplam_tarama"] == 2
     assert isinstance(h["ort_skor"], (int, float))
