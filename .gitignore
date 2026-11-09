@@ -6,3 +6,7 @@ venv/
 .env
 
 video_factory/
+
+# Üretilen medya (depo şişmesin)
+static/media/*.mp4
+static/media/*.webm

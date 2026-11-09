@@ -591,6 +591,16 @@ async def studio_channels():
 
 @app.post("/api/studio/video/generate", dependencies=[Depends(verify_auth)])
 async def studio_video_generate(req: Request):
+    """
+    GERÇEK video üretimi (2026-11-09).
+
+    ÖNCEKİ DURUM: Bu uç yalnız bir sözlük döndürüyordu ("kuyrukta") — hiç video
+    üretmiyordu. `studio_controller.create_video_job` ise GERÇEK MP4 üretiyor
+    (ffmpeg + Remotion kompozisyonu). İki kod yolu birbirinden kopuktu.
+
+    ARTIK: `VideoStudioController` çağrılır → gerçek MP4 + output_url.
+    Render başarısız olursa DÜRÜST hata döner (sahte "tamamlandi" yok).
+    """
     try:
         body = await req.json()
     except Exception:
@@ -601,39 +611,56 @@ async def studio_video_generate(req: Request):
     render_target = body.get("render_target", "kaggle_32gb")
     aspect_ratio = body.get("aspect_ratio", "16:9")
 
-    job_id = f"JOB-{int(time.time()*1000)}-{os.urandom(3).hex()}"
+    try:
+        from studio_controller import VideoStudioController
 
-    # Dürüst Durum Makinesi (Kural 1 Uyarınca Gerçek Durum Bildirimi)
-    stages = [
-        {"ad": "1. Senaryo & Astrolojik Analiz", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
-        {"ad": "2. Ses Tasarımı & TTS", "durum": "beklemede"},
-        {"ad": "3. 3D & Stok Kurgu Montajı", "durum": "beklemede"},
-        {"ad": "4. GPU Render", "durum": "beklemede"},
-        {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "beklemede"}
-    ]
-
-    task_data = {
-        "job_id": job_id,
-        "channel": channel,
-        "prompt": prompt,
-        "method": method,
-        "render_target": render_target,
-        "aspect_ratio": aspect_ratio,
-        "status": "kuyrukta (GPU işçisi bekleniyor)",
-        "progress_pct": 10,
-        "estimated_duration_sec": 45,
-        "stages": stages,
-        "artifacts": {
-            "engine": method,
+        controller = VideoStudioController()
+        spec = controller.create_video_job(
+            channel=channel,
+            prompt=prompt,
+            method=method,
+            render_target=render_target,
+            aspect_ratio=aspect_ratio,
+        )
+        task_data = {
+            "job_id": spec.job_id,
+            "channel": spec.channel,
+            "prompt": spec.prompt,
+            "method": spec.method,
+            "render_target": spec.render_target,
+            "aspect_ratio": spec.aspect_ratio,
+            "status": spec.status,
+            "progress_pct": spec.progress_pct,
+            "stages": spec.stages,
+            "artifacts": spec.artifacts,
+            "output_url": spec.output_url,
+            "simulasyon": "simülasyon" in str(spec.status),
+            "message": (
+                f"Kılavuz video üretildi ({spec.artifacts.get('file_size_bytes', '?')} bayt, "
+                f"{spec.artifacts.get('resolution', '?')}). Tam GPU render için kuyrukta."
+                if spec.output_url
+                else "Render başarısız: ffmpeg çıktı üretemedi. Görev kayda geçti."
+            ),
+        }
+    except Exception as e_ctl:
+        logger.error("[Studio] Video üretimi başarısız: %s", e_ctl)
+        # DÜRÜST hata — sahte başarı YOK (Kural 1)
+        task_data = {
+            "job_id": f"JOB-{int(time.time()*1000)}-{os.urandom(3).hex()}",
+            "channel": channel,
+            "prompt": prompt,
+            "method": method,
             "render_target": render_target,
-            "status": "Görev bulut kuyruğuna yazıldı; Kaggle / Colab GPU işçisi bekleniyor.",
-            "target_resolution": "1080x1920 (9:16 Dikey)" if aspect_ratio == "9:16" else "1920x1080 (16:9 Sinematik)",
-            "pipeline": "Kuyrukta çalıştırılacak",
-        },
-        "output_url": None,
-        "simulasyon": False,
-        "message": "Prodüksiyon görevi bulut kuyruğuna alındı. GPU düğümü bağlandığında otomatik render edilecektir."
-    }
+            "aspect_ratio": aspect_ratio,
+            "status": "basarisiz",
+            "progress_pct": 0,
+            "stages": [{"ad": "1. Render motoru", "durum": f"basarisiz: {type(e_ctl).__name__}"}],
+            "artifacts": {"error": str(e_ctl)[:300]},
+            "output_url": None,
+            "simulasyon": False,
+            "message": f"Video üretilemedi: {type(e_ctl).__name__}: {str(e_ctl)[:200]}",
+        }
+        return {"success": False, "task": task_data}
 
     # İş geçmişine kaydet
     jobs_file = DATA_DIR / "video_jobs.json"
@@ -647,7 +674,8 @@ async def studio_video_generate(req: Request):
     except Exception as save_err:
         logger.warning("Video iş kaydı yazılamadı: %s", save_err)
 
-    return {"success": True, "task": task_data}
+    return {"success": bool(task_data.get("output_url")), "task": task_data}
+
 
 # -----------------------------------------------------------------------------
 # 6. SES, MÜZİK & PODCAST İŞLEME (DÜRÜST DURUM VE KUYRUK YÖNETİMİ)
@@ -850,8 +878,17 @@ async def get_media_file(path: str):
     target = (MEDIA_DIR / file_name).resolve()
     if not target.is_file():
         target = (DATA_MEDIA_DIR / file_name).resolve()
+    if not target.is_file():
+        # 2026-11-09: StudioController çıktıları `video_factory/<JOB>/` altında
+        # kalabiliyordu (ör. rendered_output.mp4). MEDIA_DIR kopyası başarısız
+        # olduysa buradan servis edilir — aksi halde URL 404 verirdi.
+        for _aday in sorted((BASE_DIR / "video_factory").glob(f"*/{file_name}"), reverse=True):
+            if _aday.is_file():
+                target = _aday.resolve()
+                break
 
-    if target.is_file() and (target.is_relative_to(MEDIA_DIR) or target.is_relative_to(DATA_MEDIA_DIR)):
+    _izinli_kokler = (MEDIA_DIR, DATA_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
+    if target.is_file() and any(target.is_relative_to(k) for k in _izinli_kokler):
         media_types = {
             ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
             ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg",

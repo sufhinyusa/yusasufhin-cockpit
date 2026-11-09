@@ -439,6 +439,9 @@ class VideoStudioController:
         self.storage_dir = Path(storage_dir) if storage_dir else Path(__file__).resolve().parent / "video_factory"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.jobs_file = self.storage_dir / "studio_jobs.json"
+        # MEDYA SUNUM DİZİNİ: `/api/media/file` buradan servis eder.
+        # (main.py: MEDIA_DIR = BASE_DIR/"static"/"media")
+        self.media_dir = Path(__file__).resolve().parent / "static" / "media"
         self._ensure_jobs_file()
 
     def _ensure_jobs_file(self):
@@ -543,8 +546,25 @@ class VideoStudioController:
                 {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "kuyrukta (GPU tam render bekleniyor)"},
             ]
             job_status = "onizleme_hazir (simülasyon)"
-            out_url = f"/api/media/file?path={output_mp4}"
+            # MEDYA SUNUMU (2026-11-09): `/api/media/file` yalnız MEDIA_DIR /
+            # DATA_MEDIA_DIR içinde ve DOSYA ADIYLA arıyor. Video `video_factory/
+            # JOB-xxx/rendered_output.mp4` altında olduğu için URL 404 veriyordu.
+            # Ayrıca her iş aynı adı üretince dosyalar birbirini ezerdi.
+            # Çözüm: benzersiz adla MEDIA_DIR'e kopyala.
+            import shutil as _shutil
+
+            medya_adi = f"{job_id}.mp4"
+            medya_hedef = self.media_dir / medya_adi
+            try:
+                self.media_dir.mkdir(parents=True, exist_ok=True)
+                _shutil.copy2(output_mp4, medya_hedef)
+                artifacts["served_mp4"] = str(medya_hedef)
+                out_url = f"/api/media/file?path={medya_adi}"
+            except Exception as e_kopya:
+                logger.warning("[VideoStudioController] MEDIA_DIR kopyası başarısız: %s", e_kopya)
+                out_url = f"/api/media/file?path={output_mp4}"
             prog = 60
+
         else:
             stages = [
                 {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
