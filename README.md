@@ -13,3 +13,4 @@ Bu depo, `https://yusasufhin.com/` alan adını bilgisayarınız kapalıyken bil
 ## Canlı Yayın
 - Resmi Alan Adı: https://yusasufhin.com/
 - Bulut Sağlayıcı: Koyeb Global Edge
+
