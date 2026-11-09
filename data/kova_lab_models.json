@@ -1,0 +1,3745 @@
+{
+  "toplam": 66,
+  "ucretsiz": 26,
+  "otomatik": 29,
+  "havuz_eklenen": 10,
+  "konum": "Render 7/24 Cloud Edge",
+  "kovalab_var": true,
+  "gruplar": [
+    {
+      "tur": "bulut",
+      "etiket": "Bulut (Web)",
+      "adet": 13,
+      "modeller": [
+        {
+          "id": "hailuo",
+          "ad": "Hailuo AI (MiniMax)",
+          "tur": "bulut",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 6,
+          "gunluk_kota": 4,
+          "kota_notu": "günde 3–5 video (web kotası)",
+          "guclu": "Sinematik kamera açıları, 720p, prompt sadakati",
+          "site": "https://hailuoai.video",
+          "not_": "Kota hesaba bağlı; gün içinde azalır, gece yenilenir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "hailuo_surucu.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 6,
+            "sure_secenekleri": [
+              5,
+              6,
+              10
+            ]
+          }
+        },
+        {
+          "id": "hedra",
+          "ad": "Hedra (Character-1)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "gorsel+ses",
+          "sure_sn": 30,
+          "gunluk_kota": 5,
+          "kota_notu": "günde 5 video kredisi",
+          "guclu": "Konuşan kafa / dudak uyumu (avatar)",
+          "site": "https://www.hedra.com",
+          "not_": "Ses dosyası ister; Gemini TTS çıktısı doğrudan yüklenebilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 30,
+            "sure_secenekleri": [
+              5,
+              10,
+              30
+            ]
+          }
+        },
+        {
+          "id": "higgsfield",
+          "ad": "Higgsfield",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "gorsel",
+          "sure_sn": 5,
+          "kota_notu": "günlük ücretsiz kredi — Doğrulanmadı",
+          "guclu": "Kamera hareketi presetleri (dolly, crash zoom, bullet time)",
+          "site": "https://higgsfield.ai",
+          "not_": "Kota ve adres Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "kling",
+          "ad": "Kling AI (Kuaishou)",
+          "tur": "bulut",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "gunluk_kota": 6,
+          "kota_notu": "günde 66 kredi ≈ 1-6 video (5 sn)",
+          "guclu": "Fizik simülasyonu ve insan hareketi (Camoufox Arka Plan Otomasyonu)",
+          "site": "https://app.klingai.com",
+          "not_": "Arka planda Camoufox ile üretilir, sonuç bu sekmeye otomatik indirilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "kling_surucu.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "leonardo",
+          "ad": "Leonardo AI Video",
+          "tur": "bulut",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "gunluk_kota": 5,
+          "kota_notu": "günde 150 jeton ≈ 3–5 video (Camoufox Otomasyonu)",
+          "guclu": "MiniMax/Hailuo-03 Turbo motoru, 768p akıcı hareketler",
+          "site": "https://app.leonardo.ai/generate",
+          "not_": "Arka planda Camoufox ile üretilir, sonuç bu sekmeye otomatik indirilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "leonardo_surucu.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "luma",
+          "ad": "Luma Dream Machine",
+          "tur": "bulut",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "gunluk_kota": 1,
+          "kota_notu": "3.000 deneme kredisi (~6 video 4K)",
+          "guclu": "Gerçek 4K (3840x2160), orbit/pan sinematik hareketler (Camoufox Otomasyonu)",
+          "site": "https://app.lumalabs.ai",
+          "not_": "Arka planda Camoufox ile üretilir, 4K sonuç bu sekmeye otomatik indirilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "luma_surucu.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "pika",
+          "ad": "Pika Labs (Pika 1.5)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 4,
+          "gunluk_kota": 2,
+          "kota_notu": "günde 30 kredi ≈ 1–2 video",
+          "guclu": "Pikaffects (eritme/patlatma), anime stili",
+          "site": "https://pika.art",
+          "not_": "Kredi her gün sıfırlanır.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 4,
+            "sure_secenekleri": [
+              4,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "runway",
+          "ad": "RunwayML (Gen-3)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 10,
+          "gunluk_kota": 0,
+          "kota_notu": "tek seferlik 125 kredi (günlük yenilenmez)",
+          "guclu": "Sinematik doku, motion brush, endüstri standardı",
+          "site": "https://app.runwayml.com",
+          "not_": "125 kredi bitince ücretsiz üretim durur.",
+          "ucretsiz": false,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 10,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "vidu",
+          "ad": "Vidu (Shengshu)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 4,
+          "kota_notu": "günlük ücretsiz kredi — Doğrulanmadı",
+          "guclu": "Hızlı 4 sn klip, referans tutarlılığı",
+          "site": "https://www.vidu.com",
+          "not_": "Kota ve adres Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 4,
+            "sure_secenekleri": [
+              4,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "wan-official",
+          "ad": "Wan resmî stüdyo (wan.video)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "kayıt kredisi — günlük sayı Doğrulanmadı",
+          "guclu": "Wan2.2'nin kendi arayüzü: 720p, metin+görsel, sesli sürümler",
+          "site": "https://wan.video",
+          "not_": "Açık ağırlıkların resmî bulut yüzü; ücretsiz kredi miktarı hesaba göre değişir, Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": true,
+          "surucu_dosya": "bulut_ek_suruculer.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "vids-google",
+          "ad": "Google Vids (Gemini Omni)",
+          "tur": "bulut",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 10,
+          "gunluk_kota": 10,
+          "kota_notu": "Google Workspace / Gemini Omni ücretsiz video kotası",
+          "guclu": "Google Gemini Omni 720p 10s video üretimi (Camoufox Otomasyonu)",
+          "site": "https://vids.google.com",
+          "not_": "Arka planda Camoufox ile üretilir, MP4 video bu sekmeye otomatik indirilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 10,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "ltx-studio",
+          "ad": "LTX Studio (Lightricks)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 10,
+          "kota_notu": "ücretsiz plan kredisi — Doğrulanmadı",
+          "guclu": "Storyboard + sahne sahne üretim (pipeline mantığı)",
+          "site": "https://ltx.studio",
+          "not_": "Adres ve ücretsiz plan koşulları bu oturumda açılıp doğrulanmadı; giriş öncesi kontrol edin.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 10,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "nim-video",
+          "ad": "Nim Video (tarayıcı)",
+          "tur": "bulut",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "guclu": "Tarayıcıda metinden video; davet bağlantısıyla deneme",
+          "site": "https://nim.video",
+          "not_": "Paylaşılan bağlantı bir davet linkiydi (nim.video/l/…); ücretsiz kota, Türkçe destek ve su damgası Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "boru",
+      "etiket": "Üretim Hattı",
+      "adet": 14,
+      "modeller": [
+        {
+          "id": "boru-comfyui",
+          "ad": "ComfyUI — düğüm tabanlı boru hattı",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Wan2.2 / LTX-2 / Hunyuan düğümleri hazır; en hızlı yerel motor",
+          "site": "https://github.com/comfyanonymous/ComfyUI",
+          "lisans": "GPL-3.0",
+          "not_": "GPL-3.0 lisansı doğrulandı; Apple Silicon'da hız Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-ffmpeg",
+          "ad": "FFmpeg — birleştirme/kodlama çekirdeği",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Klipleri birleştirir, sesi bindirir, altyazıyı gömer, ölçekler",
+          "site": "https://ffmpeg.org",
+          "lisans": "LGPL/GPL",
+          "not_": "Ölçüm zaten ffprobe kullanıyor; ffmpeg yoksa birleştirme çalışmaz.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-openstoryline",
+          "ad": "FireRed-OpenStoryline — doğal dille kurgu",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Cümleyle talimat: keser, sıralar, dolgu sözcükleri temizler; MCP sunucusu + web arayüzü",
+          "site": "https://github.com/FireRedTeam/FireRed-OpenStoryline",
+          "lisans": "Apache-2.0",
+          "not_": "3,6k yıldız. config.toml içine LLM API anahtarı şart; Docker imajı da var (openstoryline/openstoryline:v1.0.1).",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-funclip",
+          "ad": "FunClip — transkriptten kesit çıkar",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "FunASR ile yazıya döker, altyazı üretir, seçtiğin cümleyi videodan keser (yerel Gradio arayüzü)",
+          "site": "https://github.com/modelscope/FunClip",
+          "lisans": "MIT",
+          "not_": "6,4k yıldız. Varsayılan Paraformer modelleri Çince ağırlıklı; Türkçe doğruluğu Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-herk-edit-kit",
+          "ad": "Herk Edit Kit — Claude/Codex kurgu yetenekleri",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "15 yetenek: transkriptten kesim, ölü hava temizliği, altyazı, B-roll, 406 hareketli grafik kartı",
+          "site": "https://github.com/nateherkai/herk-edit-kit",
+          "lisans": "belirtilmemiş (LICENSE dosyası var, GitHub etiketi yok)",
+          "not_": "2k yıldız, şablon depo. Lisans etiketi yok — ticari kullanımdan önce LICENSE dosyasını okuyun.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-hyperframes",
+          "ad": "HyperFrames — HTML'i videoya çevir",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Sahneleri HTML/CSS yazıp FFmpeg + Puppeteer ile MP4'e render eder; ajanlar için CLI ve MCP",
+          "site": "https://github.com/heygen-com/hyperframes",
+          "lisans": "Apache-2.0",
+          "not_": "70,3k yıldız (HeyGen). npm paket adı ve tek komutla kurulum Doğrulanmadı; README paketleri ayrı ayrı listeliyor.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-moneyprinter",
+          "ad": "MoneyPrinterTurbo — konudan kısa video",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Konu → senaryo → TTS → altyazı → stok görüntü → dikey video",
+          "site": "https://github.com/harry0703/MoneyPrinterTurbo",
+          "lisans": "MIT",
+          "not_": "Edge TTS ücretsiz, Gemini TTS de destekli. Stok video için Pexels anahtarı gerekir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-moviepy",
+          "ad": "MoviePy — Python ile kurgu",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Kodla kesme, altyazı, ses bindirme; Kova çıktılarına doğrudan uygulanır",
+          "site": "https://github.com/Zulko/moviepy",
+          "lisans": "MIT",
+          "not_": "Adres/lisans Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-musetalk",
+          "ad": "MuseTalk — dudak senkronu (dublaj)",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Üretilen videoyu Gemini TTS sesine göre dudak senkronlar (30 fps+)",
+          "site": "https://github.com/TMElyralab/MuseTalk",
+          "lisans": "MIT (kod) — model ticari kullanıma açık",
+          "not_": "CUDA için yazılmış; Apple Silicon'da çalışması Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-openmontage",
+          "ad": "OpenMontage — ajanla video stüdyosu",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "12 üretim hattı, 100+ araç, 700+ yetenek dosyası: Claude Code / Cursor / Codex'e komple video stüdyosu kurar",
+          "site": "https://github.com/calesthio/OpenMontage",
+          "lisans": "AGPL-3.0",
+          "not_": "71k yıldız. Ses/görsel üretimi için ElevenLabs, fal.ai gibi sağlayıcı anahtarları ister; bütçe sınırı varsayılan 10 $.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-pocket-tts",
+          "ad": "Pocket TTS — CPU'da ses klonlama",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "GPU'suz CPU'da TTS; 10–30 sn kayıtla ses klonlar, OpenAI uyumlu sunucu seçenekleri var",
+          "site": "https://github.com/kyutai-labs/pocket-tts",
+          "lisans": "MIT",
+          "not_": "10k yıldız; Python 3.10–3.14 + PyTorch 2.5 (CPU sürümü yeter). Türkçe desteği Doğrulanmadı. Ses klonlama için karşı tarafın açık rızası şart.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-premiere-mcp",
+          "ad": "Premiere Pro MCP — ajanla kurgu",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "269 araç: klip keser, efekt uygular, sıralar; MCP istemcisinden Premiere'i sürer",
+          "site": "https://github.com/IsaiahDupree/premiere-pro-mcp",
+          "lisans": "MIT",
+          "not_": "3 yıldız — erken aşama. Adobe Premiere Pro kurulu olmalı (CEP paneli); macOS'ta çalışır.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-remotion",
+          "ad": "Remotion — React ile video",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Şablonlu, tekrar üretilebilir video (başlık/alt bant/jenerik)",
+          "site": "https://github.com/remotion-dev/remotion",
+          "lisans": "Remotion License (bireysel ücretsiz)",
+          "not_": "Lisans eşiği (çalışan sayısı) Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "boru-anything2explainer",
+          "ad": "anything2explainer — konudan anlatım videosu",
+          "tur": "boru",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Konu → araştırma → senaryo → TTS → Remotion sahneleri → altyazılı MP4; Türkçe destekli",
+          "site": "https://github.com/omergocmen/anything2explainer",
+          "lisans": "PolyForm Noncommercial 1.0.0 (ticari kullanım izne bağlı)",
+          "not_": "Türkçe için Edge TTS kullanılıyor (Kokoro Türkçe'yi desteklemiyor). Node + en az 5 GB boş disk gerekir. Depo 11 yıldız; asıl proje Vincentwei1021/anything2explainer.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "editor",
+      "etiket": "Editör & Kurgu",
+      "adet": 10,
+      "modeller": [
+        {
+          "id": "editor-autoeditor",
+          "ad": "Auto-Editor — sessizliği otomatik kes",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Ses yüksekliğine göre ölü boşluğu keser; Premiere/Resolve XML verir",
+          "site": "https://github.com/WyattBlue/auto-editor",
+          "lisans": "Unlicense (public domain)",
+          "not_": "Kullanım: auto-editor video.mp4 --margin 0.2s",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-autosubs",
+          "ad": "AutoSubs — yerel altyazı → Resolve/Premiere",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Ses tanımayı cihazda yapar; altyazıyı DaVinci Resolve, Premiere ve After Effects zaman çizelgesine aktarır",
+          "site": "https://github.com/tmoroney/auto-subs",
+          "lisans": "MIT",
+          "not_": "4,4k yıldız. Sözcük hizalama modeli (MMS) CC BY-NC 4.0 — ticari kullanımda model lisansı ayrıca kontrol edilmeli. Kurulan .app adı Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-davinci",
+          "ad": "DaVinci Resolve (ücretsiz sürüm)",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Renk düzeltme + Fusion; ücretsiz sürüm ticari kullanıma açık",
+          "site": "https://www.blackmagicdesign.com/products/davinciresolve",
+          "lisans": "Tescilli (ücretsiz sürüm)",
+          "not_": "Ücretsiz sürümün sınırları sürüme göre değişir — Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-kdenlive",
+          "ad": "Kdenlive — çok kanallı kurgu",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Çok kanal + proxy akışı; uzun videoda kararlı",
+          "site": "https://kdenlive.org",
+          "lisans": "GPL-3.0",
+          "not_": "Adres/lisans Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-losslesscut",
+          "ad": "LosslessCut — kayıpsız kesme",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Yeniden kodlamadan saniyeler içinde keser",
+          "site": "https://github.com/mifi/lossless-cut",
+          "lisans": "GPL-2.0",
+          "not_": "Lisans/adres bu oturumda doğrulanmadı; brew paket adı değişebilir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-openchatcut",
+          "ad": "OpenChatCut — sohbetle kurgu (MCP)",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Çok kanallı zaman çizelgesi + MCP: Claude Code/Codex klipleri, altyazıyı ve geçişleri sohbetle düzenler",
+          "site": "https://github.com/0xsline/OpenChatCut",
+          "lisans": "AGPL-3.0",
+          "not_": "2,6k yıldız; Electron + Remotion + FFmpeg. AGPL-3.0: türev sürümü ağdan sunarsanız kaynağı açmanız gerekir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-opencut",
+          "ad": "OpenCut — tarayıcıda CapCut alternatifi",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Tarayıcıda çok kanallı kurgu; kurulum yok, dosyalar cihazda kalır",
+          "site": "https://opencut.app",
+          "lisans": "MIT",
+          "not_": "23 Eki 2026: 95,8k yıldız, MIT. Depo baştan yazılıyor; günlük kullanım için opencut-classic sürümü öneriliyor.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-openshot",
+          "ad": "OpenShot — en basit kurgu",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Sürükle-bırak; Python API'si var (otomasyona açık)",
+          "site": "https://www.openshot.org",
+          "lisans": "GPL-3.0",
+          "not_": "Adres/lisans Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-shotcut",
+          "ad": "Shotcut — ücretsiz kurgu",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Zaman çizelgesi, filtreler, 4K; öğrenmesi kolay",
+          "site": "https://www.shotcut.org",
+          "lisans": "GPL-3.0",
+          "not_": "Adres/lisans Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "editor-storytoolkitai",
+          "ad": "StoryToolkitAI — görüntüde anlam arama",
+          "tur": "editor",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Konuşmayı yazıya döker, sahne indeksler, cümleyle arama yapar; seçkiyi EDL/XML olarak kurgu programına verir",
+          "site": "https://github.com/octimot/StoryToolkitAI",
+          "lisans": "GPL-3.0",
+          "not_": "1,1k yıldız. Transkripsiyon/indeksleme yerel ve ücretsiz; asistan özelliği harici LLM anahtarı ister.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "havuz",
+      "etiket": "Link Havuzu (Açık Kaynak)",
+      "adet": 10,
+      "modeller": [
+        {
+          "id": "havuz-burc-20dk",
+          "ad": "12 Burç 20dk Tutarlı AI Görsel + Stok Video Hattı",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 24,
+          "kota_notu": "%100 Kendi Üretimi (Sıfır Dış Stok · LUT Kilitli)",
+          "guclu": "12 burç için tekil sinematik anayasa (ARRI Alexa 65 + LUT) ile uyumlu görsel ve AI kısa stok video üretir",
+          "site": "https://yusasufhin.com/lab.html",
+          "lisans": "MIT",
+          "not_": "12 Burç Kanalı Özel Hattı: Pastel/yağlı boya sapmasını önleyen Tekil Sinematik Stil Kilidi ve Keyframe-Driven I2V.",
+          "havuz_id": 230,
+          "puan": 9.8,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "burc_pipeline_20dk.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 24,
+            "sure_secenekleri": [
+              5,
+              10,
+              24
+            ]
+          }
+        },
+        {
+          "id": "havuz-autoclip-pyvideotrans",
+          "ad": "AutoClip + pyVideoTrans (#219)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak",
+          "guclu": "Viral kesit ve çok dilli Gemini TTS dublajlı AI video üretimi",
+          "site": "https://github.com/zhouxiaoka/autoclip",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #219 (8.0 Puan): Fabrika'da tool_autoclip.py olarak da entegredir.",
+          "havuz_id": 219,
+          "puan": 8.0,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-concat-studio",
+          "ad": "Concat — Yerel AI Video Editörü (#70)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Ücretsiz & Yerel",
+          "guclu": "Yerel AI difüzyon ve seslendirme ile sahne üretimi",
+          "site": "https://github.com/storytold/concat",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #70 & #147 (7.5 Puan): Yerel AI destekli açık kaynak stüdyo.",
+          "havuz_id": 70,
+          "puan": 7.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-drift-editor",
+          "ad": "Drift — Metinden Kurgu & Dikey Kadraj (#197)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Ücretsiz & Filigransız",
+          "guclu": "Metin tabanlı gerçek YZ sahne ve kurgu üretimi",
+          "site": "https://github.com/sn0wbrave/drift",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #197 (7.5 Puan): Metin tabanlı açık kaynak video hattı.",
+          "havuz_id": 197,
+          "puan": 7.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-livetalking-musetalk",
+          "ad": "LiveTalking & MuseTalk Dijital İnsan (#28)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "gorsel+ses",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak",
+          "guclu": "Portre/sahne ve Gemini TTS ses dosyasından seslendirmeli AI video üretimi",
+          "site": "https://github.com/lipku/LiveTalking",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #28: Dijital insan ve sesli sahne modelleri.",
+          "havuz_id": 28,
+          "puan": 6.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-moneyprinter-turbo",
+          "ad": "MoneyPrinterTurbo (#133)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak (MIT)",
+          "guclu": "Konu veya anahtar kelimeden gerçek YZ videosu ve Gemini TTS seslendirmesi",
+          "site": "https://github.com/harry0703/MoneyPrinterTurbo",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #133 & #219 (7.5 Puan): Kısa video üretim motoru.",
+          "havuz_id": 133,
+          "puan": 7.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-wan22-i2v",
+          "ad": "Wan 2.2 I2V Lightning (8GB VRAM / ZeroGPU)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak / HF ZeroGPU Space",
+          "guclu": "Görselden videoya (I2V) 4 adımda gerçek fizik hareketi (#225)",
+          "site": "https://huggingface.co/spaces/Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom",
+          "lisans": "Apache-2.0",
+          "not_": "Link Havuzu #225: HF ZeroGPU Space veya yerel Apple Silicon MPS üzerinde çalışır.",
+          "havuz_id": 225,
+          "puan": 8.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-explainer-skill",
+          "ad": "explainer-animation-skill (#165)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak (AI Sahne + Gemini TTS)",
+          "guclu": "Gerçek YZ difüzyon sahnesi + Gemini TTS seslendirme ile anlatım videosu",
+          "site": "https://github.com/calesthio/OpenMontage",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #165 (8.0 Puan): Seslendirmeli anlatım videosu hattı.",
+          "havuz_id": 165,
+          "puan": 8.0,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-video-shotcraft",
+          "ad": "video-shotcraft — Ürün Tanıtım Hattı (#215)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak",
+          "guclu": "Kamera hareketi tarifinden gerçek YZ tanıtım ve reklam MP4 videosu üretir",
+          "site": "https://github.com/Vincentwei1021/video-shotcraft",
+          "lisans": "Apache-2.0",
+          "not_": "Link Havuzu #31 & #215 (7.5 Puan): Tanıtım videosu kurgu hattı.",
+          "havuz_id": 215,
+          "puan": 7.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "havuz-otopilot",
+          "ad": "wj-sidiss/otopilot — Türkçe Video Hattı (#85)",
+          "tur": "havuz",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "Açık Kaynak (Yerel AI + Gemini TTS)",
+          "guclu": "Konu + başlıktan gerçek YZ difüzyon sahnesi ve Türkçe Gemini TTS seslendirmeli MP4",
+          "site": "https://github.com/wj-sidiss/otopilot",
+          "lisans": "MIT",
+          "not_": "Link Havuzu #85/#107/#108/#208 (7.5 Puan): Türkçe yerel video otomasyon hattı.",
+          "havuz_id": 85,
+          "puan": 7.5,
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "sosyal",
+      "etiket": "Sosyal Medya",
+      "adet": 7,
+      "modeller": [
+        {
+          "id": "sosyal-autoclip",
+          "ad": "AutoClip — Uzun Videodan Shorts/TikTok Çıkarma",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Uzun videolardan viral kanca tespitiyle 9:16 Shorts/Reels kesme, otomatik altyazı ve kapak oluşturma",
+          "site": "https://github.com/zhouxiaoka/autoclip",
+          "lisans": "MIT",
+          "not_": "Link havuzu #219: Whisper ile transkripsiyon ve LLM viral skorlaması yaparak en etkili dikey klipleri üretir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-clawvisual",
+          "ad": "ClawVisual — Makale/Metni Video Kartlarına Çevirme",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Herhangi bir makale veya web sayfasını çok sayfalı infografik video kartları ve TikTok slaytlarına dönüştürür",
+          "site": "https://github.com/clawvisual/clawvisual",
+          "lisans": "Apache-2.0",
+          "not_": "Link havuzu #219: Metinleri görsel hiyerarşiyle özetleyip Instagram Carousel ve kısa video kartı üretir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-mimik",
+          "ad": "Mimik — Tarayıcıdan Adım Adım Eğitim Videosu",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Tarayıcı hareketlerini kaydedip otomatik ekran görüntülü kılavuz ve sesli anlatımlı eğitim videosu dışa aktarır",
+          "site": "https://github.com/westpoint-io/mimik",
+          "lisans": "MIT",
+          "not_": "Link havuzu #219: SaaS ve yazılım demoları için otomatik öğretici video oluşturur.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-ming-tts",
+          "ad": "Ming-3.0-TTS — Duygusal Ses Klonlama (Ant Group)",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Zero-shot ses klonlama, 14 paralinguistic duygu etiketi (gülme, iç çekme vb.) ve MoE çoklu konuşmacı diyalog sentezi",
+          "site": "https://github.com/inclusionAI/Ming-3.0-tts",
+          "lisans": "Apache-2.0",
+          "not_": "Link havuzu #220: %93.2 telaffuz doğruluğu ile küresel 1. olan Ant Group inclusionAI ses modeli.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-opencreator",
+          "ad": "OpenCreator — Otonom AI İçerik Stüdyosu",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Senaryo, görsel, seslendirme, video kurgu ve çeviriyi tek çalışma alanında yöneten açık kaynak içerik fabrikası",
+          "site": "https://github.com/krillinai/OpenCreator",
+          "lisans": "MIT",
+          "not_": "Link havuzu #223: İçerik üreticileri için tam entegre açık kaynaklı ajan çalışma alanı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-shotcraft",
+          "ad": "Video-Shotcraft — Ajanla Ürün Videosu",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Arayüz kodu veya ekran görüntülerinden otonom ajanla profesyonel animasyonlu tanıtım videosu üretimi",
+          "site": "https://github.com/Vincentwei1021/video-shotcraft",
+          "lisans": "Apache-2.0",
+          "not_": "Link havuzu #215: 12.3k+ GitHub yıldızı. Ajanın kurgu, geçiş ve hareket grafiğini sıfırdan ürettiği otonom promo stüdyosu.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "sosyal-pyvideotrans",
+          "ad": "pyVideoTrans — Video Çeviri & Çok Dilli Dublaj",
+          "tur": "sosyal",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "Videoları transkribe eder, metinleri hedef dile çevirir, yapay zeka ile seslendirir ve dublajlı video üretir",
+          "site": "https://github.com/jianchang512/pyvideotrans",
+          "lisans": "GPL-3.0",
+          "not_": "Link havuzu #219: Yerel veya bulut modelleriyle videoları tek tıkla onlarca dile çevirir ve seslendirir.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "yerel",
+      "etiket": "Yerel (Donanım)",
+      "adet": 7,
+      "modeller": [
+        {
+          "id": "animatediff-yerel",
+          "ad": "AnimateDiff-Lightning (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 3,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "4 adımda loop animasyon — en hafif yerel motor (önbellekte hazır)",
+          "not_": "ByteDance 4-step difüzyon; 512×512, 16 kare. Ağırlıklar yerel önbellekten doğrudan yüklenir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 3,
+            "sure_secenekleri": [
+              3,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "cogvideox-yerel",
+          "ad": "CogVideoX-2B (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 6,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "Sinematik 720p, 6 sn; M1 32 GB'da bfloat16",
+          "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~18 GB.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 6,
+            "sure_secenekleri": [
+              5,
+              6,
+              10
+            ]
+          }
+        },
+        {
+          "id": "freevideo-yerel",
+          "ad": "FreeVideo (8GB Yerel Video)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 3,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "8GB VRAM / Apple Silicon (M1/M2/M3/M4) için optimize edilmiş hafif yerel video motoru",
+          "site": "https://github.com/FlashML-org/FreeVideo",
+          "not_": "Link havuzu #225: Düşük bellek tüketimi için sequential CPU offload ve bellek tasarruflu VAE.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 3,
+            "sure_secenekleri": [
+              3,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "ltx-yerel",
+          "ad": "LTX-Video (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 3,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "En hızlı DiT; 8–12 GB belleğe sığar",
+          "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~9 GB.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 3,
+            "sure_secenekleri": [
+              3,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "svd-yerel",
+          "ad": "Stable Video Diffusion XT (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 4,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "Fotoğraftan yumuşak kamera salınımı (25 kare)",
+          "not_": "Gated depo + ticari kullanım kısıtı olabilir.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 4,
+            "sure_secenekleri": [
+              4,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "wan21-yerel",
+          "ad": "Wan 2.1 T2V-1.3B (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 5,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "Hafif sürüm — az VRAM, 480p",
+          "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~17 GB.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "wan22-yerel",
+          "ad": "Wan 2.2 TI2V-5B (yerel)",
+          "tur": "yerel",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "sınırsız (donanım sınırı)",
+          "guclu": "En iyi yerel kalite; 832×480, gerçek kamera hareketi",
+          "not_": "Ölçüldü: 81 kare/4 adım ≈ 7 dk difüzyon, MPS fp16.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "gpu",
+      "etiket": "GPU / Bulut GPU",
+      "adet": 3,
+      "modeller": [
+        {
+          "id": "colab-free",
+          "ad": "Google Colab (ücretsiz T4)",
+          "tur": "gpu",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "ücretsiz T4, oturum süresi değişken — Doğrulanmadı",
+          "guclu": "LTX-2 distill (8 adım, ses+video) için hazır tarif",
+          "site": "https://colab.research.google.com",
+          "not_": "Notebook'u bu uygulama üretir. Ücretsiz katmanda GPU verilmesi garanti değil — Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "gpu-kaggle-32gb",
+          "ad": "Kaggle 32GB Dual-T4 GPU (Ollama + Tünel)",
+          "tur": "gpu",
+          "otomasyon": "manuel",
+          "girdi": "yok",
+          "guclu": "2x Tesla T4 (32GB VRAM) ücretsiz Kaggle GPU sunucusu; Ollama & Wan/ComfyUI tünelleme",
+          "site": "https://www.kaggle.com",
+          "lisans": "Kaggle Ücretsiz",
+          "not_": "Link havuzu #226: Kaggle'ın haftalık 30 saat ücretsiz 32GB T4 GPU'sunu Cloudflare tüneliyle yerel iş istasyonuna bağlar.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "kaggle-gpu",
+          "ad": "Kaggle GPU (ücretsiz T4×2 / P100)",
+          "tur": "gpu",
+          "otomasyon": "manuel",
+          "girdi": "metin+gorsel",
+          "sure_sn": 5,
+          "kota_notu": "haftada ~30 saat GPU — sayı Doğrulanmadı",
+          "guclu": "Wan2.2 14B / LTX-2 gibi ağır modelleri ücretsiz GPU'da çalıştırır",
+          "site": "https://www.kaggle.com/code",
+          "not_": "Notebook'u bu uygulama üretir (veri/notebooklar). GPU kotası Kaggle politikasına bağlı — Doğrulanmadı.",
+          "ucretsiz": false,
+          "otomatik": false,
+          "surucu_dosya": null,
+          "gercek_uretim": false,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 5,
+            "sure_secenekleri": [
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tur": "space",
+      "etiket": "Hugging Face Space",
+      "adet": 2,
+      "modeller": [
+        {
+          "id": "hf-ltx2-space",
+          "ad": "HF Space — LTX-Video (metinden video)",
+          "tur": "space",
+          "otomasyon": "otomatik",
+          "girdi": "metin",
+          "sure_sn": 3,
+          "gunluk_kota": 15,
+          "kota_notu": "günde 5 dk A100 ≈ 10–15 klip (3 sn)",
+          "guclu": "ZeroGPU LTX-Video (DeepRat/LTX-Video Space, 576×320 hızlı)",
+          "site": "https://huggingface.co/spaces/DeepRat/LTX-Video-ZeroGPU-Optimized",
+          "not_": "ZeroGPU Space ile doğrudan metinden video üretir (Gradio API).",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v"
+            ],
+            "gorsel_yukleme": false,
+            "varsayilan_sure": 3,
+            "sure_secenekleri": [
+              3,
+              5,
+              10
+            ]
+          }
+        },
+        {
+          "id": "zerogpu-ltx",
+          "ad": "HF ZeroGPU (LTX-Video Space)",
+          "tur": "space",
+          "otomasyon": "otomatik",
+          "girdi": "metin+gorsel",
+          "sure_sn": 3,
+          "gunluk_kota": 12,
+          "kota_notu": "günde 5 dk A100 ≈ 10–15 klip (3 sn)",
+          "guclu": "Kurulum yok, Python'dan otomatik; 576×320 hızlı",
+          "site": "https://huggingface.co/spaces",
+          "not_": "Kota hesap/IP geneli; 2026-10-21'de 2 klip sonrası limit geldi.",
+          "ucretsiz": true,
+          "otomatik": true,
+          "surucu_dosya": "motorlar.py",
+          "gercek_uretim": true,
+          "ozellikler": {
+            "modlar": [
+              "t2v",
+              "i2v"
+            ],
+            "gorsel_yukleme": true,
+            "varsayilan_sure": 3,
+            "sure_secenekleri": [
+              3,
+              5,
+              10
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "modeller": [
+    {
+      "id": "kling",
+      "ad": "Kling AI (Kuaishou)",
+      "tur": "bulut",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "gunluk_kota": 6,
+      "kota_notu": "günde 66 kredi ≈ 1-6 video (5 sn)",
+      "guclu": "Fizik simülasyonu ve insan hareketi (Camoufox Arka Plan Otomasyonu)",
+      "site": "https://app.klingai.com",
+      "not_": "Arka planda Camoufox ile üretilir, sonuç bu sekmeye otomatik indirilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "kling_surucu.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "hailuo",
+      "ad": "Hailuo AI (MiniMax)",
+      "tur": "bulut",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 6,
+      "gunluk_kota": 4,
+      "kota_notu": "günde 3–5 video (web kotası)",
+      "guclu": "Sinematik kamera açıları, 720p, prompt sadakati",
+      "site": "https://hailuoai.video",
+      "not_": "Kota hesaba bağlı; gün içinde azalır, gece yenilenir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "hailuo_surucu.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 6,
+        "sure_secenekleri": [
+          5,
+          6,
+          10
+        ]
+      }
+    },
+    {
+      "id": "luma",
+      "ad": "Luma Dream Machine",
+      "tur": "bulut",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "gunluk_kota": 1,
+      "kota_notu": "3.000 deneme kredisi (~6 video 4K)",
+      "guclu": "Gerçek 4K (3840x2160), orbit/pan sinematik hareketler (Camoufox Otomasyonu)",
+      "site": "https://app.lumalabs.ai",
+      "not_": "Arka planda Camoufox ile üretilir, 4K sonuç bu sekmeye otomatik indirilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "luma_surucu.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "runway",
+      "ad": "RunwayML (Gen-3)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 10,
+      "gunluk_kota": 0,
+      "kota_notu": "tek seferlik 125 kredi (günlük yenilenmez)",
+      "guclu": "Sinematik doku, motion brush, endüstri standardı",
+      "site": "https://app.runwayml.com",
+      "not_": "125 kredi bitince ücretsiz üretim durur.",
+      "ucretsiz": false,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 10,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "pika",
+      "ad": "Pika Labs (Pika 1.5)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 4,
+      "gunluk_kota": 2,
+      "kota_notu": "günde 30 kredi ≈ 1–2 video",
+      "guclu": "Pikaffects (eritme/patlatma), anime stili",
+      "site": "https://pika.art",
+      "not_": "Kredi her gün sıfırlanır.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 4,
+        "sure_secenekleri": [
+          4,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "leonardo",
+      "ad": "Leonardo AI Video",
+      "tur": "bulut",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "gunluk_kota": 5,
+      "kota_notu": "günde 150 jeton ≈ 3–5 video (Camoufox Otomasyonu)",
+      "guclu": "MiniMax/Hailuo-03 Turbo motoru, 768p akıcı hareketler",
+      "site": "https://app.leonardo.ai/generate",
+      "not_": "Arka planda Camoufox ile üretilir, sonuç bu sekmeye otomatik indirilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "leonardo_surucu.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "hedra",
+      "ad": "Hedra (Character-1)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "gorsel+ses",
+      "sure_sn": 30,
+      "gunluk_kota": 5,
+      "kota_notu": "günde 5 video kredisi",
+      "guclu": "Konuşan kafa / dudak uyumu (avatar)",
+      "site": "https://www.hedra.com",
+      "not_": "Ses dosyası ister; Gemini TTS çıktısı doğrudan yüklenebilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 30,
+        "sure_secenekleri": [
+          5,
+          10,
+          30
+        ]
+      }
+    },
+    {
+      "id": "zerogpu-ltx",
+      "ad": "HF ZeroGPU (LTX-Video Space)",
+      "tur": "space",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 3,
+      "gunluk_kota": 12,
+      "kota_notu": "günde 5 dk A100 ≈ 10–15 klip (3 sn)",
+      "guclu": "Kurulum yok, Python'dan otomatik; 576×320 hızlı",
+      "site": "https://huggingface.co/spaces",
+      "not_": "Kota hesap/IP geneli; 2026-10-21'de 2 klip sonrası limit geldi.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 3,
+        "sure_secenekleri": [
+          3,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "wan22-yerel",
+      "ad": "Wan 2.2 TI2V-5B (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "En iyi yerel kalite; 832×480, gerçek kamera hareketi",
+      "not_": "Ölçüldü: 81 kare/4 adım ≈ 7 dk difüzyon, MPS fp16.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "wan21-yerel",
+      "ad": "Wan 2.1 T2V-1.3B (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "Hafif sürüm — az VRAM, 480p",
+      "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~17 GB.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "ltx-yerel",
+      "ad": "LTX-Video (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 3,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "En hızlı DiT; 8–12 GB belleğe sığar",
+      "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~9 GB.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 3,
+        "sure_secenekleri": [
+          3,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "cogvideox-yerel",
+      "ad": "CogVideoX-2B (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 6,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "Sinematik 720p, 6 sn; M1 32 GB'da bfloat16",
+      "not_": "Ağırlık indirilmeden çalışmaz; ilk indirme ~18 GB.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 6,
+        "sure_secenekleri": [
+          5,
+          6,
+          10
+        ]
+      }
+    },
+    {
+      "id": "svd-yerel",
+      "ad": "Stable Video Diffusion XT (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 4,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "Fotoğraftan yumuşak kamera salınımı (25 kare)",
+      "not_": "Gated depo + ticari kullanım kısıtı olabilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 4,
+        "sure_secenekleri": [
+          4,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "animatediff-yerel",
+      "ad": "AnimateDiff-Lightning (yerel)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 3,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "4 adımda loop animasyon — en hafif yerel motor (önbellekte hazır)",
+      "not_": "ByteDance 4-step difüzyon; 512×512, 16 kare. Ağırlıklar yerel önbellekten doğrudan yüklenir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 3,
+        "sure_secenekleri": [
+          3,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "freevideo-yerel",
+      "ad": "FreeVideo (8GB Yerel Video)",
+      "tur": "yerel",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 3,
+      "kota_notu": "sınırsız (donanım sınırı)",
+      "guclu": "8GB VRAM / Apple Silicon (M1/M2/M3/M4) için optimize edilmiş hafif yerel video motoru",
+      "site": "https://github.com/FlashML-org/FreeVideo",
+      "not_": "Link havuzu #225: Düşük bellek tüketimi için sequential CPU offload ve bellek tasarruflu VAE.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 3,
+        "sure_secenekleri": [
+          3,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "wan-official",
+      "ad": "Wan resmî stüdyo (wan.video)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "kayıt kredisi — günlük sayı Doğrulanmadı",
+      "guclu": "Wan2.2'nin kendi arayüzü: 720p, metin+görsel, sesli sürümler",
+      "site": "https://wan.video",
+      "not_": "Açık ağırlıkların resmî bulut yüzü; ücretsiz kredi miktarı hesaba göre değişir, Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "hf-ltx2-space",
+      "ad": "HF Space — LTX-Video (metinden video)",
+      "tur": "space",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 3,
+      "gunluk_kota": 15,
+      "kota_notu": "günde 5 dk A100 ≈ 10–15 klip (3 sn)",
+      "guclu": "ZeroGPU LTX-Video (DeepRat/LTX-Video Space, 576×320 hızlı)",
+      "site": "https://huggingface.co/spaces/DeepRat/LTX-Video-ZeroGPU-Optimized",
+      "not_": "ZeroGPU Space ile doğrudan metinden video üretir (Gradio API).",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 3,
+        "sure_secenekleri": [
+          3,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "ltx-studio",
+      "ad": "LTX Studio (Lightricks)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 10,
+      "kota_notu": "ücretsiz plan kredisi — Doğrulanmadı",
+      "guclu": "Storyboard + sahne sahne üretim (pipeline mantığı)",
+      "site": "https://ltx.studio",
+      "not_": "Adres ve ücretsiz plan koşulları bu oturumda açılıp doğrulanmadı; giriş öncesi kontrol edin.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 10,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "vidu",
+      "ad": "Vidu (Shengshu)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 4,
+      "kota_notu": "günlük ücretsiz kredi — Doğrulanmadı",
+      "guclu": "Hızlı 4 sn klip, referans tutarlılığı",
+      "site": "https://www.vidu.com",
+      "not_": "Kota ve adres Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 4,
+        "sure_secenekleri": [
+          4,
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "higgsfield",
+      "ad": "Higgsfield",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "gorsel",
+      "sure_sn": 5,
+      "kota_notu": "günlük ücretsiz kredi — Doğrulanmadı",
+      "guclu": "Kamera hareketi presetleri (dolly, crash zoom, bullet time)",
+      "site": "https://higgsfield.ai",
+      "not_": "Kota ve adres Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": true,
+      "surucu_dosya": "bulut_ek_suruculer.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "kaggle-gpu",
+      "ad": "Kaggle GPU (ücretsiz T4×2 / P100)",
+      "tur": "gpu",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "haftada ~30 saat GPU — sayı Doğrulanmadı",
+      "guclu": "Wan2.2 14B / LTX-2 gibi ağır modelleri ücretsiz GPU'da çalıştırır",
+      "site": "https://www.kaggle.com/code",
+      "not_": "Notebook'u bu uygulama üretir (veri/notebooklar). GPU kotası Kaggle politikasına bağlı — Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "colab-free",
+      "ad": "Google Colab (ücretsiz T4)",
+      "tur": "gpu",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "ücretsiz T4, oturum süresi değişken — Doğrulanmadı",
+      "guclu": "LTX-2 distill (8 adım, ses+video) için hazır tarif",
+      "site": "https://colab.research.google.com",
+      "not_": "Notebook'u bu uygulama üretir. Ücretsiz katmanda GPU verilmesi garanti değil — Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "gpu-kaggle-32gb",
+      "ad": "Kaggle 32GB Dual-T4 GPU (Ollama + Tünel)",
+      "tur": "gpu",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "2x Tesla T4 (32GB VRAM) ücretsiz Kaggle GPU sunucusu; Ollama & Wan/ComfyUI tünelleme",
+      "site": "https://www.kaggle.com",
+      "lisans": "Kaggle Ücretsiz",
+      "not_": "Link havuzu #226: Kaggle'ın haftalık 30 saat ücretsiz 32GB T4 GPU'sunu Cloudflare tüneliyle yerel iş istasyonuna bağlar.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-losslesscut",
+      "ad": "LosslessCut — kayıpsız kesme",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Yeniden kodlamadan saniyeler içinde keser",
+      "site": "https://github.com/mifi/lossless-cut",
+      "lisans": "GPL-2.0",
+      "not_": "Lisans/adres bu oturumda doğrulanmadı; brew paket adı değişebilir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-autoeditor",
+      "ad": "Auto-Editor — sessizliği otomatik kes",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Ses yüksekliğine göre ölü boşluğu keser; Premiere/Resolve XML verir",
+      "site": "https://github.com/WyattBlue/auto-editor",
+      "lisans": "Unlicense (public domain)",
+      "not_": "Kullanım: auto-editor video.mp4 --margin 0.2s",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-shotcut",
+      "ad": "Shotcut — ücretsiz kurgu",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Zaman çizelgesi, filtreler, 4K; öğrenmesi kolay",
+      "site": "https://www.shotcut.org",
+      "lisans": "GPL-3.0",
+      "not_": "Adres/lisans Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-kdenlive",
+      "ad": "Kdenlive — çok kanallı kurgu",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Çok kanal + proxy akışı; uzun videoda kararlı",
+      "site": "https://kdenlive.org",
+      "lisans": "GPL-3.0",
+      "not_": "Adres/lisans Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-openshot",
+      "ad": "OpenShot — en basit kurgu",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Sürükle-bırak; Python API'si var (otomasyona açık)",
+      "site": "https://www.openshot.org",
+      "lisans": "GPL-3.0",
+      "not_": "Adres/lisans Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-davinci",
+      "ad": "DaVinci Resolve (ücretsiz sürüm)",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Renk düzeltme + Fusion; ücretsiz sürüm ticari kullanıma açık",
+      "site": "https://www.blackmagicdesign.com/products/davinciresolve",
+      "lisans": "Tescilli (ücretsiz sürüm)",
+      "not_": "Ücretsiz sürümün sınırları sürüme göre değişir — Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-comfyui",
+      "ad": "ComfyUI — düğüm tabanlı boru hattı",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Wan2.2 / LTX-2 / Hunyuan düğümleri hazır; en hızlı yerel motor",
+      "site": "https://github.com/comfyanonymous/ComfyUI",
+      "lisans": "GPL-3.0",
+      "not_": "GPL-3.0 lisansı doğrulandı; Apple Silicon'da hız Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-moneyprinter",
+      "ad": "MoneyPrinterTurbo — konudan kısa video",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Konu → senaryo → TTS → altyazı → stok görüntü → dikey video",
+      "site": "https://github.com/harry0703/MoneyPrinterTurbo",
+      "lisans": "MIT",
+      "not_": "Edge TTS ücretsiz, Gemini TTS de destekli. Stok video için Pexels anahtarı gerekir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-ffmpeg",
+      "ad": "FFmpeg — birleştirme/kodlama çekirdeği",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Klipleri birleştirir, sesi bindirir, altyazıyı gömer, ölçekler",
+      "site": "https://ffmpeg.org",
+      "lisans": "LGPL/GPL",
+      "not_": "Ölçüm zaten ffprobe kullanıyor; ffmpeg yoksa birleştirme çalışmaz.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-moviepy",
+      "ad": "MoviePy — Python ile kurgu",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Kodla kesme, altyazı, ses bindirme; Kova çıktılarına doğrudan uygulanır",
+      "site": "https://github.com/Zulko/moviepy",
+      "lisans": "MIT",
+      "not_": "Adres/lisans Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-remotion",
+      "ad": "Remotion — React ile video",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Şablonlu, tekrar üretilebilir video (başlık/alt bant/jenerik)",
+      "site": "https://github.com/remotion-dev/remotion",
+      "lisans": "Remotion License (bireysel ücretsiz)",
+      "not_": "Lisans eşiği (çalışan sayısı) Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-musetalk",
+      "ad": "MuseTalk — dudak senkronu (dublaj)",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Üretilen videoyu Gemini TTS sesine göre dudak senkronlar (30 fps+)",
+      "site": "https://github.com/TMElyralab/MuseTalk",
+      "lisans": "MIT (kod) — model ticari kullanıma açık",
+      "not_": "CUDA için yazılmış; Apple Silicon'da çalışması Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-opencut",
+      "ad": "OpenCut — tarayıcıda CapCut alternatifi",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Tarayıcıda çok kanallı kurgu; kurulum yok, dosyalar cihazda kalır",
+      "site": "https://opencut.app",
+      "lisans": "MIT",
+      "not_": "23 Eki 2026: 95,8k yıldız, MIT. Depo baştan yazılıyor; günlük kullanım için opencut-classic sürümü öneriliyor.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-openchatcut",
+      "ad": "OpenChatCut — sohbetle kurgu (MCP)",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Çok kanallı zaman çizelgesi + MCP: Claude Code/Codex klipleri, altyazıyı ve geçişleri sohbetle düzenler",
+      "site": "https://github.com/0xsline/OpenChatCut",
+      "lisans": "AGPL-3.0",
+      "not_": "2,6k yıldız; Electron + Remotion + FFmpeg. AGPL-3.0: türev sürümü ağdan sunarsanız kaynağı açmanız gerekir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-autosubs",
+      "ad": "AutoSubs — yerel altyazı → Resolve/Premiere",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Ses tanımayı cihazda yapar; altyazıyı DaVinci Resolve, Premiere ve After Effects zaman çizelgesine aktarır",
+      "site": "https://github.com/tmoroney/auto-subs",
+      "lisans": "MIT",
+      "not_": "4,4k yıldız. Sözcük hizalama modeli (MMS) CC BY-NC 4.0 — ticari kullanımda model lisansı ayrıca kontrol edilmeli. Kurulan .app adı Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "editor-storytoolkitai",
+      "ad": "StoryToolkitAI — görüntüde anlam arama",
+      "tur": "editor",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Konuşmayı yazıya döker, sahne indeksler, cümleyle arama yapar; seçkiyi EDL/XML olarak kurgu programına verir",
+      "site": "https://github.com/octimot/StoryToolkitAI",
+      "lisans": "GPL-3.0",
+      "not_": "1,1k yıldız. Transkripsiyon/indeksleme yerel ve ücretsiz; asistan özelliği harici LLM anahtarı ister.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-openmontage",
+      "ad": "OpenMontage — ajanla video stüdyosu",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "12 üretim hattı, 100+ araç, 700+ yetenek dosyası: Claude Code / Cursor / Codex'e komple video stüdyosu kurar",
+      "site": "https://github.com/calesthio/OpenMontage",
+      "lisans": "AGPL-3.0",
+      "not_": "71k yıldız. Ses/görsel üretimi için ElevenLabs, fal.ai gibi sağlayıcı anahtarları ister; bütçe sınırı varsayılan 10 $.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-hyperframes",
+      "ad": "HyperFrames — HTML'i videoya çevir",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Sahneleri HTML/CSS yazıp FFmpeg + Puppeteer ile MP4'e render eder; ajanlar için CLI ve MCP",
+      "site": "https://github.com/heygen-com/hyperframes",
+      "lisans": "Apache-2.0",
+      "not_": "70,3k yıldız (HeyGen). npm paket adı ve tek komutla kurulum Doğrulanmadı; README paketleri ayrı ayrı listeliyor.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-herk-edit-kit",
+      "ad": "Herk Edit Kit — Claude/Codex kurgu yetenekleri",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "15 yetenek: transkriptten kesim, ölü hava temizliği, altyazı, B-roll, 406 hareketli grafik kartı",
+      "site": "https://github.com/nateherkai/herk-edit-kit",
+      "lisans": "belirtilmemiş (LICENSE dosyası var, GitHub etiketi yok)",
+      "not_": "2k yıldız, şablon depo. Lisans etiketi yok — ticari kullanımdan önce LICENSE dosyasını okuyun.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-anything2explainer",
+      "ad": "anything2explainer — konudan anlatım videosu",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Konu → araştırma → senaryo → TTS → Remotion sahneleri → altyazılı MP4; Türkçe destekli",
+      "site": "https://github.com/omergocmen/anything2explainer",
+      "lisans": "PolyForm Noncommercial 1.0.0 (ticari kullanım izne bağlı)",
+      "not_": "Türkçe için Edge TTS kullanılıyor (Kokoro Türkçe'yi desteklemiyor). Node + en az 5 GB boş disk gerekir. Depo 11 yıldız; asıl proje Vincentwei1021/anything2explainer.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-openstoryline",
+      "ad": "FireRed-OpenStoryline — doğal dille kurgu",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Cümleyle talimat: keser, sıralar, dolgu sözcükleri temizler; MCP sunucusu + web arayüzü",
+      "site": "https://github.com/FireRedTeam/FireRed-OpenStoryline",
+      "lisans": "Apache-2.0",
+      "not_": "3,6k yıldız. config.toml içine LLM API anahtarı şart; Docker imajı da var (openstoryline/openstoryline:v1.0.1).",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-funclip",
+      "ad": "FunClip — transkriptten kesit çıkar",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "FunASR ile yazıya döker, altyazı üretir, seçtiğin cümleyi videodan keser (yerel Gradio arayüzü)",
+      "site": "https://github.com/modelscope/FunClip",
+      "lisans": "MIT",
+      "not_": "6,4k yıldız. Varsayılan Paraformer modelleri Çince ağırlıklı; Türkçe doğruluğu Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-premiere-mcp",
+      "ad": "Premiere Pro MCP — ajanla kurgu",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "269 araç: klip keser, efekt uygular, sıralar; MCP istemcisinden Premiere'i sürer",
+      "site": "https://github.com/IsaiahDupree/premiere-pro-mcp",
+      "lisans": "MIT",
+      "not_": "3 yıldız — erken aşama. Adobe Premiere Pro kurulu olmalı (CEP paneli); macOS'ta çalışır.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "boru-pocket-tts",
+      "ad": "Pocket TTS — CPU'da ses klonlama",
+      "tur": "boru",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "GPU'suz CPU'da TTS; 10–30 sn kayıtla ses klonlar, OpenAI uyumlu sunucu seçenekleri var",
+      "site": "https://github.com/kyutai-labs/pocket-tts",
+      "lisans": "MIT",
+      "not_": "10k yıldız; Python 3.10–3.14 + PyTorch 2.5 (CPU sürümü yeter). Türkçe desteği Doğrulanmadı. Ses klonlama için karşı tarafın açık rızası şart.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-shotcraft",
+      "ad": "Video-Shotcraft — Ajanla Ürün Videosu",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Arayüz kodu veya ekran görüntülerinden otonom ajanla profesyonel animasyonlu tanıtım videosu üretimi",
+      "site": "https://github.com/Vincentwei1021/video-shotcraft",
+      "lisans": "Apache-2.0",
+      "not_": "Link havuzu #215: 12.3k+ GitHub yıldızı. Ajanın kurgu, geçiş ve hareket grafiğini sıfırdan ürettiği otonom promo stüdyosu.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-autoclip",
+      "ad": "AutoClip — Uzun Videodan Shorts/TikTok Çıkarma",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Uzun videolardan viral kanca tespitiyle 9:16 Shorts/Reels kesme, otomatik altyazı ve kapak oluşturma",
+      "site": "https://github.com/zhouxiaoka/autoclip",
+      "lisans": "MIT",
+      "not_": "Link havuzu #219: Whisper ile transkripsiyon ve LLM viral skorlaması yaparak en etkili dikey klipleri üretir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-clawvisual",
+      "ad": "ClawVisual — Makale/Metni Video Kartlarına Çevirme",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Herhangi bir makale veya web sayfasını çok sayfalı infografik video kartları ve TikTok slaytlarına dönüştürür",
+      "site": "https://github.com/clawvisual/clawvisual",
+      "lisans": "Apache-2.0",
+      "not_": "Link havuzu #219: Metinleri görsel hiyerarşiyle özetleyip Instagram Carousel ve kısa video kartı üretir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-mimik",
+      "ad": "Mimik — Tarayıcıdan Adım Adım Eğitim Videosu",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Tarayıcı hareketlerini kaydedip otomatik ekran görüntülü kılavuz ve sesli anlatımlı eğitim videosu dışa aktarır",
+      "site": "https://github.com/westpoint-io/mimik",
+      "lisans": "MIT",
+      "not_": "Link havuzu #219: SaaS ve yazılım demoları için otomatik öğretici video oluşturur.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-pyvideotrans",
+      "ad": "pyVideoTrans — Video Çeviri & Çok Dilli Dublaj",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Videoları transkribe eder, metinleri hedef dile çevirir, yapay zeka ile seslendirir ve dublajlı video üretir",
+      "site": "https://github.com/jianchang512/pyvideotrans",
+      "lisans": "GPL-3.0",
+      "not_": "Link havuzu #219: Yerel veya bulut modelleriyle videoları tek tıkla onlarca dile çevirir ve seslendirir.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-ming-tts",
+      "ad": "Ming-3.0-TTS — Duygusal Ses Klonlama (Ant Group)",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Zero-shot ses klonlama, 14 paralinguistic duygu etiketi (gülme, iç çekme vb.) ve MoE çoklu konuşmacı diyalog sentezi",
+      "site": "https://github.com/inclusionAI/Ming-3.0-tts",
+      "lisans": "Apache-2.0",
+      "not_": "Link havuzu #220: %93.2 telaffuz doğruluğu ile küresel 1. olan Ant Group inclusionAI ses modeli.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "sosyal-opencreator",
+      "ad": "OpenCreator — Otonom AI İçerik Stüdyosu",
+      "tur": "sosyal",
+      "otomasyon": "manuel",
+      "girdi": "yok",
+      "guclu": "Senaryo, görsel, seslendirme, video kurgu ve çeviriyi tek çalışma alanında yöneten açık kaynak içerik fabrikası",
+      "site": "https://github.com/krillinai/OpenCreator",
+      "lisans": "MIT",
+      "not_": "Link havuzu #223: İçerik üreticileri için tam entegre açık kaynaklı ajan çalışma alanı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "vids-google",
+      "ad": "Google Vids (Gemini Omni)",
+      "tur": "bulut",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 10,
+      "gunluk_kota": 10,
+      "kota_notu": "Google Workspace / Gemini Omni ücretsiz video kotası",
+      "guclu": "Google Gemini Omni 720p 10s video üretimi (Camoufox Otomasyonu)",
+      "site": "https://vids.google.com",
+      "not_": "Arka planda Camoufox ile üretilir, MP4 video bu sekmeye otomatik indirilir.",
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 10,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "nim-video",
+      "ad": "Nim Video (tarayıcı)",
+      "tur": "bulut",
+      "otomasyon": "manuel",
+      "girdi": "metin+gorsel",
+      "guclu": "Tarayıcıda metinden video; davet bağlantısıyla deneme",
+      "site": "https://nim.video",
+      "not_": "Paylaşılan bağlantı bir davet linkiydi (nim.video/l/…); ücretsiz kota, Türkçe destek ve su damgası Doğrulanmadı.",
+      "ucretsiz": false,
+      "otomatik": false,
+      "surucu_dosya": null,
+      "gercek_uretim": false,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-burc-20dk",
+      "ad": "12 Burç 20dk Tutarlı AI Görsel + Stok Video Hattı",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 24,
+      "kota_notu": "%100 Kendi Üretimi (Sıfır Dış Stok · LUT Kilitli)",
+      "guclu": "12 burç için tekil sinematik anayasa (ARRI Alexa 65 + LUT) ile uyumlu görsel ve AI kısa stok video üretir",
+      "site": "https://yusasufhin.com/lab.html",
+      "lisans": "MIT",
+      "not_": "12 Burç Kanalı Özel Hattı: Pastel/yağlı boya sapmasını önleyen Tekil Sinematik Stil Kilidi ve Keyframe-Driven I2V.",
+      "havuz_id": 230,
+      "puan": 9.8,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "burc_pipeline_20dk.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 24,
+        "sure_secenekleri": [
+          5,
+          10,
+          24
+        ]
+      }
+    },
+    {
+      "id": "havuz-wan22-i2v",
+      "ad": "Wan 2.2 I2V Lightning (8GB VRAM / ZeroGPU)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak / HF ZeroGPU Space",
+      "guclu": "Görselden videoya (I2V) 4 adımda gerçek fizik hareketi (#225)",
+      "site": "https://huggingface.co/spaces/Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom",
+      "lisans": "Apache-2.0",
+      "not_": "Link Havuzu #225: HF ZeroGPU Space veya yerel Apple Silicon MPS üzerinde çalışır.",
+      "havuz_id": 225,
+      "puan": 8.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-explainer-skill",
+      "ad": "explainer-animation-skill (#165)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak (AI Sahne + Gemini TTS)",
+      "guclu": "Gerçek YZ difüzyon sahnesi + Gemini TTS seslendirme ile anlatım videosu",
+      "site": "https://github.com/calesthio/OpenMontage",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #165 (8.0 Puan): Seslendirmeli anlatım videosu hattı.",
+      "havuz_id": 165,
+      "puan": 8.0,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-otopilot",
+      "ad": "wj-sidiss/otopilot — Türkçe Video Hattı (#85)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak (Yerel AI + Gemini TTS)",
+      "guclu": "Konu + başlıktan gerçek YZ difüzyon sahnesi ve Türkçe Gemini TTS seslendirmeli MP4",
+      "site": "https://github.com/wj-sidiss/otopilot",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #85/#107/#108/#208 (7.5 Puan): Türkçe yerel video otomasyon hattı.",
+      "havuz_id": 85,
+      "puan": 7.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-moneyprinter-turbo",
+      "ad": "MoneyPrinterTurbo (#133)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak (MIT)",
+      "guclu": "Konu veya anahtar kelimeden gerçek YZ videosu ve Gemini TTS seslendirmesi",
+      "site": "https://github.com/harry0703/MoneyPrinterTurbo",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #133 & #219 (7.5 Puan): Kısa video üretim motoru.",
+      "havuz_id": 133,
+      "puan": 7.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-video-shotcraft",
+      "ad": "video-shotcraft — Ürün Tanıtım Hattı (#215)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin+gorsel",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak",
+      "guclu": "Kamera hareketi tarifinden gerçek YZ tanıtım ve reklam MP4 videosu üretir",
+      "site": "https://github.com/Vincentwei1021/video-shotcraft",
+      "lisans": "Apache-2.0",
+      "not_": "Link Havuzu #31 & #215 (7.5 Puan): Tanıtım videosu kurgu hattı.",
+      "havuz_id": 215,
+      "puan": 7.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-drift-editor",
+      "ad": "Drift — Metinden Kurgu & Dikey Kadraj (#197)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Ücretsiz & Filigransız",
+      "guclu": "Metin tabanlı gerçek YZ sahne ve kurgu üretimi",
+      "site": "https://github.com/sn0wbrave/drift",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #197 (7.5 Puan): Metin tabanlı açık kaynak video hattı.",
+      "havuz_id": 197,
+      "puan": 7.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-concat-studio",
+      "ad": "Concat — Yerel AI Video Editörü (#70)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Ücretsiz & Yerel",
+      "guclu": "Yerel AI difüzyon ve seslendirme ile sahne üretimi",
+      "site": "https://github.com/storytold/concat",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #70 & #147 (7.5 Puan): Yerel AI destekli açık kaynak stüdyo.",
+      "havuz_id": 70,
+      "puan": 7.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-autoclip-pyvideotrans",
+      "ad": "AutoClip + pyVideoTrans (#219)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "metin",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak",
+      "guclu": "Viral kesit ve çok dilli Gemini TTS dublajlı AI video üretimi",
+      "site": "https://github.com/zhouxiaoka/autoclip",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #219 (8.0 Puan): Fabrika'da tool_autoclip.py olarak da entegredir.",
+      "havuz_id": 219,
+      "puan": 8.0,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v"
+        ],
+        "gorsel_yukleme": false,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    },
+    {
+      "id": "havuz-livetalking-musetalk",
+      "ad": "LiveTalking & MuseTalk Dijital İnsan (#28)",
+      "tur": "havuz",
+      "otomasyon": "otomatik",
+      "girdi": "gorsel+ses",
+      "sure_sn": 5,
+      "kota_notu": "Açık Kaynak",
+      "guclu": "Portre/sahne ve Gemini TTS ses dosyasından seslendirmeli AI video üretimi",
+      "site": "https://github.com/lipku/LiveTalking",
+      "lisans": "MIT",
+      "not_": "Link Havuzu #28: Dijital insan ve sesli sahne modelleri.",
+      "havuz_id": 28,
+      "puan": 6.5,
+      "ucretsiz": true,
+      "otomatik": true,
+      "surucu_dosya": "motorlar.py",
+      "gercek_uretim": true,
+      "ozellikler": {
+        "modlar": [
+          "t2v",
+          "i2v"
+        ],
+        "gorsel_yukleme": true,
+        "varsayilan_sure": 5,
+        "sure_secenekleri": [
+          5,
+          10
+        ]
+      }
+    }
+  ],
+  "sekmeler": [
+    {
+      "tur": "bulut",
+      "etiket": "Bulut (Web)",
+      "adet": 13
+    },
+    {
+      "tur": "boru",
+      "etiket": "Üretim Hattı",
+      "adet": 14
+    },
+    {
+      "tur": "editor",
+      "etiket": "Editör & Kurgu",
+      "adet": 10
+    },
+    {
+      "tur": "havuz",
+      "etiket": "Link Havuzu (Açık Kaynak)",
+      "adet": 10
+    },
+    {
+      "tur": "sosyal",
+      "etiket": "Sosyal Medya",
+      "adet": 7
+    },
+    {
+      "tur": "yerel",
+      "etiket": "Yerel (Donanım)",
+      "adet": 7
+    },
+    {
+      "tur": "gpu",
+      "etiket": "GPU / Bulut GPU",
+      "adet": 3
+    },
+    {
+      "tur": "space",
+      "etiket": "Hugging Face Space",
+      "adet": 2
+    }
+  ],
+  "mesaj": null
+}
