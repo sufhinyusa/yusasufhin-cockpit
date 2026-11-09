@@ -12,9 +12,11 @@ Entegre Edilen Yöntemler (Uçtan Uca Tam Kod Üretimi):
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
+import shlex
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -103,6 +105,16 @@ class RemotionCinemaMontage:
         is_vertical = (aspect_ratio == "9:16")
         w, h = (1080, 1920) if is_vertical else (1920, 1080)
 
+        # Güvenli JSON ve Shell kaçışı (komut ve JSX enjeksiyonuna karşı koruma)
+        safe_topic_json = json.dumps(topic, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
+        quoted_topic = shlex.quote(topic)
+
+        # Proje yapılandırmasını ayrı bir güvenli JSON dosyasında sakla
+        (output_dir / "project_config.json").write_text(
+            json.dumps({"topic": topic, "aspect_ratio": aspect_ratio, "width": w, "height": h}, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+
         package_json = {
             "name": "remotion-cinema-job",
             "version": "1.0.0",
@@ -125,7 +137,7 @@ export const VideoComposition: React.FC = () => {{
     <AbsoluteFill style={{{{ backgroundColor: '#07090e', color: '#fff', fontFamily: 'sans-serif' }}}}>
       <div style={{{{ transform: `scale(${{scale}})`, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}}}>
         <div style={{{{ textAlign: 'center', padding: 40, opacity }}}}>
-          <h1 style={{{{ fontSize: {64 if is_vertical else 72}, margin: 0, color: '#38bdf8' }}}}>{topic}</h1>
+          <h1 style={{{{ fontSize: {64 if is_vertical else 72}, margin: 0, color: '#38bdf8' }}}}>{{{safe_topic_json}}}</h1>
           <p style={{{{ fontSize: {32 if is_vertical else 36}, color: '#94a3b8', marginTop: 24 }}}}>
             {"1080x1920 Dikey Sinematik Stok Kurgu · Remotion #246" if is_vertical else "1920x1080 FHD Sinematik Stok Kurgu · Remotion #246"}
           </p>
@@ -159,7 +171,7 @@ export const RemotionRoot: React.FC = () => {{
         render_script = f"""#!/bin/bash
 set -e
 echo "[Remotion Cinema #246] 1080p FHD Stok Kurgu Render Motoru Başlatılıyor..."
-echo "[Remotion Cinema] Konu: {topic} | Çözünürlük: {w}x{h} @ 30fps"
+echo [Remotion Cinema] Konu: {quoted_topic} | Çözünürlük: {w}x{h} @ 30fps
 OUTPUT_FILE="$(pwd)/out/rendered_output.mp4"
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 npx remotion render src/Root.tsx VideoComposition "$OUTPUT_FILE" --gl=angle --concurrency=4
@@ -289,11 +301,15 @@ class OpusCanvasCodeMotion:
         output_dir.mkdir(parents=True, exist_ok=True)
         html_file = output_dir / "canvas_motion.html"
 
+        # Güvenli HTML ve JS string kaçışı (XSS ve JS string breakout koruması)
+        escaped_title = html.escape(topic[:30])
+        safe_js_topic = json.dumps(topic[:40], ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e")
+
         html_content = f'''<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <title>Opus Canvas Code Motion (#179) — {topic[:30]}</title>
+  <title>Opus Canvas Code Motion (#179) — {escaped_title}</title>
   <style>
     body {{ margin:0; background:#07090e; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; overflow:hidden; font-family:sans-serif; color:#fff; }}
     canvas {{ border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.8); background:#0b0f19; }}
@@ -358,7 +374,7 @@ class OpusCanvasCodeMotion:
       ctx.font = 'bold 54px sans-serif';
       ctx.textAlign = 'center';
       ctx.shadowBlur = 0;
-      ctx.fillText("{topic[:40]}", cx, cy + 300);
+      ctx.fillText({safe_js_topic}, cx, cy + 300);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '26px sans-serif';
       ctx.fillText("Opus Canvas Code Motion (#179) · 1080p FHD 30 FPS", cx, cy + 350);
