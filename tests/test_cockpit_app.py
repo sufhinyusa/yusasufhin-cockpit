@@ -134,11 +134,25 @@ def test_websocket_chat_rejects_unauthorized(client):
             ws.receive_text()
 
 
-def test_real_change_pin(client, auth_headers):
+def test_real_change_pin(client, auth_headers, monkeypatch, tmp_path):
     """change_pin eski PIN'i geçersiz kılmalı, yeni PIN'i kaydetmeli ve yeni token üretmelidir."""
+    # Test ortamını izole et: geçici .env dosyası oluştur (üretim Persona/.env'ine dokunulmaz)
+    test_env = tmp_path / ".env"
+    test_env.write_text("GATEWAY_PIN=784321\n", encoding="utf-8")
+    fake_persona = tmp_path / "Desktop" / "PYTHON PROJECTS" / "Fabrika" / "Persona"
+    fake_persona.mkdir(parents=True, exist_ok=True)
+    (fake_persona / ".env").write_text("GATEWAY_PIN=784321\n", encoding="utf-8")
+
+    import main
+    monkeypatch.setattr(main, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
     res = client.post("/api/auth/change_pin", json={"old_pin": "784321", "new_pin": "651239"}, headers=auth_headers)
     assert res.status_code == 200
     new_token = res.json()["token"]
+
+    # İzole geçici dosyaya yeni PIN yazılmış mı?
+    assert "GATEWAY_PIN=651239" in test_env.read_text(encoding="utf-8")
 
     # Eski token iptal edilmiş olmalı
     res_old = client.get("/api/auth/check", headers=auth_headers)

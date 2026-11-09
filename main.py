@@ -137,11 +137,13 @@ LOCKOUT_WINDOW_SEC: float = 60.0
 DISALLOWED_PINS = {"192300", "123456", "000000", "111111", "091091", "654321", "123123", "999999"}
 
 def get_client_ip(req: Request) -> str:
-    """İstemci IP adresini döner."""
-    fwd = req.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return req.client.host if req.client else "127.0.0.1"
+    """İstemci IP adresini güvenilir şekilde döner (X-Forwarded-For spoofing koruması)."""
+    cf_ip = req.headers.get("cf-connecting-ip")
+    if cf_ip and req.client and req.client.host in ("127.0.0.1", "::1", "10.", "172."):
+        return cf_ip.strip()
+    if req.client and req.client.host:
+        return req.client.host
+    return "127.0.0.1"
 
 def is_rate_limited(ip: str) -> Tuple[bool, int]:
     """IP adresi için rate limit kontrolü yapar."""
@@ -355,8 +357,8 @@ async def change_pin(req: Request, token: str = Depends(verify_auth)):
     if not matched:
         raise HTTPException(status_code=401, detail="Mevcut PIN kodu hatalı!")
 
-    if len(new_pin) < 4 or not new_pin.isdigit():
-        raise HTTPException(status_code=400, detail="Yeni PIN en az 4 haneli rakamlardan oluşmalıdır.")
+    if len(new_pin) != 6 or not new_pin.isdigit():
+        raise HTTPException(status_code=400, detail="Yeni PIN tam olarak 6 haneli rakamlardan oluşmalıdır.")
 
     if new_pin in DISALLOWED_PINS:
         raise HTTPException(status_code=400, detail="Bu PIN kodu güvenlik gerekçesiyle kullanılamaz.")
@@ -714,9 +716,9 @@ async def gpu_mode(req: Request):
 async def omniroute_status():
     return {
         "status": "operational",
-        "cost_sla": "$0.00 (Doğrulanmadı: Ücretsiz kota sınırlarına tabidir)",
+        "cost_sla": "$0.00 (Doğrulanmadı: Ücretsiz model havuzu)",
         "verified_providers_count": 4,
-        "global_openrouter_endpoints": 375,
+        "global_openrouter_endpoints": "375 (Doğrulanmadı: Katalog tahmini)",
         "active_waterfall_tiers": [
             {"tier": 1, "model": "deepseek/deepseek-chat:free", "provider": "DeepSeek / OpenRouter"},
             {"tier": 2, "model": "meta-llama/llama-3.3-70b-instruct:free", "provider": "Groq / OpenRouter"},
