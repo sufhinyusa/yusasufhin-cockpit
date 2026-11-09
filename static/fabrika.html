@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="cyber_hud">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>yusasufhin.com — Fabrika AI Komuta Merkezi</title>
+  
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fabrika">
+  <link rel="apple-touch-icon" href="/fabrika_icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
+
+  <link rel="stylesheet" href="/styles.css?v=6">
+  <script>
+    // Kurumsal VPN & Tarayıcı Eski Service Worker Önbellek Temizleyici
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (let name of names) {
+          if (name !== 'fabrika-pwa-v7-site') caches.delete(name);
+        }
+      });
+    }
+  </script>
+</head>
+<body>
+  <!-- Link #103 (Canvas UI & Paper Shaders) Canlı Sinirsel Arka Plan Kanvası -->
+  <canvas id="bgShaderCanvas" class="bg-shader-canvas"></canvas>
+
+  <div class="app-container">
+    
+    <!-- Sol Sidebar (Personel Listesi & Sistem Durumu) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <img src="/fabrika_icon.svg" alt="Fabrika">
+          <div>
+            <h1>FABRİKA HUD</h1>
+            <span>YUSASUFHIN.COM</span>
+          </div>
+        </div>
+        <div class="sidebar-header-right">
+          <div class="system-pill" id="connPill">
+            <span class="dot online" id="connStatusDot"></span>
+            <span id="connStatusText">Hazır</span>
+          </div>
+          <button class="sidebar-close-btn" id="btnCloseSidebar" aria-label="Menüyü Kapat">✕</button>
+        </div>
+      </div>
+
+      <!-- Oil UI (Link #164) 3-Yönlü Canlı Tema Seçici -->
+      <div class="sidebar-theme-switcher">
+        <div class="section-label" style="margin-bottom: 6px;">🎨 Oil UI Tema Motoru (#164)</div>
+        <div class="theme-pills" id="sidebarThemePills">
+          <button type="button" class="theme-pill active" data-set-theme="cyber_hud">🌌 Cyber</button>
+          <button type="button" class="theme-pill" data-set-theme="jiro_glass">💎 Jiro</button>
+          <button type="button" class="theme-pill" data-set-theme="minimal_gold">🏛️ Minimal</button>
+        </div>
+      </div>
+
+      <div class="roster-section">
+        <div class="section-label">🏛️ Meclis Personelleri</div>
+        
+        <div class="person-item active" data-agent-prompt="CEO stratejik durum değerlendirmesi yap">
+          <div class="person-avatar">
+            👑
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">CEO <span>Onay</span></div>
+            <div class="person-role">Strateji &amp; Nihai Karar</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="Baş Mimar sistem ve tünel mimarisini denetle">
+          <div class="person-avatar">
+            📐
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">Baş Mimar <span>LHH</span></div>
+            <div class="person-role">Sistem, Ağ &amp; Protokol</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="bu dosyanın güvenliğini denetle rea analizi yap">
+          <div class="person-avatar">
+            🏥
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">KYS Direktörü <span>MR</span></div>
+            <div class="person-role">Kod Hastanesi &amp; REA Denetim</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="link havuzu raporu hazırla bana gönder">
+          <div class="person-avatar">
+            🔍
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">Araştırmacı <span>Ar-Ge</span></div>
+            <div class="person-role">229 Link Havuzu &amp; İstihbarat</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="Apple Silicon MLX ve iOS durumunu kontrol et">
+          <div class="person-avatar">
+            🍏
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">Xcoder <span>Apple</span></div>
+            <div class="person-role">IPA, Mach-O &amp; Sideload</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="Pythoner aktif araç ve sandbox sağlık durumunu raporla">
+          <div class="person-avatar">
+            🐍
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">Pythoner <span>Yazılım</span></div>
+            <div class="person-role">Backend &amp; Sandbox Motoru</div>
+          </div>
+        </div>
+
+        <div class="person-item" data-agent-prompt="Sekreter günlük özet ve bildirim durumunu paylaş">
+          <div class="person-avatar">
+            📋
+            <span class="status-dot online"></span>
+          </div>
+          <div class="person-info">
+            <div class="person-name">Sekreter <span>JEV</span></div>
+            <div class="person-role">İletişim &amp; Bildirim Hattı</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="btn-push" id="btnOpenLinkPoolSidebar">
+          <span>📚</span> Ar-Ge Link Havuzu (229 Proje)
+        </button>
+        <button class="btn-sidebar-sec" id="btnAutoSetupCf">
+          <span>☁️</span> yusasufhin.com Cloudflare Kur
+        </button>
+        <button class="btn-sidebar-sec" id="btnEnablePush">
+          <span>🔔</span> Web Push Bildirimlerini Aç
+        </button>
+        <button class="btn-sidebar-sec" id="btnOpenChangePin">
+          <span>🔑</span> PIN Kodunu Değiştir
+        </button>
+        <button class="btn-sidebar-sec" id="btnToggleBiometrics">
+          <span>👤</span> Face ID / Biyometrik Kilit
+        </button>
+      </div>
+    </aside>
+
+    <!-- Mobil Kenar Çubuğu Karartma Katmanı -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Ana Sohbet ve Bento Komuta Alanı -->
+    <main class="chat-container">
+      <header class="chat-header">
+        <div class="header-meta">
+          <button class="menu-toggle" id="menuToggle" aria-label="Menü">☰</button>
+          <div class="chat-title">
+            <h2>Fabrika Komuta Ağı <span class="domain-live-badge">yusasufhin.com</span></h2>
+            <p id="channelSub">Zero-Trust Şifreli Kanal • Oil UI &amp; Jiro Build Mimarisi</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="header-btn cmd-k-btn" id="btnOpenCmdPalette" title="Komut Paleti (⌘K)">
+            <span>⌘K</span> <span class="hide-mobile">Komutlar</span>
+          </button>
+          <button class="header-btn" id="btnOpenLinkPoolHeader" style="background: rgba(121, 40, 202, 0.18); border-color: rgba(121, 40, 202, 0.45); color: #e9d5ff; font-weight: 600;">
+            📚 <span class="hide-mobile">Link Havuzu</span>
+          </button>
+          <button class="header-btn" id="btnOpenRea" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.4); color: var(--accent-cyan); font-weight: 600;">
+            🛡️ <span class="hide-mobile">REA Radarı</span>
+          </button>
+          <div class="header-stat-group">
+            <button class="header-btn stat-btn" id="sysCpu">CPU: %--</button>
+            <button class="header-btn stat-btn" id="sysRam">RAM: %--</button>
+          </div>
+          <button class="header-btn" id="btnToggleBento" title="Bento Panelini Gizle/Göster">⊞</button>
+          <button class="header-btn" id="btnLockApp" title="Sistemi Kilitle" style="background: rgba(255, 75, 43, 0.12); border-color: rgba(255, 75, 43, 0.35); color: #ff5252; font-weight: 600;">🔒 Kilitle</button>
+        </div>
+      </header>
+
+      <!-- Link #153 (bentogrids.com) & Link #66 (PilotDeck 2.0) Bento Komuta Panosu -->
+      <section class="bento-dashboard" id="bentoDashboard">
+        <div class="bento-card spotlight-card" id="bentoCardDomain">
+          <div class="bento-card-top">
+            <span class="bento-tag">🌍 ALAN ADI &amp; TÜNEL</span>
+            <span class="bento-status-dot online" id="bentoTunnelDot"></span>
+          </div>
+          <div class="bento-main-val" id="bentoDomainTitle">yusasufhin.com</div>
+          <div class="bento-sub-row">
+            <span id="bentoTunnelSub">Cloudflare Zero-Trust</span>
+            <button type="button" class="bento-mini-btn" id="btnBentoCfSetup">⚡ Otomatik Bağla</button>
+          </div>
+        </div>
+
+        <div class="bento-card spotlight-card" id="bentoCardLinkPool" style="cursor: pointer;">
+          <div class="bento-card-top">
+            <span class="bento-tag">📚 AR-GE LİNK HAVUZU</span>
+            <span class="bento-badge-purple">Oil UI &amp; Jiro</span>
+          </div>
+          <div class="bento-main-val"><span id="bentoLinkCount">229</span> <small>Proje</small></div>
+          <div class="bento-sub-row">
+            <span>Tasarım, Ajan &amp; Siber Kalkan</span>
+            <span class="bento-link-arrow">Keşfet →</span>
+          </div>
+        </div>
+
+        <div class="bento-card spotlight-card" id="bentoCardRea" style="cursor: pointer;">
+          <div class="bento-card-top">
+            <span class="bento-tag">🛡️ REA SİBER KALKAN</span>
+            <span class="bento-badge-green">AST + MR</span>
+          </div>
+          <div class="bento-main-val"><span id="bentoReaScore">100</span><small>/100</small></div>
+          <div class="bento-sub-row">
+            <span id="bentoReaScansText">Sıfır Zafiyet İhlali</span>
+            <span class="bento-link-arrow">Denetle →</span>
+          </div>
+        </div>
+
+        <div class="bento-card spotlight-card">
+          <div class="bento-card-top">
+            <span class="bento-tag">⚡ APPLE SILICON MLX</span>
+            <span class="bento-badge-cyan" id="bentoMemLabel">Unified</span>
+          </div>
+          <div class="bento-bars">
+            <div class="bento-bar-row">
+              <span>CPU</span>
+              <div class="bento-progress"><div class="bento-progress-fill" id="bentoCpuBar" style="width: 18%;"></div></div>
+              <span id="bentoCpuVal">%--</span>
+            </div>
+            <div class="bento-bar-row">
+              <span>RAM</span>
+              <div class="bento-progress"><div class="bento-progress-fill purple" id="bentoRamBar" style="width: 42%;"></div></div>
+              <span id="bentoRamVal">%--</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Mesaj Akışı -->
+      <div class="messages-box" id="messagesBox">
+        <div class="msg-row agent">
+          <div class="msg-bubble">
+            <div class="msg-header">
+              <span>👑 CEO &amp; Meclis</span>
+              <span class="msg-time">Şimdi</span>
+            </div>
+            <div class="msg-content">
+              <strong>yusasufhin.com — Fabrika Komuta Merkezi (PWA)</strong> devrede! Ar-Ge Link Havuzundaki <strong>Oil UI (#164)</strong> 3-yönlü tema motoru, <strong>Bento Grids (#153)</strong> canlı telemetri panosu, <strong>Canvas UI (#103)</strong> ve <strong>Jiro Build (#173/#186)</strong> bileşenleriyle donatıldı.<br/><br/>
+              Üstteki <strong>📚 Link Havuzu</strong> kartına tıklayarak 229 projeyi anında arayabilir, <strong>⌘K</strong> ile Komut Paletini açabilir veya <strong>⚡ Otomatik Bağla</strong> butonuyla <code>Alancf</code> / <code>alansifre</code> üzerinden Cloudflare kalıcı tünelini tek tıkla tamamlayabilirsiniz.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hızlı Aksiyon Çipleri -->
+      <div class="quick-chips">
+        <button class="chip" id="chipOpenLinkPool">📚 229 Link Havuzunu Aç</button>
+        <button class="chip" data-prompt="bu dosyanın güvenliğini denetle rea analizi yap">🛡️ REA Güvenlik Taraması</button>
+        <button class="chip" data-prompt="ekran görüntüsü al">📸 Ekran Görüntüsü</button>
+        <button class="chip" data-prompt="açık uygulamalar ve pencereler neler">💻 Açık Pencereler</button>
+        <button class="chip" data-prompt="link havuzu raporu hazırla bana gönder">📊 Link Havuzu Raporu</button>
+        <button class="chip" data-prompt="müziği kapat">🎵 Müziği Kapat</button>
+      </div>
+
+      <!-- Giriş Çubuğu -->
+      <footer class="input-bar">
+        <input type="text" id="chatInput" placeholder="Ajanlara talimat verin veya soru sorun... (Hızlı menü için ⌘K)" autocomplete="off">
+        <button class="btn-icon btn-send" id="btnSend" aria-label="Gönder">➤</button>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 📚 Link Havuzu Gezgini Modalı (Data/link_store.json — 229 Proje) -->
+  <div class="modal-overlay" id="linkPoolModal" style="display: none;">
+    <div class="modal-content" style="max-width: 820px;">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>📚</span>
+          <h3>Fabrika Ar-Ge Link Havuzu Vitrin &amp; Keşif Motoru</h3>
+        </div>
+        <button class="modal-close" id="btnCloseLinkPool">✕</button>
+      </div>
+
+      <div class="link-pool-controls">
+        <input type="text" id="linkPoolSearchInput" placeholder="229 proje içinde ara (örn: Oil UI, jiro, ses, ajan, güvenlik, 3D)..." class="cred-input">
+        <div class="link-cat-tabs" id="linkCatTabs">
+          <button type="button" class="link-cat-btn active" data-cat="all">Tümü (229)</button>
+          <button type="button" class="link-cat-btn" data-cat="tasarim_ui">🎨 Tasarım &amp; UI</button>
+          <button type="button" class="link-cat-btn" data-cat="ajan_mimari">🤖 Ajan &amp; Mimari</button>
+          <button type="button" class="link-cat-btn" data-cat="guvenlik">🛡️ Siber Güvenlik</button>
+          <button type="button" class="link-cat-btn" data-cat="medya_ses">🎙️ Ses &amp; Görsel</button>
+        </div>
+      </div>
+
+      <div class="link-pool-grid" id="linkPoolGrid">
+        <p class="placeholder-text">Projeler yükleniyor...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⌘K Spotlight Komut Paleti Modalı (Link #173 jiro.build & #66 PilotDeck) -->
+  <div class="modal-overlay" id="cmdPaletteModal" style="display: none;">
+    <div class="cmd-palette-box">
+      <div class="cmd-search-bar">
+        <span>⌘</span>
+        <input type="text" id="cmdPaletteInput" placeholder="Komut çalıştır, tema değiştir veya ajan çağır..." autocomplete="off">
+        <button class="modal-close" id="btnCloseCmdPalette">ESC</button>
+      </div>
+      <div class="cmd-list" id="cmdPaletteList">
+        <button type="button" class="cmd-item" data-cmd="open_link_pool">
+          <span>📚 Ar-Ge Link Havuzunu Aç (229 Proje)</span>
+          <kbd>Havuz</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="setup_cloudflare">
+          <span>☁️ yusasufhin.com Cloudflare Tünelini Otomatik Bağla (Alancf)</span>
+          <kbd>DNS</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="open_rea">
+          <span>🛡️ REA Siber Güvenlik ve AST Kod Taraması Başlat</span>
+          <kbd>REA</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="theme_cyber">
+          <span>🌌 Tema Değiştir: Cyber HUD (Koyu Siber)</span>
+          <kbd>Oil UI</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="theme_jiro">
+          <span>💎 Tema Değiştir: Jiro Glass (Derin İndigo &amp; Cam)</span>
+          <kbd>Oil UI</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="theme_minimal">
+          <span>🏛️ Tema Değiştir: Minimal Luxury (Altın &amp; Kontrast)</span>
+          <kbd>Oil UI</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="screenshot">
+          <span>📸 Mac Ekran Görüntüsü Al ve Sohbete Gönder</span>
+          <kbd>Araç</kbd>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REA Güvenlik Radarı Modalı -->
+  <div class="modal-overlay" id="reaModal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span>🛡️</span>
+          <h3>Fabrika REA Güvenlik Radarı &amp; Hafızası</h3>
+        </div>
+        <button class="modal-close" id="btnCloseRea">✕</button>
+      </div>
+
+      <div class="rea-stats-grid">
+        <div class="rea-stat-card">
+          <div class="stat-val" id="reaTotalScans">0</div>
+          <div class="stat-lbl">Toplam Tarama</div>
+        </div>
+        <div class="rea-stat-card">
+          <div class="stat-val" id="reaAvgScore">100</div>
+          <div class="stat-lbl">Ortalama Skor</div>
+        </div>
+        <div class="rea-stat-card">
+          <div class="stat-val" id="reaRepeats">0</div>
+          <div class="stat-lbl">Tekrarlayan Zafiyet</div>
+        </div>
+      </div>
+
+      <div class="rea-scanner-section">
+        <label for="reaInput">Canlı Kod veya Paket Yolu Analizi:</label>
+        <textarea id="reaInput" rows="4" placeholder="Analiz edilecek Python kodu, manifest veya dosya yolunu yapıştırın..."></textarea>
+        <div class="scanner-actions">
+          <select id="reaPersonaSelect">
+            <option value="kys">KYS (Kod Hastanesi / MR)</option>
+            <option value="mimar">Mimar (Zero-Trust / DFD)</option>
+            <option value="yazilimci">Yazılımcı (Patch / Fix)</option>
+            <option value="arastirmaci">Araştırmacı (CVE / NVD)</option>
+            <option value="ceo">CEO (Risk Özeti)</option>
+          </select>
+          <button class="btn-scan" id="btnRunReaScan">🚀 Anında Tara</button>
+        </div>
+      </div>
+
+      <div class="rea-results-box" id="reaResultBox">
+        <p class="placeholder-text">Henüz tarama yapılmadı. Yukarıdaki kutuya kod yapıştırıp "Anında Tara"ya basın veya sistem hafızasındaki geçmişi inceleyin.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Giriş ve Güvenlik Ekranı (yusasufhin.com — Kullanıcı Adı + Şifre / Yüz Kilidi / PIN) -->
+  <div class="pin-modal-overlay active" id="pinModalOverlay">
+    <div class="pin-card spotlight-card" id="pinCard">
+      <div class="pin-brand">
+        <div class="pin-shield-glow">
+          <img src="/fabrika_icon.svg" alt="Fabrika" class="pin-logo">
+        </div>
+        <h2>FABRİKA HUD</h2>
+        <span class="pin-security-badge">🌐 yusasufhin.com • Zero-Trust Kalkanı</span>
+        <p id="authSubtitleText">Kullanıcı adı &amp; şifrenizle veya Yüz Kilidi (Face ID) ile giriş yapın</p>
+      </div>
+
+      <!-- Oil UI Hızlı Tema Seçici (Giriş Ekranında) -->
+      <div class="lockscreen-theme-bar">
+        <button type="button" class="theme-chip active" data-set-theme="cyber_hud">🌌 Cyber HUD</button>
+        <button type="button" class="theme-chip" data-set-theme="jiro_glass">💎 Jiro Glass</button>
+        <button type="button" class="theme-chip" data-set-theme="minimal_gold">🏛️ Minimal Gold</button>
+      </div>
+
+      <!-- Hızlı Giriş Başlatma Butonu -->
+      <div class="login-gate-launcher" id="loginGateLauncher">
+        <button type="button" class="btn-gate-open" id="btnOpenLoginGate">
+          <span>🔐</span> Giriş Ekranını Aç (Kullanıcı Adı / Yüz Kilidi)
+        </button>
+      </div>
+
+      <!-- Giriş Yöntemi Sekmeleri -->
+      <div class="auth-mode-tabs" id="authModeTabs">
+        <button type="button" class="auth-tab-btn active" id="tabBtnPassword" data-mode="password">🔑 Kullanıcı Adı &amp; Şifre</button>
+        <button type="button" class="auth-tab-btn" id="tabBtnPin" data-mode="pin">🔢 6 Haneli PIN</button>
+      </div>
+
+      <!-- Hata veya Bilgilendirme Mesajı -->
+      <div class="pin-status-msg" id="pinStatusMsg"></div>
+
+      <!-- 1. Kullanıcı Adı & Şifre (.env alanadisifre / Alancf) Giriş Paneli -->
+      <form class="credentials-login-box" id="loginCredentialsForm" autocomplete="on">
+        <div class="cred-input-group">
+          <label for="inputLoginUsername">Kullanıcı Adı / Cloudflare E-Posta (<code>Alancf</code>)</label>
+          <input type="text" id="inputLoginUsername" name="username" value="yusuf" placeholder="E-posta (Alancf) veya kullanıcı adı" autocomplete="username" class="cred-input">
+        </div>
+        <div class="cred-input-group">
+          <label for="inputLoginPassword">Web Sitesi Şifresi (<code>.env alanadisifre</code>)</label>
+          <div class="cred-pass-wrapper">
+            <input type="password" id="inputLoginPassword" name="password" placeholder="••••••••••" autocomplete="current-password" class="cred-input">
+            <button type="button" class="btn-toggle-pass" id="btnTogglePassVis" title="Şifreyi Göster/Gizle">👁️</button>
+          </div>
+        </div>
+        <button type="submit" class="btn-cred-submit" id="btnSubmitCredentials">
+          <span>🚀</span> Sisteme Giriş Yap
+        </button>
+      </form>
+
+      <!-- 2. 6 Haneli PIN Giriş Paneli -->
+      <div class="pin-mode-container" id="pinModeContainer" style="display: none;">
+        <!-- 6 Haneli PIN Noktaları -->
+        <div class="pin-indicators" id="pinIndicators">
+          <span class="pin-dot" data-index="0"></span>
+          <span class="pin-dot" data-index="1"></span>
+          <span class="pin-dot" data-index="2"></span>
+          <span class="pin-dot" data-index="3"></span>
+          <span class="pin-dot" data-index="4"></span>
+          <span class="pin-dot" data-index="5"></span>
+        </div>
+
+        <!-- Dokunmatik Numpad (Mobil & Masaüstü) -->
+        <div class="pin-numpad" id="pinNumpad">
+          <button type="button" class="numpad-key" data-key="1">1</button>
+          <button type="button" class="numpad-key" data-key="2">2</button>
+          <button type="button" class="numpad-key" data-key="3">3</button>
+          <button type="button" class="numpad-key" data-key="4">4</button>
+          <button type="button" class="numpad-key" data-key="5">5</button>
+          <button type="button" class="numpad-key" data-key="6">6</button>
+          <button type="button" class="numpad-key" data-key="7">7</button>
+          <button type="button" class="numpad-key" data-key="8">8</button>
+          <button type="button" class="numpad-key" data-key="9">9</button>
+          <button type="button" class="numpad-key action-clear" data-key="clear" title="Temizle">C</button>
+          <button type="button" class="numpad-key" data-key="0">0</button>
+          <button type="button" class="numpad-key action-back" data-key="backspace" title="Sil">⌫</button>
+        </div>
+      </div>
+
+      <!-- 3. Biyometrik / Yüz Kilidi (Face ID / Touch ID) Hızlı Giriş Butonu -->
+      <div class="pin-biometric-box" id="pinBiometricBox">
+        <button type="button" class="btn-face-id" id="btnFaceIdLogin">
+          <span class="face-icon">👤</span> Yüz Kilidi (Face ID / Touch ID) ile Gir
+        </button>
+      </div>
+
+      <div class="pin-card-footer">
+        <span>🔐 .env (alanadisifre &amp; Alancf) • Oil UI v3.8 Tasarım Motoru</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN Değiştirme Modalı -->
+  <div class="modal-backdrop" id="changePinModal" style="display: none;">
+    <div class="rea-modal" style="max-width: 420px;">
+      <div class="rea-modal-header">
+        <div class="rea-title">
+          <span>🔑</span>
+          <h3>PIN Kodunu Güncelle</h3>
+        </div>
+        <button class="modal-close" id="btnCloseChangePin">✕</button>
+      </div>
+      <div class="rea-modal-body">
+        <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.4;">
+          Mevcut PIN kodunuzu doğrulayın ve yeni 6 haneli kodunuzu belirleyin. Güvenlik amacıyla diğer tüm oturumlar otomatik kapatılır.
+        </p>
+        
+        <div class="pin-form-group">
+          <label>Mevcut PIN</label>
+          <input type="password" id="inputOldPin" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+        </div>
+
+        <div class="pin-form-group">
+          <label>Yeni 6 Haneli PIN</label>
+          <input type="password" id="inputNewPin" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+        </div>
+
+        <div class="pin-form-group">
+          <label>Yeni PIN (Tekrar)</label>
+          <input type="password" id="inputNewPinConfirm" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+        </div>
+
+        <div class="pin-change-status" id="pinChangeStatus"></div>
+
+        <div style="display: flex; gap: 10px; margin-top: 18px;">
+          <button class="btn-primary" id="btnSubmitChangePin" style="flex: 1; padding: 12px; font-weight: 600;">Kaydet ve Güncelle</button>
+          <button class="btn-secondary" id="btnCancelChangePin" style="padding: 12px 18px;">Vazgeç</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Görsel İnceleme / Lightbox Modalı -->
+  <div class="modal-backdrop" id="imageLightboxModal">
+    <div class="lightbox-container">
+      <div class="lightbox-header">
+        <div class="lightbox-title-box">
+          <span>📸</span>
+          <span id="lightboxTitle">Ekran Görüntüsü Önizleme</span>
+        </div>
+        <div class="lightbox-actions">
+          <a id="lightboxDownloadBtn" href="#" download="ekran.png" class="btn-lightbox-action" title="İndir">⬇️ İndir</a>
+          <button class="modal-close" id="btnCloseLightbox">✕</button>
+        </div>
+      </div>
+      <div class="lightbox-body">
+        <img id="lightboxImage" src="" alt="Görsel Önizleme" />
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js?v=6"></script>
+</body>
+</html>

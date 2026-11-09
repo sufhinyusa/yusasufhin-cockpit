@@ -1,0 +1,19 @@
+{
+  "name": "yusasufhin.com — Yapay Zeka Studio",
+  "short_name": "yusasufhin",
+  "description": "Yapay zeka çözümleri, otomasyon sistemleri ve Kova Lab video üretimi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090e",
+  "theme_color": "#2dd4bf",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/fabrika_icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

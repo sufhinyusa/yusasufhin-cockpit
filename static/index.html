@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="tr" data-site-theme="cyber">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>yusasufhin.com — Yapay Zeka Çözümleri & Otomasyon</title>
+  <meta name="description" content="Yapay zeka ile web siteleri, otomasyon sistemleri ve ihtiyaca özel uygulamalar geliştiriyorum.">
+
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#07090e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="yusasufhin">
+  <link rel="apple-touch-icon" href="/fabrika_icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
+
+  <link rel="stylesheet" href="/site.css?v=1">
+</head>
+<body class="site-body">
+
+  <!-- Link #103 — canlı sinirsel arka plan -->
+  <canvas class="site-canvas" id="siteCanvas" aria-hidden="true"></canvas>
+
+  <div class="site-shell">
+
+    <nav class="site-nav">
+      <a class="site-brand" href="/">
+        <img src="/fabrika_icon.svg" alt="">
+        <span>yusasufhin<span class="site-brand-sub">AI Studio</span></span>
+      </a>
+      <div class="site-nav-links">
+        <a href="#hizmetler">Hizmetler</a>
+        <a href="#surec">Nasıl Çalışır</a>
+        <a href="#iletisim">İletişim</a>
+      </div>
+      <button class="site-btn site-btn-primary" id="openGateBtn" type="button">
+        Kullanıcı Girişi
+      </button>
+    </nav>
+
+    <header class="site-hero">
+      <span class="site-eyebrow">Yapay Zeka Destekli Üretim</span>
+      <h1>Fikirlerinizi <em>yapay zeka</em> ile<br>çalışan ürünlere dönüştürüyorum</h1>
+      <p class="site-lead">
+        Yapay zeka ile web siteleri kuruyorum, iş akışlarınızı otomasyon sistemlerine
+        bağlıyorum ve ihtiyacınıza göre özel uygulamalar geliştiriyorum.
+        Sıfırdan, ölçeklenebilir ve sürdürülebilir.
+      </p>
+      <div class="site-hero-actions">
+        <button class="site-btn site-btn-primary" id="heroGateBtn" type="button">
+          Projeye Giriş Yap
+        </button>
+        <a class="site-btn site-btn-ghost" href="#hizmetler">Hizmetleri Gör</a>
+      </div>
+    </header>
+
+    <section class="site-section" id="hizmetler">
+      <div class="site-section-head">
+        <h2>Ne yapıyorum?</h2>
+        <p>Üç ana başlıkta, uçtan uca teslim.</p>
+      </div>
+
+      <div class="site-grid">
+        <article class="site-card">
+          <div class="site-card-icon">🌐</div>
+          <h3>Yapay Zeka ile Web Sitesi</h3>
+          <p>
+            Markanıza özel, hızlı ve mobil uyumlu web siteleri. İçerik üretiminden
+            tasarıma, yayına almadan SEO'ya kadar tüm süreç yapay zeka destekli yürütülür.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Kurumsal site</span>
+            <span class="site-tag">Landing page</span>
+            <span class="site-tag">PWA</span>
+            <span class="site-tag">SEO</span>
+          </div>
+        </article>
+
+        <article class="site-card">
+          <div class="site-card-icon">⚙️</div>
+          <h3>Otomasyon Sistemleri</h3>
+          <p>
+            Tekrar eden işleri makinelere devredin. Veri toplama, raporlama, e-posta,
+            sosyal medya ve içerik üretimi tek bir otonom hatta bağlanır.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">İş akışı</span>
+            <span class="site-tag">Veri toplama</span>
+            <span class="site-tag">Raporlama</span>
+            <span class="site-tag">API entegrasyon</span>
+          </div>
+        </article>
+
+        <article class="site-card">
+          <div class="site-card-icon">🧩</div>
+          <h3>İhtiyaca Özel Uygulamalar</h3>
+          <p>
+            Hazır çözümlerin yetmediği yerde devreye giriyorum. Masaüstü, mobil ve
+            web uygulamaları; kendi verinizle, kendi kurallarınızla çalışır.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Python</span>
+            <span class="site-tag">FastAPI</span>
+            <span class="site-tag">Mobil</span>
+            <span class="site-tag">Veritabanı</span>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+
+    <section class="site-section" id="surec">
+      <div class="site-section-head">
+        <h2>Nasıl çalışır?</h2>
+        <p>Dört adımda, şeffaf teslim.</p>
+      </div>
+      <div class="site-grid">
+        <article class="site-card">
+          <div class="site-card-icon">01</div>
+          <h3>Keşif</h3>
+          <p>İhtiyacınızı ve mevcut iş akışınızı çıkarıyorum. Hangi işin otomatikleşeceğini birlikte belirliyoruz.</p>
+        </article>
+        <article class="site-card">
+          <div class="site-card-icon">02</div>
+          <h3>Tasarım</h3>
+          <p>Arayüz ve mimari taslağı hazırlanır. Onay vermeden hiçbir satır üretime geçmez.</p>
+        </article>
+        <article class="site-card">
+          <div class="site-card-icon">03</div>
+          <h3>Geliştirme</h3>
+          <p>Yapay zeka ajanları ve elle yazılan çekirdek kod birlikte çalışır; her adım test edilir.</p>
+        </article>
+        <article class="site-card">
+          <div class="site-card-icon">04</div>
+          <h3>Yayın &amp; Bakım</h3>
+          <p>Yayına alınır, izlenir ve iyileştirilir. Siz sadece sonucu görürsünüz.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="site-section" id="iletisim">
+      <div class="site-card" style="text-align:center; padding: 42px 26px;">
+        <h3 style="font-size: 1.42rem;">Bir fikriniz mi var?</h3>
+        <p style="max-width: 520px; margin: 0 auto 22px;">
+          Projenizi konuşalım. Kapsamı netleştirip size gerçekçi bir yol haritası çıkarırım.
+        </p>
+        <a class="site-btn site-btn-primary" href="mailto:sahin.yusuf@outlook.com">
+          sahin.yusuf@outlook.com
+        </a>
+      </div>
+    </section>
+
+    <footer style="margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--site-border); color: var(--site-text-faint); font-size: 0.78rem; display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap;">
+      <span>© 2026 yusasufhin.com — Yapay Zeka Çözümleri</span>
+      <span>Yapay zeka · Otomasyon · Özel yazılım</span>
+    </footer>
+  </div>
+
+  <!-- GİRİŞ KAPISI -->
+  <div class="site-gate" id="siteGate" hidden>
+    <form class="site-gate-card" id="siteGateForm" autocomplete="on">
+      <img class="site-gate-logo" src="/fabrika_icon.svg" alt="">
+      <h2>Yönetici Girişi</h2>
+      <p class="site-gate-sub">Devam etmek için kimliğinizi doğrulayın.</p>
+
+      <div class="site-field">
+        <label for="siteUser">Kullanıcı Adı</label>
+        <input type="text" id="siteUser" name="username" autocomplete="username"
+               inputmode="email" placeholder="E-posta adresiniz">
+      </div>
+
+      <div class="site-field">
+        <label for="sitePass">Şifre</label>
+        <input type="password" id="sitePass" name="password" autocomplete="current-password"
+               placeholder="••••••••">
+      </div>
+
+      <p class="site-gate-error" id="siteGateError" role="alert"></p>
+
+      <button class="site-btn site-btn-primary site-btn-block" id="siteGateSubmit" type="submit">
+        Giriş Yap
+      </button>
+      <button class="site-btn site-btn-ghost site-btn-block" id="siteGateCancel" type="button"
+              style="margin-top: 10px;">
+        Vazgeç
+      </button>
+
+      <p class="site-gate-foot">
+        Bu alan yalnızca site sahibine açıktır.<br>
+        Face ID / PIN doğrulaması Fabrika panelinden yönetilir.
+      </p>
+    </form>
+  </div>
+
+  <!-- HUB: giriş sonrası sistem seçim kokpiti (Mobil & Masaüstü) -->
+  <div class="site-hub" id="siteHub" hidden>
+    <div class="site-hub-head">
+      <h2>Hoş geldin Yusuf Şahin 👋</h2>
+      <p>Fabrika Otonom Ekosistemi — Yönetim &amp; Üretim Kokpiti</p>
+    </div>
+
+    <div class="site-hub-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+      <a class="site-hub-tile" href="/lab.html#videoStudio" style="--tile-accent: #8b5cf6;">
+        <span class="site-hub-tile-emoji">🎬</span>
+        <h3>Video &amp; Sinema Stüdyosu</h3>
+        <p>Remotion Cinema (#246), Blender+Wan (#245), Opus Canvas (#179). YouTube kanal seçimi &amp; donanım kontrolü.</p>
+        <span class="site-hub-tile-go">Stüdyoyu Başlat →</span>
+      </a>
+
+      <a class="site-hub-tile" href="/lab.html#audioStudio" style="--tile-accent: #ec4899;">
+        <span class="site-hub-tile-emoji">🎵</span>
+        <h3>Ses, Müzik &amp; Podcast</h3>
+        <p>VoiceStudio ses klonlama, ACE-Step 1.5 metinden müzik/Roman havası, Podcastfy çoklu konuşmacı &amp; şarkı tespiti.</p>
+        <span class="site-hub-tile-go">Ses Fabrikasına Gir →</span>
+      </a>
+
+      <a class="site-hub-tile" href="/lab.html#omnirouteStudio" style="--tile-accent: #06b6d4;">
+        <span class="site-hub-tile-emoji">🤖</span>
+        <h3>Akıllı YZ Bulut (OmniRoute)</h3>
+        <p>375+ Sağlayıcı, DeepSeek V4.1, Kimi K3, GLM 5.3 kesintisiz şelalesi ($0.00 sınırsız çıkarım).</p>
+        <span class="site-hub-tile-go">Model Şelalesine Git →</span>
+      </a>
+
+      <a class="site-hub-tile" href="/lab.html#humanizerStudio" style="--tile-accent: #10b981;">
+        <span class="site-hub-tile-emoji">✍️</span>
+        <h3>Humanizer Anti-Slop</h3>
+        <p>Yapay zeka kokan metinleri, robotik klişeleri temizleyip %100 organik insan üslubuna dönüştürür.</p>
+        <span class="site-hub-tile-go">Metin İnsanlaştır →</span>
+      </a>
+
+      <a class="site-hub-tile" href="/lab.html#gpuStudio" style="--tile-accent: #f59e0b;">
+        <span class="site-hub-tile-emoji">⚡</span>
+        <h3>Kaggle 32 GB + Colab GPU</h3>
+        <p>48 GB Hibrit vRAM gücü, çift T4 GPU sıralı/eşzamanlı yönetimi ve 30 saat/hafta ücretsiz kota kontrolü.</p>
+        <span class="site-hub-tile-go">GPU Kümesini Aç →</span>
+      </a>
+
+      <a class="site-hub-tile" href="/fabrika.html" style="--tile-accent: #2dd4bf;">
+        <span class="site-hub-tile-emoji">🏭</span>
+        <h3>Fabrika AI Komuta Merkezi</h3>
+        <p>Otonom meclis, 5 kademe güvenlik kapıları, LoRA epizodik bellek ve Ar-Ge telemetrisi.</p>
+        <span class="site-hub-tile-go">Komuta Merkezine Gir →</span>
+      </a>
+    </div>
+
+    <div class="site-hub-foot">
+      <span id="siteHubUser"></span>
+      <button class="site-link-btn" id="siteLogoutBtn" type="button">Oturumu kapat</button>
+    </div>
+  </div>
+
+  <!-- Tema kapsülü (Link #164 Oil UI) -->
+  <div class="site-theme-pod" role="group" aria-label="Görsel tema">
+    <button type="button" data-site-theme-btn="cyber" aria-pressed="true" title="Dark Tech / Cyber">🌙</button>
+    <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Modern SaaS">🏢</button>
+    <button type="button" data-site-theme-btn="minimal" aria-pressed="false" title="Minimalist">✨</button>
+  </div>
+
+
+  <script src="/site.js?v=1"></script>
+</body>
+</html>

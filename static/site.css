@@ -1,0 +1,978 @@
+/* site.css — yusasufhin.com genel yüz + giriş + hub
+ *
+ * Tasarım kaynakları (link havuzu):
+ *   #164 Oil UI      → çoklu estetik yön, canlı tema kapsülü
+ *   #186 jiro.build  → bileşen disiplini, tutarlı boşluk ölçeği
+ *   #103 Canvas UI / Paper Shaders → canlı sinirsel arka plan
+ *
+ * Kapsam: yalnız bu sayfalara ait sınıflar (site-*). Dashboard'ın styles.css'i
+ * ile çakışmamak için tüm seçiciler `site-` önekli.
+ */
+
+:root {
+  --site-bg: #07090e;
+  --site-bg-soft: #0b0f18;
+  --site-card: rgba(18, 24, 38, 0.72);
+  --site-card-hover: rgba(26, 34, 52, 0.86);
+  --site-border: rgba(120, 145, 190, 0.18);
+  --site-border-strong: rgba(120, 145, 190, 0.34);
+  --site-text: #e8eefc;
+  --site-text-dim: #93a1bd;
+  --site-text-faint: #64748b;
+  --site-accent: #2dd4bf;
+  --site-accent-2: #8b5cf6;
+  --site-accent-3: #38bdf8;
+  --site-danger: #f87171;
+  --site-radius: 18px;
+  --site-radius-sm: 12px;
+  --site-space: 8px;
+  --site-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.85);
+  --site-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+}
+
+/* ── Tema 2: Modern Enterprise SaaS (Oil UI çoklu yön) ─────────────────── */
+html[data-site-theme="saas"] {
+  --site-bg: #f7f9fc;
+  --site-bg-soft: #eef2f9;
+  --site-card: rgba(255, 255, 255, 0.92);
+  --site-card-hover: #ffffff;
+  --site-border: rgba(15, 35, 75, 0.10);
+  --site-border-strong: rgba(15, 35, 75, 0.20);
+  --site-text: #0f172a;
+  --site-text-dim: #475569;
+  --site-text-faint: #94a3b8;
+  --site-accent: #4f46e5;
+  --site-accent-2: #0ea5e9;
+  --site-accent-3: #7c3aed;
+  --site-shadow: 0 18px 44px -20px rgba(15, 35, 75, 0.30);
+}
+
+/* ── Tema 3: Minimalist Creative ───────────────────────────────────────── */
+html[data-site-theme="minimal"] {
+  --site-bg: #fbf8f3;
+  --site-bg-soft: #f3ede3;
+  --site-card: #ffffff;
+  --site-card-hover: #ffffff;
+  --site-border: rgba(60, 45, 30, 0.12);
+  --site-border-strong: rgba(60, 45, 30, 0.24);
+  --site-text: #241d16;
+  --site-text-dim: #6b5d4d;
+  --site-text-faint: #9c8b78;
+  --site-accent: #b45309;
+  --site-accent-2: #0f766e;
+  --site-accent-3: #78716c;
+  --site-shadow: 0 16px 40px -22px rgba(60, 45, 30, 0.35);
+  --site-font: "Playfair Display", Georgia, "Times New Roman", serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--site-bg);
+  color: var(--site-text);
+  font-family: var(--site-font);
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+body.site-body { overflow-x: hidden; }
+
+/* ── Canlı arka plan (Link #103) ───────────────────────────────────────── */
+.site-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+html[data-site-theme="minimal"] .site-canvas { opacity: 0.28; }
+
+.site-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 22px 90px;
+}
+
+/* ── Üst bar ───────────────────────────────────────────────────────────── */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--site-bg) 78%, transparent);
+  border-bottom: 1px solid var(--site-border);
+}
+
+.site-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--site-text);
+}
+
+.site-brand img { width: 30px; height: 30px; border-radius: 9px; }
+
+.site-brand span.site-brand-sub {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--site-text-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-nav-links {
+  display: flex;
+  gap: 22px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.site-nav-links a {
+  color: var(--site-text-dim);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.site-nav-links a:hover { color: var(--site-accent); }
+
+@media (max-width: 760px) {
+  .site-nav-links { display: none; }
+}
+
+/* ── Düğmeler ──────────────────────────────────────────────────────────── */
+.site-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  white-space: nowrap;
+}
+
+.site-btn-primary {
+  background: linear-gradient(135deg, var(--site-accent), var(--site-accent-2));
+  color: #04121a;
+  box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--site-accent) 70%, transparent);
+}
+
+html[data-site-theme="minimal"] .site-btn-primary,
+html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
+
+.site-btn-primary:hover { transform: translateY(-2px); }
+
+.site-btn-ghost {
+  background: transparent;
+  color: var(--site-text);
+  border-color: var(--site-border-strong);
+}
+
+.site-btn-ghost:hover {
+  background: var(--site-card-hover);
+  border-color: var(--site-accent);
+}
+
+.site-btn-block { width: 100%; }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.site-hero {
+  padding: 78px 0 54px;
+  text-align: center;
+}
+
+.site-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border-strong);
+  background: var(--site-card);
+  color: var(--site-accent);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+.site-eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--site-accent);
+  box-shadow: 0 0 12px var(--site-accent);
+}
+
+.site-hero h1 {
+  margin: 0 0 20px;
+  font-size: clamp(2.1rem, 5.6vw, 3.7rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.site-hero h1 em {
+  font-style: normal;
+  background: linear-gradient(115deg, var(--site-accent), var(--site-accent-3), var(--site-accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.site-hero p.site-lead {
+  max-width: 660px;
+  margin: 0 auto 34px;
+  color: var(--site-text-dim);
+  font-size: clamp(1rem, 2vw, 1.14rem);
+  line-height: 1.65;
+}
+
+.site-hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Hizmet kartları ───────────────────────────────────────────────────── */
+.site-section { padding: 46px 0; }
+
+.site-section-head { text-align: center; margin-bottom: 34px; }
+
+.site-section-head h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.5rem, 3.4vw, 2.15rem);
+  letter-spacing: -0.02em;
+}
+
+.site-section-head p {
+  margin: 0;
+  color: var(--site-text-dim);
+  font-size: 0.98rem;
+}
+
+.site-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(292px, 1fr));
+  gap: 18px;
+}
+
+.site-card {
+  position: relative;
+  padding: 26px 24px;
+  border-radius: var(--site-radius);
+  border: 1px solid var(--site-border);
+  background: var(--site-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--site-shadow);
+  transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+  overflow: hidden;
+}
+
+.site-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--site-accent), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.site-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--site-border-strong);
+  background: var(--site-card-hover);
+}
+
+.site-card:hover::after { opacity: 1; }
+
+.site-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  margin-bottom: 16px;
+  font-size: 1.35rem;
+  background: color-mix(in srgb, var(--site-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--site-accent) 32%, transparent);
+}
+
+.site-card h3 {
+  margin: 0 0 9px;
+  font-size: 1.07rem;
+  letter-spacing: -0.01em;
+}
+
+.site-card p {
+  margin: 0 0 14px;
+  color: var(--site-text-dim);
+  font-size: 0.9rem;
+  line-height: 1.62;
+}
+
+.site-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.site-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border);
+  background: color-mix(in srgb, var(--site-bg-soft) 70%, transparent);
+  color: var(--site-text-faint);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── Giriş (kilit ekranı) ──────────────────────────────────────────────── */
+.site-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: color-mix(in srgb, var(--site-bg) 88%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.site-gate[hidden] { display: none; }
+
+.site-gate-card {
+  width: 100%;
+  max-width: 396px;
+  padding: 32px 28px;
+  border-radius: 22px;
+  border: 1px solid var(--site-border-strong);
+  background: var(--site-card);
+  box-shadow: var(--site-shadow);
+  text-align: center;
+}
+
+.site-gate-card img.site-gate-logo {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  margin-bottom: 16px;
+}
+
+.site-gate-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.28rem;
+  letter-spacing: -0.02em;
+}
+
+.site-gate-card p.site-gate-sub {
+  margin: 0 0 24px;
+  color: var(--site-text-dim);
+  font-size: 0.86rem;
+}
+
+.site-field {
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.site-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--site-text-faint);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.site-field input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--site-radius-sm);
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg) 60%, transparent);
+  color: var(--site-text);
+  font-family: inherit;
+  font-size: 0.94rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.site-field input:focus {
+  outline: none;
+  border-color: var(--site-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--site-accent) 18%, transparent);
+}
+
+.site-gate-error {
+  min-height: 18px;
+  margin: 10px 0 0;
+  color: var(--site-danger);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.site-gate-foot {
+  margin-top: 18px;
+  color: var(--site-text-faint);
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+
+/* ── Hub (giriş sonrası 2 buton) ───────────────────────────────────────── */
+.site-hub {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 26px;
+  background: color-mix(in srgb, var(--site-bg) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.site-hub[hidden] { display: none; }
+
+.site-hub-head { text-align: center; margin-bottom: 34px; }
+
+.site-hub-head h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.4rem, 3.6vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.site-hub-head p { margin: 0; color: var(--site-text-dim); font-size: 0.92rem; }
+
+.site-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.site-hub-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 30px 26px;
+  border-radius: 22px;
+  border: 1px solid var(--site-border-strong);
+  background: var(--site-card);
+  box-shadow: var(--site-shadow);
+  text-decoration: none;
+  color: var(--site-text);
+  overflow: hidden;
+  transition: transform 0.24s ease, border-color 0.24s ease;
+}
+
+.site-hub-tile::before {
+  content: "";
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  right: -70px;
+  top: -70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent, var(--site-accent)) 42%, transparent), transparent 68%);
+  filter: blur(6px);
+  opacity: 0.75;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.site-hub-tile:hover {
+  transform: translateY(-6px) scale(1.012);
+  border-color: var(--tile-accent, var(--site-accent));
+}
+
+.site-hub-tile:hover::before { opacity: 1; transform: scale(1.12); }
+
+.site-hub-tile-emoji { font-size: 2.1rem; line-height: 1; margin-bottom: 4px; }
+
+.site-hub-tile h3 { margin: 0; font-size: 1.24rem; letter-spacing: -0.02em; }
+
+.site-hub-tile p { margin: 0; color: var(--site-text-dim); font-size: 0.86rem; line-height: 1.6; }
+
+.site-hub-tile-go {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tile-accent, var(--site-accent));
+}
+
+.site-hub-foot {
+  margin-top: 30px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  color: var(--site-text-faint);
+  font-size: 0.78rem;
+}
+
+.site-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--site-text-faint);
+  font-family: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.site-link-btn:hover { color: var(--site-danger); }
+
+/* ── Tema kapsülü (Link #164 Oil UI) ───────────────────────────────────── */
+.site-theme-pod {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 95;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border-strong);
+  background: var(--site-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--site-shadow);
+}
+
+.site-theme-pod button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.86rem;
+  line-height: 1;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.site-theme-pod button:hover { transform: scale(1.14); }
+.site-theme-pod button[aria-pressed="true"] { background: color-mix(in srgb, var(--site-accent) 22%, transparent); }
+
+
+/* ── Laboratuvar (KovaLab) sekmeleri ve model kartları ─────────────────── */
+.site-lab-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 0 14px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.site-lab-tabs::-webkit-scrollbar { height: 5px; }
+.site-lab-tabs::-webkit-scrollbar-thumb { background: var(--site-border-strong); border-radius: 999px; }
+
+.site-lab-tab {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border);
+  background: var(--site-card);
+  color: var(--site-text-dim);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.site-lab-tab:hover { color: var(--site-text); border-color: var(--site-border-strong); }
+
+.site-lab-tab[aria-selected="true"] {
+  background: linear-gradient(135deg, var(--site-accent), var(--site-accent-2));
+  border-color: transparent;
+  color: #04121a;
+}
+
+html[data-site-theme="minimal"] .site-lab-tab[aria-selected="true"],
+html[data-site-theme="saas"] .site-lab-tab[aria-selected="true"] { color: #fff; }
+
+.site-lab-panel[hidden] { display: none; }
+
+.site-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.site-model-card h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.site-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--site-border-strong);
+  color: var(--site-text-faint);
+}
+
+.site-badge-free { color: #0b1a12; background: var(--site-accent); border-color: transparent; }
+
+.site-badge-auto {
+  color: var(--site-accent-3);
+  border-color: color-mix(in srgb, var(--site-accent-3) 45%, transparent);
+}
+
+.site-model-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin: 14px 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--site-border);
+}
+
+.site-model-meta div { font-size: 0.76rem; color: var(--site-text-faint); }
+.site-model-meta strong { display: block; color: var(--site-text); font-size: 0.84rem; font-weight: 600; }
+
+.site-empty {
+  padding: 46px 24px;
+  text-align: center;
+  border-radius: var(--site-radius);
+  border: 1px dashed var(--site-border-strong);
+  color: var(--site-text-dim);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.site-lab-note {
+  margin: 22px 0 0;
+  padding: 14px 18px;
+  border-radius: var(--site-radius-sm);
+  border: 1px solid var(--site-border);
+  background: color-mix(in srgb, var(--site-bg-soft) 60%, transparent);
+  color: var(--site-text-faint);
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+
+.site-hidden { display: none !important; }
+
+
+/* ── Kova Lab Doğrudan Video Üretim Stüdyosu Bileşenleri ───────────────── */
+.site-studio-wrap {
+  margin-bottom: 18px;
+}
+
+.site-studio-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .site-studio-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.site-studio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--site-border);
+}
+
+.site-studio-row-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.site-studio-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .site-studio-row-2,
+  .site-studio-row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.site-select,
+.site-textarea,
+.site-input {
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: var(--site-radius-sm);
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg) 68%, transparent);
+  color: var(--site-text);
+  font-family: inherit;
+  font-size: 0.88rem;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.site-textarea {
+  resize: vertical;
+  min-height: 76px;
+  line-height: 1.5;
+}
+
+.site-select:focus,
+.site-textarea:focus,
+.site-input:focus {
+  outline: none;
+  border-color: var(--site-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--site-accent) 18%, transparent);
+}
+
+.site-prompt-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.site-chip-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 80%, transparent);
+  color: var(--site-text-dim);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.site-chip-btn:hover {
+  border-color: var(--site-accent);
+  color: var(--site-accent);
+}
+
+.site-upload-dropzone {
+  padding: 18px 16px;
+  border-radius: var(--site-radius-sm);
+  border: 1.5px dashed var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 58%, transparent);
+  text-align: center;
+  color: var(--site-text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.site-upload-dropzone:hover,
+.site-dropzone-active {
+  border-color: var(--site-accent);
+  background: color-mix(in srgb, var(--site-accent) 8%, transparent);
+}
+
+.site-upload-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.site-upload-preview img {
+  width: 92px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--site-border-strong);
+}
+
+.site-upload-preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+
+.site-video-stage {
+  min-height: 270px;
+  border-radius: 14px;
+  border: 1px solid var(--site-border);
+  background: color-mix(in srgb, var(--site-bg) 82%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.site-video-placeholder {
+  text-align: center;
+  padding: 28px 16px;
+}
+
+.site-studio-status {
+  margin: 10px 0 0;
+  min-height: 18px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.site-badge-pool {
+  color: #f5d0fe;
+  background: color-mix(in srgb, var(--site-accent-2) 28%, transparent);
+  border-color: color-mix(in srgb, var(--site-accent-2) 55%, transparent);
+}
+
+.site-model-card-active {
+  border-color: var(--site-accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--site-accent) 26%, transparent), var(--site-shadow);
+}
+
+
+/* ── 2026-11 Fabrika Yeni Nesil Stüdyo & GPU & OmniRoute Kokpiti ── */
+.site-master-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 4px 14px;
+  margin-bottom: 20px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.site-master-nav::-webkit-scrollbar { display: none; }
+
+.site-nav-pill {
+  white-space: nowrap;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  border: 1px solid var(--site-border);
+  background: var(--site-card);
+  color: var(--site-text-dim);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+.site-nav-pill:hover {
+  border-color: var(--site-border-strong);
+  color: var(--site-text);
+  transform: translateY(-1px);
+}
+.site-nav-pill.active {
+  background: var(--site-accent);
+  color: #07090e;
+  border-color: var(--site-accent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--site-accent) 40%, transparent);
+}
+html[data-site-theme="saas"] .site-nav-pill.active {
+  color: #ffffff;
+}
+
+.site-pipeline-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.site-pipeline-step {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--site-card) 60%, transparent);
+  border: 1px solid var(--site-border);
+  font-size: 0.76rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+.site-pipeline-step.active {
+  border-color: var(--site-accent);
+  background: color-mix(in srgb, var(--site-accent) 15%, transparent);
+}
+.site-pipeline-step.done {
+  border-color: #10b981;
+  background: color-mix(in srgb, #10b981 12%, transparent);
+}
+
+.site-hud-box {
+  background: color-mix(in srgb, #000 85%, transparent);
+  border: 1px solid var(--site-border);
+  border-radius: 12px;
+  padding: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--site-accent);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .site-studio-grid {
+    grid-template-columns: 1fr;
+  }
+  .site-studio-row-2, .site-studio-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .site-master-nav {
+    padding-bottom: 8px;
+  }
+  .site-nav-pill {
+    padding: 8px 14px;
+    font-size: 0.8rem;
+  }
+}
