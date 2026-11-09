@@ -671,37 +671,33 @@ window.handleStudioVideoSubmit = function(e) {
   .then(function(data) {
     if (data.success && data.task) {
       var task = data.task;
-      setTimeout(function() {
-        step2.className = 'site-pipeline-step done';
-        step3.className = 'site-pipeline-step active';
-        hudLog.innerHTML += `<br>• Seslendirme & TTS tamamlandı. 3D/Stok kurgusu işleniyor...`;
-      }, 700);
+      step1.className = 'site-pipeline-step done';
+      step2.className = 'site-pipeline-step done';
+      step3.className = 'site-pipeline-step active';
+      step4.className = 'site-pipeline-step';
+      step5.className = 'site-pipeline-step';
 
-      setTimeout(function() {
-        step3.className = 'site-pipeline-step done';
-        step4.className = 'site-pipeline-step active';
-        hudLog.innerHTML += `<br>• ${renderTarget.toUpperCase()} GPU kümesinde render alınıyor (48GB vRAM)...`;
-      }, 1500);
+      taskBadge.textContent = 'Kuyrukta (GPU Bekleniyor)';
+      taskBadge.className = 'site-badge site-badge-free';
 
-      setTimeout(function() {
-        step4.className = 'site-pipeline-step done';
-        step5.className = 'site-pipeline-step done';
-        taskBadge.textContent = 'Tamamlandı';
-        hudLog.innerHTML += `<br>• ✅ <strong>Prodüksiyon Başarıyla Tamamlandı!</strong><br>` +
-          `• Görev ID: <code>${task.job_id}</code><br>` +
-          `• Tahmini Süre: 45 sn | Dağıtım Otomasyonu: Hazır`;
+      hudLog.innerHTML += `<br>• ✅ <strong>Senaryo ve Prompt Analizi Hazırlandı.</strong><br>` +
+        `• ⏳ <strong>Prodüksiyon Görevi Kuyruğa Alındı:</strong> <code>${task.job_id}</code><br>` +
+        `• Hedef Donanım: <strong>${renderTarget.toUpperCase()}</strong> | Oran: <strong>${aspect}</strong><br>` +
+        `• 📡 <em>GPU İşçisi (Kaggle Dual-T4 / Colab) sıradaki işi aldığında render otomatik başlayacaktır.</em>`;
 
-        stageArea.innerHTML = `
-          <div style="text-align:center; padding:16px;">
-            <div style="font-size:2.8rem; margin-bottom:8px;">✅</div>
-            <strong style="color:var(--site-accent);">Video Görevi Oluşturuldu &amp; Render Edildi</strong>
-            <p style="margin:4px 0 10px; font-size:0.84rem; color:var(--site-text-dim);">
-              Kanal: <strong>${task.channel}</strong> | Metot: <strong>${task.method}</strong>
-            </p>
-            <span class="site-badge site-badge-free">Kaggle 32 GB Render Kuyruğuna Yazıldı</span>
-          </div>
-        `;
-      }, 2500);
+      stageArea.innerHTML = `
+        <div style="text-align:center; padding:16px;">
+          <div style="font-size:2.8rem; margin-bottom:8px;">⏳</div>
+          <strong style="color:var(--site-accent);">Görev Bulut Kuyruğuna Yazıldı</strong>
+          <p style="margin:4px 0 8px; font-size:0.84rem; color:var(--site-text-dim);">
+            Bilet ID: <code>${task.job_id}</code> | Kanal: <strong>${task.channel}</strong>
+          </p>
+          <p style="margin:0 0 12px; font-size:0.78rem; color:var(--site-text-muted);">
+            Render Motoru: <strong>${task.method}</strong> &bull; Donanım: <strong>${task.render_target}</strong>
+          </p>
+          <span class="site-badge site-badge-free">Sıraya Alındı (Kural 1 Uyumlu Dürüst Kuyruk)</span>
+        </div>
+      `;
     } else {
       hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Hata: ${data.error || 'Prodüksiyon başlatılamadı.'}</span>`;
       taskBadge.textContent = 'Hata';

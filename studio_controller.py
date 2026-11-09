@@ -11,7 +11,6 @@ Entegre Edilen Yöntemler (Uçtan Uca Tam Kod Üretimi):
 """
 
 from __future__ import annotations
-import shutil
 
 import json
 import logging
@@ -489,13 +488,14 @@ class VideoStudioController:
 
         filter_chain = f"color=c={color_bg}:s={res}:d=5:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
 
-        # Gerçek MP4 Render Motoru (FFmpeg CBR ile 2.5 - 2.9 Mbps bandında garanti video üretimi)
+        # Gerçek MP4 Render Motoru (FFmpeg CBR ile 2.5 - 2.9 Mbps bandında kılavuz önizleme video üretimi)
         output_mp4 = job_dir / "rendered_output.mp4"
-        
+        render_success = False
+
         try:
             import subprocess
             cmd = [
-                (shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"), "-y",
+                "/opt/homebrew/bin/ffmpeg", "-y",
                 "-f", "lavfi", "-i", filter_chain,
                 "-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100",
                 "-c:v", "libx264", "-x264-params", "nal-hrd=cbr",
@@ -505,17 +505,41 @@ class VideoStudioController:
                 str(output_mp4)
             ]
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            file_sz = output_mp4.stat().st_size
-            artifacts["rendered_mp4"] = str(output_mp4)
-            artifacts["file_size_bytes"] = str(file_sz)
-            artifacts["duration_sec"] = "5.0"
-            artifacts["resolution"] = res
-            artifacts["audio_track_origin"] = f"Procedural {sine_freq}Hz pilot tone (Stage 2: Ses Tasarımı senkronizasyon referansı)"
-            artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {target_br} CBR render basarili: {output_mp4.name} ({file_sz} bytes) | Audio: {sine_freq}Hz pilot tone via ffmpeg lavfi for stage 2 sync"
+            if output_mp4.exists() and output_mp4.stat().st_size > 10000:
+                render_success = True
+                file_sz = output_mp4.stat().st_size
+                artifacts["rendered_mp4"] = str(output_mp4)
+                artifacts["file_size_bytes"] = str(file_sz)
+                artifacts["duration_sec"] = "5.0"
+                artifacts["resolution"] = res
+                artifacts["audio_track_origin"] = f"Procedural {sine_freq}Hz pilot tone (Kılavuz Senkronizasyon Sinyali)"
+                artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {target_br} kılavuz render tamamlandı ({file_sz} bytes) (simülasyon: kılavuz önizleme)"
         except Exception as ffmpeg_err:
-            logger.warning("[VideoStudioController] FFmpeg render atlandı: %s", ffmpeg_err)
-            output_mp4.write_bytes(b"MP4_PREVIEW_MOCK_STREAM")
-            artifacts["rendered_mp4"] = str(output_mp4)
+            logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)
+            render_success = False
+
+        if render_success:
+            stages = [
+                {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
+                {"ad": "2. Ses Tasarımı & Dublaj", "durum": "onizleme (kılavuz pilot ton) (simülasyon)"},
+                {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "tamamlandi (kod oluşturuldu)"},
+                {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "onizleme_hazir (simülasyon)"},
+                {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "kuyrukta (GPU tam render bekleniyor)"},
+            ]
+            job_status = "onizleme_hazir (simülasyon)"
+            out_url = f"/api/media/file?path={output_mp4}"
+            prog = 60
+        else:
+            stages = [
+                {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
+                {"ad": "2. Ses Tasarımı & Dublaj", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
+                {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "beklemede"},
+                {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "beklemede"},
+                {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "beklemede"},
+            ]
+            job_status = "kuyrukta (GPU işçisi bekleniyor)"
+            out_url = None
+            prog = 20
 
         spec = VideoJobSpec(
             job_id=job_id,
@@ -523,12 +547,12 @@ class VideoStudioController:
             prompt=prompt,
             method=method,
             render_target=render_target,
-            status="tamamlandi",
-            progress_pct=100,
+            status=job_status,
+            progress_pct=prog,
             stages=stages,
             artifacts=artifacts,
             aspect_ratio=aspect_ratio,
-            output_url=f"/api/media/file?path={output_mp4}",
+            output_url=out_url,
         )
 
         try:
