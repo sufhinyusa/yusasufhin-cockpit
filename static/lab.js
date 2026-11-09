@@ -658,7 +658,10 @@ window.handleStudioVideoSubmit = function(e) {
 
   fetch('/api/studio/video/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+    },
     body: JSON.stringify({
       channel: channel,
       method: method,
@@ -774,9 +777,14 @@ window.handleAudioSubmit = function(e) {
     params = { lyrics: inputVal };
   }
 
+  var authHeader = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+  };
+
   fetch('/api/audio/process', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeader,
     body: JSON.stringify({ action: currentAudioAction, params: params })
   })
   .then(function(res) { return res.json(); })
@@ -784,11 +792,23 @@ window.handleAudioSubmit = function(e) {
     if (resp.success && resp.data) {
       var d = resp.data;
       if (currentAudioAction === 'identify_music') {
-        hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
-          `• Başlık: <strong>${d.title}</strong><br>` +
-          `• Tür: <strong>${d.genre}</strong><br>` +
-          `• Güven Skoru: <strong>%${Math.round(d.confidence * 100)}</strong><br>` +
-          `• İcracılar: ${d.performers ? d.performers.join(', ') : 'Belirtilmedi'}`;
+        if (d.matched) {
+          hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
+            `• Başlık: <strong>${d.title || 'Bilinmeyen'}</strong><br>` +
+            `• Tür: <strong>${d.genre || '-'}</strong><br>` +
+            `• Güven Skoru: <strong>%${Math.round((d.confidence || 0) * 100)}</strong><br>` +
+            `• İcracılar: ${d.performers ? d.performers.join(', ') : 'Belirtilmedi'}`;
+        } else {
+          hud.innerHTML = `🔍 <strong>Şarkı Tespiti:</strong><br>` +
+            `• Durum: ${d.status || 'Tamamlandı'}<br>` +
+            `• Sonuç: ${d.message || 'Eşleşen parça bulunamadı.'}`;
+        }
+      } else if (d.status === 'queued' || (d.message && d.message.includes('kuyruğuna'))) {
+        hud.innerHTML = `⏳ <strong>Kuyruğa Alındı (GPU Bekleniyor):</strong><br>` +
+          `• Motor: <strong>${d.engine}</strong><br>` +
+          `• Durum: <em>${d.message}</em><br>` +
+          `• Çıktı Formatı: <code>${d.output_format || d.format || 'wav/mp3'}</code><br>` +
+          `• Bilgi: Bulut GPU düğümü bağlandığında otomatik işlenecektir.`;
       } else {
         hud.innerHTML = `✅ <strong>Üretim Tamamlandı:</strong><br>` +
           `• Motor: <strong>${d.engine}</strong><br>` +
@@ -796,7 +816,7 @@ window.handleAudioSubmit = function(e) {
           `• Çıktı Formatı: <code>${d.output_format || d.format || 'wav/mp3'}</code>`;
       }
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.error || 'İşlem başarısız'}</span>`;
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz'}</span>`;
     }
   })
   .catch(function(err) {
@@ -812,24 +832,29 @@ window.handleOmniRouteSubmit = function(e) {
 
   hud.innerHTML = `[OMNIROUTE ŞELALESİ ÇALIŞIYOR...] Model aranıyor ($0.00)...`;
 
+  var authHeader = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+  };
+
   fetch('/api/omniroute/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeader,
     body: JSON.stringify({ prompt: promptVal })
   })
   .then(function(res) { return res.json(); })
   .then(function(resp) {
     if (resp.success && resp.result) {
       var r = resp.result;
-      hud.innerHTML = `⚡ <strong>OmniRoute Çıkarımı Başarılı ($0.00):</strong><br>` +
-        `• Kullanılan Model: <strong>${r.display_name}</strong> (Tier ${r.tier})<br>` +
+      var simBadge = r.simulasyon ? '<span class="site-badge" style="background:#f59e0b;color:#000;">Kılavuz Simülasyon</span>' : '<span class="site-badge" style="background:#10b981;color:#fff;">Canlı Çıkarım</span>';
+      hud.innerHTML = `⚡ <strong>OmniRoute Yanıtı ($0.00):</strong> ${simBadge}<br>` +
+        `• Model: <strong>${r.display_name}</strong> (Tier ${r.tier})<br>` +
         `• Sağlayıcı: ${r.provider}<br>` +
-        `• Yanıt Süresi: <strong>${r.latency_ms} ms</strong><br>` +
-        `• Düşülen Alternatif Sayısı: ${r.fallbacks_attempted.length}<br>` +
+        `• Gecikme: <strong>${r.latency_ms} ms</strong><br>` +
         `• Maliyet: <strong>$0.00 (Tamamen Ücretsiz)</strong><br><br>` +
         `<div style="color:var(--site-text); white-space:pre-wrap;">${r.content}</div>`;
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: Çıkarım başarısız</span>`;
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || 'Çıkarım başarısız'}</span>`;
     }
   })
   .catch(function(err) {
@@ -845,19 +870,27 @@ window.handleHumanizerSubmit = function(e) {
 
   hud.innerHTML = `[ANTI-SLOP FİLTRESİ ÇALIŞIYOR...]`;
 
+  var authHeader = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+  };
+
   fetch('/api/humanizer/clean', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeader,
     body: JSON.stringify({ text: textVal })
   })
   .then(function(res) { return res.json(); })
   .then(function(resp) {
     if (resp.success) {
       var a = resp.analysis;
-      hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> %${a.human_score} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
+      var skorText = a.human_score !== null ? `%${a.human_score}` : 'Metin Yok';
+      hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> ${skorText} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
         `• Temizlenen AI Kalıp Sayısı: <strong>${a.slop_count} adet</strong><br><br>` +
         `<strong>Arındırılmış İnsan Metni:</strong><br><br>` +
         `<span style="color:var(--site-text); font-family:var(--site-font); font-size:0.92rem; white-space:pre-wrap;">${resp.cleaned_text}</span>`;
+    } else {
+      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${resp.detail || 'İşlem başarısız'}</span>`;
     }
   })
   .catch(function(err) {

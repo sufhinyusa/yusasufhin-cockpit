@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": 1794231535.9669619,
+    "score": 100,
+    "vulnerabilities_found": 0,
+    "level": "GÜVENLİ (DÜŞÜK RİSK)"
+  },
+  {
+    "timestamp": 1794231535.968745,
+    "score": 65,
+    "vulnerabilities_found": 1,
+    "level": "KRİTİK GÜVENSİZ"
+  },
+  {
+    "timestamp": 1794231544.772799,
+    "score": 100,
+    "vulnerabilities_found": 0,
+    "level": "GÜVENLİ (DÜŞÜK RİSK)"
+  },
+  {
+    "timestamp": 1794231544.774008,
+    "score": 65,
+    "vulnerabilities_found": 1,
+    "level": "KRİTİK GÜVENSİZ"
+  },
+  {
+    "timestamp": 1794231554.7805781,
+    "score": 100,
+    "vulnerabilities_found": 0,
+    "level": "GÜVENLİ (DÜŞÜK RİSK)"
+  },
+  {
+    "timestamp": 1794231554.78213,
+    "score": 65,
+    "vulnerabilities_found": 1,
+    "level": "KRİTİK GÜVENSİZ"
+  }
+]
