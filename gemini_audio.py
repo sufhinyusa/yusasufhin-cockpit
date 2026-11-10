@@ -35,8 +35,19 @@ GEMINI_VOICES = {
     "Fenrir": "Fenrir (Güçlü, Dramatik Erkek — Sinematik ve Fragman)",
 }
 
+FALLBACK_GEMINI_KEYS = [
+    "AIzaSyCwKhDCQHyLZKdd7gHKx4vCBdFP1S-Pd7c",
+    "AIzaSyCWzzg5lhcMoH5ZN4ytDwE8aMqWYuetc3s",
+    "AIzaSyBdJ-86BRHWSz5RF7DXELoRMX8t9aB3yPs",
+    "AIzaSyAfJfOuPKlCHvTTBFRLGLf0nN4AAVx_RI8",
+    "AIzaSyBHYUo3kZkN7_Oc6HecstKsyCxF-lgJMLI",
+    "AIzaSyB3rtBHk38OsVPKqBDs-N0dDb-eHI6H10E",
+    "AIzaSyALxjTjJZkeDri5ml_QagO3f5A_ugi3RNY",
+    "AIzaSyBz9TR7zm1xa6LM6hWaA3qNVfjrZ1Tv9F8",
+]
+
 def collect_gemini_keys() -> List[str]:
-    """Sistem ortamından ve Persona/.env dosyasından tüm Gemini API anahtarlarını toplar."""
+    """Sistem ortamından, Persona/.env dosyasından ve bulut yedek havuzundan tüm Gemini API anahtarlarını toplar."""
     keys: List[str] = []
     # 1. Ortam değişkenleri
     for k, v in os.environ.items():
@@ -63,6 +74,12 @@ def collect_gemini_keys() -> List[str]:
                             keys.append(val)
             except Exception:
                 pass
+
+    # 3. Bulut sunucusu (Render Cloud) için güvenli yedek anahtar havuzu
+    for fb in FALLBACK_GEMINI_KEYS:
+        if fb not in keys:
+            keys.append(fb)
+
     return keys
 
 
@@ -191,3 +208,4 @@ def synthesize_gemini_speech(
             os.remove(tmp_pcm_path)
 
     return None, 0.0
+

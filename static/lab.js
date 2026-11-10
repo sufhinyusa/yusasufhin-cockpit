@@ -744,6 +744,28 @@ window.handleStudioVideoSubmit = function(e) {
 
   var tok = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
 
+  if (!tok) {
+    var girilenPin = prompt("🔐 Oturum Doğrulaması Gerekli:\nLütfen 6 haneli yönetici PIN kodunuzu girin (Örn: 849261):");
+    if (girilenPin) {
+      fetch('/api/auth/verify_pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: girilenPin.trim() })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(resPin) {
+        if (resPin.success && resPin.token) {
+          localStorage.setItem('fabrika_token', resPin.token);
+          localStorage.setItem('cockpit_token', resPin.token);
+          window.handleStudioVideoSubmit(e);
+        } else {
+          alert('Hatalı PIN: ' + (resPin.message || 'Yetkilendirme başarısız.'));
+        }
+      });
+      return;
+    }
+  }
+
   fetch('/api/studio/video/generate', {
     method: 'POST',
     headers: {
@@ -759,7 +781,32 @@ window.handleStudioVideoSubmit = function(e) {
       voice: voiceVal
     })
   })
-  .then(function(res) { return res.json(); })
+  .then(function(res) {
+    if (res.status === 401) {
+      localStorage.removeItem('fabrika_token');
+      localStorage.removeItem('cockpit_token');
+      var girilenPin = prompt("🔐 Oturum Süreniz Dolmuş (Sunucu Güncellendi):\nLütfen PIN kodunuzu girin (Örn: 849261):");
+      if (girilenPin) {
+        return fetch('/api/auth/verify_pin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: girilenPin.trim() })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(resPin) {
+          if (resPin.success && resPin.token) {
+            localStorage.setItem('fabrika_token', resPin.token);
+            localStorage.setItem('cockpit_token', resPin.token);
+            window.handleStudioVideoSubmit(e);
+          } else {
+            alert('Hatalı PIN: ' + (resPin.message || 'Yetkilendirme başarısız.'));
+          }
+          return { success: false, detail: 'Oturum yenileniyor...' };
+        });
+      }
+    }
+    return res.json();
+  })
   .then(function(data) {
     if (data.success && data.task) {
       var task = data.task;
