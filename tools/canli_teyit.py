@@ -26,8 +26,13 @@ import urllib.request
 from pathlib import Path
 
 TABAN = "https://yusasufhin.com"
-FONT_YOLU = "/static/fonts/DejaVuSans.ttf"
+# Deploy dedektörü: `/static/surum.json` yalnız yeni commit'lerde güncellenir.
+# (Eski dedektör `fonts/DejaVuSans.ttf` idi; o dosya bir kez deploy edildikten
+#  sonra hep 200 döndüğü için yeni sürümleri ayırt edemiyordu.)
+SURUM_YOLU = "/static/surum.json"
+BEKLENEN_SURUM = "2026.11.10-yz-video"
 RAPOR = Path("/tmp/canli_teyit_rapor.txt")
+
 
 
 def _istek(yol: str, veri: dict | None = None, token: str | None = None,
@@ -52,9 +57,15 @@ def _istek(yol: str, veri: dict | None = None, token: str | None = None,
 
 
 def deploy_var_mi() -> bool:
-    """Yeni commit canlıda mı? (font dosyası yalnız yeni sürümde var)"""
-    kod, _ = _istek(FONT_YOLU, zaman_asimi=25)
-    return kod == 200
+    """Yeni commit canlıda mı? (`static/surum.json` beklenen sürümü mü yayınlıyor)"""
+    kod, govde = _istek(SURUM_YOLU, zaman_asimi=25)
+    if kod != 200:
+        return False
+    try:
+        return json.loads(govde).get("surum") == BEKLENEN_SURUM
+    except Exception:
+        return False
+
 
 
 def pin_bul() -> str | None:
@@ -152,9 +163,14 @@ def tam_teyit() -> int:
     task = json.loads(govde).get("task") or {}
     art = task.get("artifacts") or {}
     satirlar.append(f"  status  : {task.get('status')}")
+    satirlar.append(f"  kaynak  : {art.get('kaynak')}  (flux_montaj = gerçek YZ sahne)")
+    satirlar.append(f"  sahne   : {art.get('sahne_sayisi')}")
     satirlar.append(f"  boyut   : {art.get('file_size_bytes')} b")
     satirlar.append(f"  çözünür : {art.get('resolution')} @ {art.get('duration_sec')} sn")
     satirlar.append(f"  log     : {art.get('render_log')}")
+    if art.get("ai_hata"):
+        satirlar.append(f"  AI HATA : {art.get('ai_hata')}")
+
 
     url = task.get("output_url")
     if not url:
