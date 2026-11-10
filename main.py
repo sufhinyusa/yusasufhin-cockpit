@@ -559,6 +559,21 @@ async def get_links_pool(q: Optional[str] = None, category: Optional[str] = None
 # -----------------------------------------------------------------------------
 # 4. KOVA LAB MODEL KATALOĞU & İNTERAKTİF STÜDYO
 # -----------------------------------------------------------------------------
+@app.get("/api/video/tesis")
+async def get_video_tesis():
+    """YZ video hattının canlı ortamda çalışabilirliğini raporlar.
+
+    2026-11-11: Render'da `HF_TOKEN` tanımlı olmadığı için hat sessizce
+    yedek başlık kartına düşüyordu. Bu uç, eksik olan tam adımı döner.
+    """
+    try:
+        from ai_video_montaj import tesis_durumu
+
+        return {"success": True, **tesis_durumu()}
+    except Exception as e:
+        return {"success": False, "hata": str(e)}
+
+
 @app.get("/api/lab/models")
 async def get_lab_models():
     models_file = DATA_DIR / "kova_lab_models.json"

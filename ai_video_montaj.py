@@ -58,7 +58,55 @@ def _hf_token() -> Optional[str]:
     return None
 
 
-def _sahne_promptlari(prompt: str, adet: int) -> List[str]:
+def tesis_durumu() -> Dict[str, Any]:
+    """YZ video hattının canlı ortamda çalışabilirliğini teşhis eder.
+
+    NEDEN: Render'da `HF_TOKEN` tanımlı değilse hat sessizce yedeğe düşüyordu
+    ve kullanıcı nedenini göremiyordu ("YZ sahne üretilemedi" belirsizdi).
+    Bu fonksiyon eksik olan tam adımı söyler.
+    """
+    durum: Dict[str, Any] = {
+        "hf_token": False,
+        "gradio_client": False,
+        "pillow": False,
+        "ffmpeg": False,
+        "hazir": False,
+        "eksikler": [],
+    }
+
+    durum["hf_token"] = bool(_hf_token())
+    if not durum["hf_token"]:
+        durum["eksikler"].append(
+            "HF_TOKEN ortam değişkeni yok (Render → Environment → Add Environment Variable)"
+        )
+
+    try:
+        import gradio_client  # noqa: F401
+
+        durum["gradio_client"] = True
+    except Exception:
+        durum["eksikler"].append("gradio_client paketi kurulu değil (requirements.txt)")
+
+    try:
+        import PIL  # noqa: F401
+
+        durum["pillow"] = True
+    except Exception:
+        durum["eksikler"].append("Pillow paketi kurulu değil (requirements.txt)")
+
+    ff = _ffmpeg()
+    try:
+        r = subprocess.run([ff, "-version"], capture_output=True, timeout=15)
+        durum["ffmpeg"] = r.returncode == 0
+        durum["ffmpeg_yolu"] = ff
+    except Exception:
+        durum["ffmpeg"] = False
+    if not durum["ffmpeg"]:
+        durum["eksikler"].append("ffmpeg çalıştırılamıyor (imageio-ffmpeg kurulu mu?)")
+
+    durum["hazir"] = not durum["eksikler"]
+    return durum
+
     """Tek prompt'u sinematik sahne dizisine böler (geniş → detay → geniş)."""
     temel = prompt.strip().rstrip(".")
     kalip = [
@@ -265,11 +313,15 @@ def ai_video_uret(
 
     sahneler = sahneleri_uret(prompt, sahne_sayisi, genislik, yukseklik, log=_log)
     if not sahneler:
+        tesis = tesis_durumu()
+        neden = "; ".join(tesis.get("eksikler") or ["FLUX Space erişilemedi (kota/ağ)"])
         return {
             "basarili": False, "yol": None, "boyut": 0, "sahne": 0,
             "kaynak": "flux_montaj",
-            "hata": "YZ sahne üretilemedi (HF_TOKEN veya FLUX Space erişimi yok)",
+            "hata": f"YZ sahne üretilemedi → {neden}",
+            "tesis": tesis,
         }
+
 
     gecici = Path(tempfile.mkdtemp(prefix="ai_montaj_"))
     parcalar: List[Path] = []
