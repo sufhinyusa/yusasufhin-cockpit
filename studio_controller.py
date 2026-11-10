@@ -481,25 +481,21 @@ class VideoStudioController:
         if method == "remotion_cinema":
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio=aspect_ratio)
             engine_title = "REMOTION CINEMA MONTAGE"
-            color_bg = "#0a0f1d"
             accent_col = "0x38bdf8"
             sine_freq = 440
         elif method == "blender_wan":
             artifacts = BlenderWanConsistency.build_project(job_dir, prompt=prompt)
             engine_title = "BLENDER WAN 3D CONSISTENCY"
-            color_bg = "#090d16"
             accent_col = "0x10b981"
             sine_freq = 550
         elif method == "opus_canvas":
             artifacts = OpusCanvasCodeMotion.build_project(job_dir, topic=prompt)
             engine_title = "OPUS CANVAS CODE MOTION"
-            color_bg = "#0f172a"
             accent_col = "0xa855f7"
             sine_freq = 330
         else:
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio="9:16")
             engine_title = "VIRAL SHORTS MOTORU"
-            color_bg = "#180d2b"
             accent_col = "0xf59e0b"
             sine_freq = 440
 
@@ -529,56 +525,57 @@ class VideoStudioController:
             spoken_dur = None
 
         final_dur = spoken_dur or 5.0
-        # Minimalist geometrik HUD katmanı (Font gerektirmez, 0.2 saniyede ultrafast render)
-        filter_chain = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawbox=x=40:y=120:w={w_val-80}:h=80:color={accent_col}@0.35:t=fill,drawbox=x=40:y=200:w={w_val-80}:h=6:color={accent_col}:t=fill"
 
-        # Gerçek MP4 Render Motoru (FFmpeg ultrafast - bulutta 512MB RAM aşmayan hızlı üretim)
+        # GERÇEK MP4 RENDER (2026-11-10 onarımı)
+        # ESKİ HATA: `subprocess.run(..., timeout=15)` ffmpeg'i 15. saniyede
+        # öldürüyordu → MP4'ün `moov` atomu yazılmıyor, geriye 2 KB'lık
+        # açılamayan dosya kalıyordu ("moov atom not found"). Ayrıca video
+        # `color=` + iki `drawbox`tan ibaretti; prompt ile hiçbir ilişkisi yoktu
+        # (5 sn düz renk ≈ 85 KB → "boş video").
+        # ÇÖZÜM: `video_render.py` — prompt metnini taşıyan başlık kartı +
+        # zoompan hareketi + 120 sn gerçek zaman aşımı + atomik yazma +
+        # moov/ftyp/mdat doğrulaması.
         output_mp4 = job_dir / "rendered_output.mp4"
         render_success = False
 
         try:
-            import shutil as _sh
-            import subprocess
+            from video_render import video_render_et
 
-            ffmpeg_bin = _sh.which("ffmpeg")
-            if not ffmpeg_bin and os.path.isfile("/opt/homebrew/bin/ffmpeg"):
-                ffmpeg_bin = "/opt/homebrew/bin/ffmpeg"
-            if not ffmpeg_bin:
-                try:
-                    import imageio_ffmpeg
-                    ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-                except Exception:
-                    ffmpeg_bin = "ffmpeg"
-
-            if spoken_dur and speech_wav.exists():
-                audio_input_args = ["-i", str(speech_wav)]
-            else:
-                audio_input_args = ["-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration={final_dur}:sample_rate=44100"]
-
-            cmd = [
-                ffmpeg_bin, "-y",
-                "-f", "lavfi", "-i", filter_chain,
-                *audio_input_args,
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "128k",
-                "-shortest",
-                str(output_mp4)
-            ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            if proc.returncode == 0 and output_mp4.exists() and output_mp4.stat().st_size > 1000:
+            render = video_render_et(
+                hedef_mp4=output_mp4,
+                baslik=channel or "Fabrika Stüdyo",
+                prompt=prompt,
+                genislik=w_val,
+                yukseklik=h_val,
+                sure_sn=final_dur,
+                ses_yolu=speech_wav if spoken_dur else None,
+                vurgu=tuple(int(accent_col.replace("0x", "")[i:i + 2], 16) for i in (0, 2, 4)),
+                pilot_frekans=sine_freq,
+            )
+            if render.get("basarili"):
                 render_success = True
-                file_sz = output_mp4.stat().st_size
+                file_sz = int(render.get("boyut") or 0)
                 artifacts["rendered_mp4"] = str(output_mp4)
                 artifacts["file_size_bytes"] = str(file_sz)
                 artifacts["duration_sec"] = str(final_dur)
                 artifacts["resolution"] = res
-                artifacts["audio_track_origin"] = f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
-                artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {final_dur}s ultrafast render tamamlandı ({file_sz} bytes)"
+                artifacts["audio_track_origin"] = (
+                    f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)"
+                    if spoken_dur else f"Procedural {sine_freq}Hz pilot tone (simülasyon)"
+                )
+                artifacts["render_log"] = (
+                    f"[{engine_title}] {res} @ 30fps {final_dur}s render tamamlandı "
+                    f"({file_sz} bytes, moov doğrulandı)"
+                )
+            else:
+                artifacts["render_error"] = str(render.get("hata") or "bilinmeyen render hatası")
+                logger.warning(
+                    "[VideoStudioController] Render başarısız: %s", artifacts["render_error"]
+                )
         except Exception as ffmpeg_err:
             logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)
             render_success = False
+
 
         if render_success:
             stages = [
@@ -601,12 +598,24 @@ class VideoStudioController:
             try:
                 self.media_dir.mkdir(parents=True, exist_ok=True)
                 _shutil.copy2(output_mp4, medya_hedef)
+                # 2026-11-10: kopya da doğrulanır. Bozuk/yarım MP4'ü "hazır"
+                # diye sunmak Kural 1 ihlali olurdu.
+                try:
+                    from video_render import mp4_gecerli_mi
+
+                    _ok, _neden = mp4_gecerli_mi(medya_hedef)
+                except Exception:
+                    _ok, _neden = medya_hedef.is_file(), "doğrulama atlandı"
+                if not _ok:
+                    medya_hedef.unlink(missing_ok=True)
+                    raise RuntimeError(f"sunulan MP4 doğrulanamadı: {_neden}")
                 artifacts["served_mp4"] = str(medya_hedef)
                 out_url = f"/api/media/file?path={medya_adi}"
             except Exception as e_kopya:
                 logger.warning("[VideoStudioController] MEDIA_DIR kopyası başarısız: %s", e_kopya)
                 out_url = f"/api/media/file?path={output_mp4}"
             prog = 60
+
 
         else:
             stages = [

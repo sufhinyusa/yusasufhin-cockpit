@@ -13,7 +13,7 @@ import time
 import logging
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -579,6 +579,25 @@ async def get_lab_models():
         "mesaj": "Kova Lab modelleri yüklendi."
     }
 
+def _mp4_oynatilabilir(yol: Path) -> bool:
+    """MP4 gerçekten oynatılabilir mi? (ftyp + moov + mdat + asgari boyut)
+
+    2026-11-10: Eski render hattı ffmpeg'i 15. sn'de öldürdüğü için galeride
+    yalnız `ftyp` başlığı olan 2 KB'lık dosyalar kalıyordu; tarayıcı
+    "moov atom not found" ile hiç oynamıyordu. Böyle dosyalar listelenmez ve
+    `/api/media/file` üzerinden de sunulmaz.
+    """
+    try:
+        from video_render import mp4_gecerli_mi
+
+        return mp4_gecerli_mi(yol)[0]
+    except Exception:
+        try:
+            return yol.is_file() and yol.stat().st_size >= 20 * 1024
+        except OSError:
+            return False
+
+
 @app.get("/api/lab/history")
 async def get_lab_history(limit: int = Query(12)):
     """
@@ -626,7 +645,12 @@ async def get_lab_history(limit: int = Query(12)):
                             continue
                     else:
                         continue
+                # 2026-11-10: 2 KB'lık "moov atom not found" kalıntıları galeride
+                # görünüp oynatılamıyordu. Bozuk MP4 LİSTELENMEZ (Kural 1).
+                if not _mp4_oynatilabilir(MEDIA_DIR / servis_adi):
+                    continue
                 url = f"/api/media/file?path={servis_adi}"
+
                 sz_bytes = int(art.get("file_size_bytes") or j.get("file_size_bytes") or 0)
                 dl_url = f"{url}{'&' if '?' in url else '?'}download=1"
                 items.append({
@@ -666,7 +690,10 @@ async def get_lab_history(limit: int = Query(12)):
                 except Exception:
                     continue
             gorulen.add(jid)
+            if not _mp4_oynatilabilir(hedef):
+                continue
             sz_b = mp4.stat().st_size
+
             u_path = f"/api/media/file?path={jid}.mp4"
             items.append({
                 "id": jid,
@@ -1499,6 +1526,18 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
 
     _izinli_kokler = (MEDIA_DIR, DATA_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
     if target.is_file() and any(target.is_relative_to(k) for k in _izinli_kokler):
+        # 2026-11-10: yarım kalmış MP4 (moov yok) tarayıcıda hiç oynamıyordu.
+        # Sessizce boş oynatıcı sunmak yerine dürüst 422 döneriz.
+        if ext == ".mp4" and not _mp4_oynatilabilir(target):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": (
+                        "Bu MP4 dosyası bozuk/yarım kalmış (moov atomu yok) ve oynatılamaz. "
+                        "Videoyu stüdyodan yeniden üretin."
+                    )
+                },
+            )
         media_types = {
             ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
             ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg",

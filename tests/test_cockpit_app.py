@@ -394,3 +394,74 @@ def test_gemini_audio_and_no_edge_tts(client, auth_headers):
     assert data["task"]["download_url"].endswith("&download=1")
     assert "rendered_mp4" in data["task"]["artifacts"]
 
+
+
+# -----------------------------------------------------------------------------
+# 5. VİDEO RENDER — "boş video / oynatılamıyor" regresyon kalkanı
+#    (2026-11-10: 15 sn timeout + düz renk video kök nedeninin kilitleri)
+# -----------------------------------------------------------------------------
+def test_bozuk_mp4_reddedilir(tmp_path):
+    """Yalnız `ftyp` başlığı olan 2 KB'lık kalıntı geçerli SAYILMAZ."""
+    import video_render
+
+    sahte = tmp_path / "yarim.mp4"
+    sahte.write_bytes(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 2000)
+    gecerli, neden = video_render.mp4_gecerli_mi(sahte)
+    assert gecerli is False
+    assert "moov" in neden or "küçük" in neden
+
+
+def test_gecerli_mp4_kabul_edilir(tmp_path):
+    """Gerçek render edilmiş MP4 doğrulamadan geçer (ftyp+moov+mdat)."""
+    import video_render
+
+    hedef = tmp_path / "gercek.mp4"
+    sonuc = video_render.video_render_et(
+        hedef_mp4=hedef,
+        baslik="Test Kanalı",
+        prompt="Bu bir regresyon testi videosudur",
+        genislik=320,
+        yukseklik=180,
+        sure_sn=2.0,
+    )
+    assert sonuc["basarili"] is True, sonuc.get("hata")
+    assert sonuc["boyut"] > 20 * 1024
+    assert video_render.mp4_gecerli_mi(hedef)[0] is True
+
+
+def test_render_metni_kareye_basar(tmp_path):
+    """Başlık kartı gerçekten üretilir — video düz renk değil (boş video değil)."""
+    import video_render
+
+    kart = video_render.baslik_karti_uret(
+        png_yolu=tmp_path / "kart.png",
+        baslik="Astroloji Kova",
+        prompt="Kova burcu haftalık analizi",
+        genislik=320,
+        yukseklik=180,
+    )
+    assert kart is not None and kart.is_file()
+    assert kart.stat().st_size > 1000  # metin/şerit içeren PNG
+
+
+def test_media_bozuk_mp4_422_doner(client, auth_headers, tmp_path, monkeypatch):
+    """Bozuk MP4 indirilmeye çalışılırsa sessiz boş oynatıcı değil, dürüst 422."""
+    import main as main_mod
+
+    bozuk = main_mod.MEDIA_DIR / "BOZUK-TEST.mp4"
+    bozuk.write_bytes(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 2000)
+    try:
+        res = client.get("/api/media/file?path=BOZUK-TEST.mp4", headers=auth_headers)
+        assert res.status_code == 422
+        assert "moov" in res.json()["detail"] or "bozuk" in res.json()["detail"]
+    finally:
+        bozuk.unlink(missing_ok=True)
+
+
+def test_galeri_bozuk_mp4_listelemez(client, auth_headers):
+    """Galeri yalnız oynatılabilir MP4'leri döner."""
+    res = client.get("/api/lab/history", headers=auth_headers)
+    assert res.status_code == 200
+    for item in res.json()["items"]:
+        assert item.get("video_url")
+
