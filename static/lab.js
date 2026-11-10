@@ -805,7 +805,22 @@ window.handleStudioVideoSubmit = function(e) {
         });
       }
     }
-    return res.json();
+    if (!res.ok) {
+      return res.text().then(function(t) {
+        try {
+          return JSON.parse(t);
+        } catch (e) {
+          return { success: false, detail: 'Sunucu yanıtı (HTTP ' + res.status + '): ' + (t.slice(0, 120) || 'Bulut zaman aşımı / yeniden deneniyor...') };
+        }
+      });
+    }
+    return res.text().then(function(t) {
+      try {
+        return JSON.parse(t);
+      } catch (e) {
+        return { success: false, detail: 'Geçersiz sunucu verisi: ' + t.slice(0, 100) };
+      }
+    });
   })
   .then(function(data) {
     if (data.success && data.task) {

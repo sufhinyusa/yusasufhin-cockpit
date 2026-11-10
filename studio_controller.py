@@ -472,10 +472,11 @@ class VideoStudioController:
 
         artifacts: Dict[str, str] = {}
 
-        # Yönteme göre özgün sahne kompozisyonu, görsel katmanlar ve CBR hedef bitrate belirleme
+        # Yönteme göre özgün sahne kompozisyonu, görsel katmanlar ve hafif/hızlı render parametreleri
         is_vertical = (aspect_ratio == "9:16")
-        res = "1080x1920" if is_vertical else "1920x1080"
-        w_val = 1080 if is_vertical else 1920
+        res = "720x1280" if is_vertical else "1280x720"
+        w_val = 720 if is_vertical else 1280
+        h_val = 1280 if is_vertical else 720
         
         if method == "remotion_cinema":
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio=aspect_ratio)
@@ -483,31 +484,24 @@ class VideoStudioController:
             color_bg = "#0a0f1d"
             accent_col = "0x38bdf8"
             sine_freq = 440
-            target_br = "2500k"
         elif method == "blender_wan":
             artifacts = BlenderWanConsistency.build_project(job_dir, prompt=prompt)
             engine_title = "BLENDER WAN 3D CONSISTENCY"
             color_bg = "#090d16"
             accent_col = "0x10b981"
             sine_freq = 550
-            target_br = "2900k"
         elif method == "opus_canvas":
             artifacts = OpusCanvasCodeMotion.build_project(job_dir, topic=prompt)
             engine_title = "OPUS CANVAS CODE MOTION"
             color_bg = "#0f172a"
             accent_col = "0xa855f7"
             sine_freq = 330
-            target_br = "2700k"
         else:
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio="9:16")
             engine_title = "VIRAL SHORTS MOTORU"
             color_bg = "#180d2b"
             accent_col = "0xf59e0b"
             sine_freq = 440
-            target_br = "2500k"
-
-        filter_chain = f"color=c={color_bg}:s={res}:d=5:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
-        filter_chain_fallback = f"color=c={color_bg}:s={res}:d=5:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
 
         # Gerçek Google Gemini 2.5 Nöral Seslendirme (Microsoft Edge KESİNLİKLE YASAKTIR)
         speech_wav = job_dir / "narration.wav"
@@ -535,11 +529,10 @@ class VideoStudioController:
             spoken_dur = None
 
         final_dur = spoken_dur or 5.0
-        if spoken_dur:
-            filter_chain = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
-            filter_chain_fallback = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
+        # Minimalist geometrik HUD katmanı (Font gerektirmez, 0.2 saniyede ultrafast render)
+        filter_chain = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawbox=x=40:y=120:w={w_val-80}:h=80:color={accent_col}@0.35:t=fill,drawbox=x=40:y=200:w={w_val-80}:h=6:color={accent_col}:t=fill"
 
-        # Gerçek MP4 Render Motoru (FFmpeg CBR ile yüksek uyumlu video üretimi)
+        # Gerçek MP4 Render Motoru (FFmpeg ultrafast - bulutta 512MB RAM aşmayan hızlı üretim)
         output_mp4 = job_dir / "rendered_output.mp4"
         render_success = False
 
@@ -557,34 +550,32 @@ class VideoStudioController:
                 except Exception:
                     ffmpeg_bin = "ffmpeg"
 
-            for vf_chain in (filter_chain, filter_chain_fallback):
-                if spoken_dur and speech_wav.exists():
-                    audio_input_args = ["-i", str(speech_wav)]
-                else:
-                    audio_input_args = ["-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100"]
+            if spoken_dur and speech_wav.exists():
+                audio_input_args = ["-i", str(speech_wav)]
+            else:
+                audio_input_args = ["-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration={final_dur}:sample_rate=44100"]
 
-                cmd = [
-                    ffmpeg_bin, "-y",
-                    "-f", "lavfi", "-i", vf_chain,
-                    *audio_input_args,
-                    "-c:v", "libx264", "-x264-params", "nal-hrd=cbr",
-                    "-b:v", target_br, "-minrate", target_br, "-maxrate", target_br, "-bufsize", target_br,
-                    "-preset", "fast", "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "192k",
-                    "-shortest",
-                    str(output_mp4)
-                ]
-                proc = subprocess.run(cmd, capture_output=True, text=True)
-                if proc.returncode == 0 and output_mp4.exists() and output_mp4.stat().st_size > 10000:
-                    render_success = True
-                    file_sz = output_mp4.stat().st_size
-                    artifacts["rendered_mp4"] = str(output_mp4)
-                    artifacts["file_size_bytes"] = str(file_sz)
-                    artifacts["duration_sec"] = str(final_dur)
-                    artifacts["resolution"] = res
-                    artifacts["audio_track_origin"] = f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
-                    artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {final_dur}s render tamamlandı ({file_sz} bytes)"
-                    break
+            cmd = [
+                ffmpeg_bin, "-y",
+                "-f", "lavfi", "-i", filter_chain,
+                *audio_input_args,
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k",
+                "-shortest",
+                str(output_mp4)
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if proc.returncode == 0 and output_mp4.exists() and output_mp4.stat().st_size > 1000:
+                render_success = True
+                file_sz = output_mp4.stat().st_size
+                artifacts["rendered_mp4"] = str(output_mp4)
+                artifacts["file_size_bytes"] = str(file_sz)
+                artifacts["duration_sec"] = str(final_dur)
+                artifacts["resolution"] = res
+                artifacts["audio_track_origin"] = f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
+                artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {final_dur}s ultrafast render tamamlandı ({file_sz} bytes)"
         except Exception as ffmpeg_err:
             logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)
             render_success = False

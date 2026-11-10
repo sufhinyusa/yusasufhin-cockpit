@@ -139,7 +139,7 @@ def synthesize_gemini_speech(
                 }
             }
             try:
-                resp = requests.post(url, json=payload, timeout=25)
+                resp = requests.post(url, json=payload, timeout=7)
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])
