@@ -32,12 +32,14 @@ app = FastAPI(
     version="2026.11"
 )
 
+DEFAULT_PORT = 27491
+
 # CORS Ayarları (Özel Origin Kısıtlaması & CSRF Koruması)
 ALLOWED_ORIGINS = [
     "https://yusasufhin.com",
     "https://yusasufhin-cockpit.onrender.com",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
+    f"http://localhost:{DEFAULT_PORT}",
+    f"http://127.0.0.1:{DEFAULT_PORT}",
 ]
 
 app.add_middleware(
@@ -1469,5 +1471,5 @@ async def catch_all_router(full_path: str):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", DEFAULT_PORT))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
