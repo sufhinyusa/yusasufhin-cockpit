@@ -213,6 +213,23 @@
             • Yöntemler: Remotion Cinema (#246), Blender+Wan (#245), Opus Canvas (#179)<br>
             • Donanım: Kaggle 32 GB Dual GPU + Colab Köprüsü Hazır ($0.00)
           </div>
+
+          <!-- ÜRETİLEN VİDEOLAR GALERİSİ (2026-11-10) -->
+          <div style="margin-top:18px; border-top:1px solid #1e293b; padding-top:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h4 style="margin:0; font-size:0.98rem;">📼 Üretilen Videolar</h4>
+              <button type="button" onclick="loadVideoHistory()"
+                      style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.78rem;">
+                🔄 Yenile
+              </button>
+            </div>
+            <div id="videoHistoryList" style="display:flex; flex-direction:column; gap:10px;">
+              <p style="margin:0; font-size:0.8rem; color:var(--site-text-muted);">
+                Yükleniyor...
+              </p>
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -439,6 +456,32 @@
             </select>
           </div>
 
+          <div style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.25); border-radius:8px; padding:12px; margin-top:14px;">
+            <strong style="color:var(--site-accent); font-size:0.86rem; display:block; margin-bottom:6px;">
+              ⚡ Kaggle veya Colab'da Tek Tıkla GPU Başlatın ($0.00)
+            </strong>
+            <p style="margin:0 0 8px; font-size:0.78rem; color:var(--site-text-dim);">
+              Kaggle (Settings &rarr; GPU Dual T4) veya Colab'da yeni bir notebook açıp aşağıdaki kodu çalıştırın:
+            </p>
+            <code style="display:block; background:#0b1120; padding:8px 10px; border-radius:6px; color:#38bdf8; font-size:0.8rem; word-break:break-all; user-select:all;">
+              !curl -sS https://yusasufhin.com/worker.py | python3
+            </code>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+              <a href="/Fabrika_GPU_Renderer.ipynb" download="Fabrika_GPU_Renderer.ipynb"
+                 style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
+                📥 Fabrika_GPU_Renderer.ipynb İndir
+              </a>
+              <a href="https://colab.research.google.com" target="_blank" rel="noopener"
+                 style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
+                ☁️ Colab'ı Aç
+              </a>
+              <a href="https://www.kaggle.com/code" target="_blank" rel="noopener"
+                 style="background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
+                🚀 Kaggle'ı Aç (32 GB)
+              </a>
+            </div>
+          </div>
+
           <div style="display:flex; gap:10px; margin-top:16px;">
             <button type="button" class="site-btn site-btn-primary" onclick="refreshGpuStatus()" style="flex:1;">
               🔄 Telemetriyi Yenile
@@ -559,7 +602,7 @@
     <button type="button" data-site-theme-btn="minimal" aria-pressed="false" title="Minimalist">✨</button>
   </div>
 
-  <script src="/site.js?v=10"></script>
-  <script src="/lab.js?v=10"></script>
+  <script src="/site.js?v=11"></script>
+  <script src="/lab.js?v=11"></script>
 </body>
 </html>

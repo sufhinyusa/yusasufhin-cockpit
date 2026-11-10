@@ -844,6 +844,70 @@ window.handleStudioVideoSubmit = function(e) {
   });
 };
 
+/**
+ * ÜRETİLEN VİDEOLAR GALERİSİ (2026-11-10)
+ * Kullanıcı şikayeti: "üretilenleri sitede bulamıyorum indirme linki gibi bir şey koy"
+ * Her iş için oynatıcı + indirme linki gösterir. Yalnız output_url'i olan
+ * (gerçekten üretilmiş) videolar listelenir — sahte kayıt gösterilmez.
+ */
+window.loadVideoHistory = function () {
+  var kutu = document.getElementById('videoHistoryList');
+  if (!kutu) return;
+  var tk = token() || localStorage.getItem('cockpit_token') || '';
+
+  kutu.innerHTML = '<p style="margin:0; font-size:0.8rem; color:var(--site-text-muted);">Yükleniyor...</p>';
+
+  fetch('/api/lab/history?limit=24', {
+    headers: tk ? { 'Authorization': 'Bearer ' + tk } : {}
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      var items = (data && data.items) || [];
+      if (!items.length) {
+        kutu.innerHTML = '<p style="margin:0; font-size:0.8rem; color:var(--site-text-muted);">' +
+          'Henüz üretilmiş video yok. Yukarıdaki formdan ilk videonuzu üretin.</p>';
+        return;
+      }
+      var html = '';
+      items.forEach(function (it) {
+        var u = it.output_url || '';
+        var tam = u ? (u + (u.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk)) : '';
+        var boyutKb = it.file_size_bytes ? Math.round(Number(it.file_size_bytes) / 1024) : '';
+        var tarih = (it.created_at || '').toString().slice(0, 16);
+        html += '<div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:10px;">' +
+          '<div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:8px;">' +
+            '<code style="font-size:0.72rem; color:#94a3b8;">' + esc(it.job_id) + '</code>' +
+            '<span style="font-size:0.7rem; color:#64748b;">' + esc(tarih) + '</span>' +
+          '</div>' +
+          (it.prompt ? '<p style="margin:0 0 8px; font-size:0.78rem; color:#cbd5e1;">' + esc(it.prompt) + '</p>' : '') +
+          '<video controls playsinline preload="none" src="' + esc(tam) + '" ' +
+                 'style="width:100%; max-height:200px; border-radius:6px; background:#000; display:block; margin-bottom:8px;"></video>' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+            '<a href="' + esc(tam) + '" download="fabrika-' + esc(it.job_id) + '.mp4" ' +
+               'style="background:#059669; color:#fff; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">⬇️ İndir</a>' +
+            '<a href="' + esc(tam) + '" target="_blank" rel="noopener" ' +
+               'style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">🔗 Aç</a>' +
+            '<span style="font-size:0.7rem; color:#64748b; align-self:center;">' +
+              esc(it.resolution || '') + (boyutKb ? ' · ' + boyutKb + ' KB' : '') + '</span>' +
+          '</div>' +
+        '</div>';
+      });
+      kutu.innerHTML = html;
+    })
+    .catch(function (e) {
+      kutu.innerHTML = '<p style="margin:0; font-size:0.8rem; color:var(--site-danger);">' +
+        'Geçmiş yüklenemedi: ' + esc(e.message) + '</p>';
+    });
+};
+
+// Sayfa açılışında galeriyi doldur
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(window.loadVideoHistory, 600); });
+} else {
+  setTimeout(window.loadVideoHistory, 600);
+}
+
+
 window.switchAudioAction = function(action) {
   currentAudioAction = action;
   var btnMap = {
@@ -1085,11 +1149,23 @@ window.refreshGpuStatus = function() {
   .then(function(resp) {
     if (resp.success && resp.status) {
       var s = resp.status;
-      hud.innerHTML = `🖥️ <strong>GPU Küme Telemetrisi:</strong><br>` +
+      var workerHtml = '';
+      if (s.workers && s.workers.length > 0) {
+        workerHtml = '<br><strong>Bağlı Canlı İşçiler:</strong><ul style="margin:4px 0 0; padding-left:18px;">';
+        s.workers.forEach(function(w) {
+          workerHtml += `<li><code>${esc(w.worker_id)}</code>: <strong>${esc(w.gpu_name)}</strong> (${esc(w.vram_gb)} GB) - Durum: <span style="color:#10b981;">● ${esc(w.status)}</span></li>`;
+        });
+        workerHtml += '</ul>';
+      }
+      var isLive = s.kaggle_connected || s.colab_connected;
+      var badge = isLive ? '<span class="site-badge site-badge-free" style="background:#10b981; color:#fff;">🟢 Canlı GPU Bağlı</span>' : '<span class="site-badge">⚪ Standby (GPU Bekleniyor)</span>';
+      
+      hud.innerHTML = `🖥️ <strong>GPU Küme Telemetrisi:</strong> ${badge}<br>` +
         `• Durum: <strong>${esc(s.cluster_status || 'standby')}</strong><br>` +
-        `• Tahsis Edilen vRAM: <strong>${esc(s.allocated_vram_gb !== undefined ? s.allocated_vram_gb : s.total_gpu_vram_gb)} GB</strong><br>` +
+        `• Toplam GPU vRAM: <strong>${esc(s.allocated_vram_gb !== undefined ? s.allocated_vram_gb : s.total_gpu_vram_gb)} GB</strong><br>` +
         `• Aktif Dağıtım Modu: <code>${esc(s.mode)}</code><br>` +
-        `• Bilgi: <em>${esc(s.message || 'Bulut GPU kuyruğu hazır.')}</em>`;
+        `• Bilgi: <em>${esc(s.message || 'Bulut GPU kuyruğu hazır.')}</em>` +
+        workerHtml;
     }
   })
   .catch(function(err) {

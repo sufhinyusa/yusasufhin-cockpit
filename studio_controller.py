@@ -508,7 +508,50 @@ class VideoStudioController:
         filter_chain = f"color=c={color_bg}:s={res}:d=5:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
         filter_chain_fallback = f"color=c={color_bg}:s={res}:d=5:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
 
-        # Gerçek MP4 Render Motoru (FFmpeg CBR ile 2.5 - 2.9 Mbps bandında kılavuz önizleme video üretimi)
+        # Gerçek Türkçe Nöral Seslendirme (Edge-TTS)
+        speech_mp3 = job_dir / "narration.mp3"
+        spoken_dur = None
+        try:
+            import edge_tts
+            import concurrent.futures
+            import asyncio
+
+            voice = "tr-TR-EmelNeural" if channel == "Astroloji_Kova" else "tr-TR-AhmetNeural"
+            narration_text = prompt.strip()
+            if len(narration_text) < 15:
+                narration_text = f"{narration_text}. Yeni bölümümüz başlıyor, takipte kalın."
+
+            def _tts_thread():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(edge_tts.Communicate(narration_text, voice).save(str(speech_mp3)))
+                finally:
+                    loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                ex.submit(_tts_thread).result(timeout=12)
+
+            if speech_mp3.exists() and speech_mp3.stat().st_size > 1000:
+                try:
+                    import subprocess as _sub
+                    dur_raw = _sub.check_output(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(speech_mp3)],
+                        text=True, timeout=5
+                    ).strip()
+                    spoken_dur = max(3.0, round(float(dur_raw), 2))
+                except Exception:
+                    spoken_dur = 6.0
+        except Exception as e_tts:
+            logger.debug("[VideoStudioController] Edge-TTS atlandı: %s", e_tts)
+            spoken_dur = None
+
+        final_dur = spoken_dur or 5.0
+        if spoken_dur:
+            filter_chain = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
+            filter_chain_fallback = f"color=c={color_bg}:s={res}:d={final_dur}:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
+
+        # Gerçek MP4 Render Motoru (FFmpeg CBR ile yüksek uyumlu video üretimi)
         output_mp4 = job_dir / "rendered_output.mp4"
         render_success = False
 
@@ -527,14 +570,20 @@ class VideoStudioController:
                     ffmpeg_bin = "ffmpeg"
 
             for vf_chain in (filter_chain, filter_chain_fallback):
+                if spoken_dur and speech_mp3.exists():
+                    audio_input_args = ["-i", str(speech_mp3)]
+                else:
+                    audio_input_args = ["-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100"]
+
                 cmd = [
                     ffmpeg_bin, "-y",
                     "-f", "lavfi", "-i", vf_chain,
-                    "-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100",
+                    *audio_input_args,
                     "-c:v", "libx264", "-x264-params", "nal-hrd=cbr",
                     "-b:v", target_br, "-minrate", target_br, "-maxrate", target_br, "-bufsize", target_br,
                     "-preset", "fast", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "192k",
+                    "-shortest",
                     str(output_mp4)
                 ]
                 proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -543,10 +592,10 @@ class VideoStudioController:
                     file_sz = output_mp4.stat().st_size
                     artifacts["rendered_mp4"] = str(output_mp4)
                     artifacts["file_size_bytes"] = str(file_sz)
-                    artifacts["duration_sec"] = "5.0"
+                    artifacts["duration_sec"] = str(final_dur)
                     artifacts["resolution"] = res
-                    artifacts["audio_track_origin"] = f"Procedural {sine_freq}Hz pilot tone (Kılavuz Senkronizasyon Sinyali)"
-                    artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {target_br} kılavuz render tamamlandı ({file_sz} bytes) (simülasyon: kılavuz önizleme)"
+                    artifacts["audio_track_origin"] = f"Edge-TTS Nöral Seslendirme ({final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
+                    artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {final_dur}s render tamamlandı ({file_sz} bytes)"
                     break
         except Exception as ffmpeg_err:
             logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)

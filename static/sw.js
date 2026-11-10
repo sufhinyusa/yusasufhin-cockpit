@@ -1,13 +1,13 @@
-const CACHE_NAME = 'fabrika-pwa-v10-studio';
+const CACHE_NAME = 'fabrika-pwa-v11-gpu';
 const ASSETS_TO_CACHE = [
   '/',
-  '/site.css?v=10',
-  '/site.js?v=10',
+  '/site.css?v=11',
+  '/site.js?v=11',
   '/fabrika.html',
   '/lab.html',
-  '/lab.js?v=10',
-  '/styles.css?v=6',
-  '/app.js?v=6',
+  '/lab.js?v=11',
+  '/styles.css?v=7',
+  '/app.js?v=7',
   '/manifest.json',
   '/fabrika_icon.svg'
 ];

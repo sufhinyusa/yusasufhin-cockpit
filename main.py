@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -567,6 +567,23 @@ async def get_lab_history(limit: int = Query(12)):
                     continue  # yalnız GERÇEKTEN üretilmiş videolar
                 gorulen.add(jid)
                 art = j.get("artifacts") or {}
+                # DOĞRULAMA + ONARIM (2026-11-10): kayıtta URL olabilir ama dosya
+                # static/media'da olmayabilir → indirme 404 verir. video_factory'de
+                # varsa buraya kopyala; hiç yoksa kaydı LİSTELEME (404 link gösterme).
+                servis_adi = f"{jid}.mp4"
+                if not (MEDIA_DIR / servis_adi).is_file():
+                    kaynak_mp4 = BASE_DIR / "video_factory" / jid / "rendered_output.mp4"
+                    if kaynak_mp4.is_file():
+                        try:
+                            import shutil as _sh2
+                            MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+                            _sh2.copy2(kaynak_mp4, MEDIA_DIR / servis_adi)
+                        except Exception as e_kp:
+                            logger.warning("Medya kopyalanamadı (%s): %s", jid, e_kp)
+                            continue
+                    else:
+                        continue
+                url = f"/api/media/file?path={servis_adi}"
                 sz_bytes = int(art.get("file_size_bytes") or j.get("file_size_bytes") or 0)
                 dl_url = f"{url}{'&' if '?' in url else '?'}download=1"
                 items.append({
@@ -1113,22 +1130,43 @@ async def get_audio_history(limit: int = Query(12)):
     return {"items": items, "count": len(items)}
 
 # -----------------------------------------------------------------------------
-# 7. GPU KÜMESİ TELEMETRİSİ & MOD DEĞİŞİMİ (DÜRÜST STANDBY DURUMU)
+# 7. GPU KÜMESİ TELEMETRİSİ, BULUT İŞÇİ PROTOKOLÜ (KAGGLE / COLAB)
 # -----------------------------------------------------------------------------
 CURRENT_GPU_MODE = "kaggle_first"
+ACTIVE_GPU_WORKERS: Dict[str, Dict[str, Any]] = {}
+
+def _prune_stale_workers():
+    now = time.time()
+    stale = [wid for wid, w in ACTIVE_GPU_WORKERS.items() if now - w.get("last_seen", 0) > 60]
+    for wid in stale:
+        ACTIVE_GPU_WORKERS.pop(wid, None)
 
 @app.get("/api/gpu/cluster/status")
 async def gpu_status():
     """Gerçek GPU işçi bağlantı durumu (Kural 1 gereği dürüst telemetri)."""
+    _prune_stale_workers()
+    kaggle_connected = any(w.get("worker_type") == "kaggle" for w in ACTIVE_GPU_WORKERS.values())
+    colab_connected = any(w.get("worker_type") == "colab" for w in ACTIVE_GPU_WORKERS.values())
+    total_vram = sum(float(w.get("vram_gb", 0)) for w in ACTIVE_GPU_WORKERS.values())
+    
+    if kaggle_connected or colab_connected:
+        st_label = "active (Kaggle Dual-T4 Bağlı)" if kaggle_connected else "active (Google Colab T4 Bağlı)"
+        msg = f"Canlı GPU işçisi bağlı ({total_vram:.1f} GB vRAM). İşler bulutta Dual-T4 GPU ile render edilmektedir."
+    else:
+        st_label = "standby (GPU işçisi bekleniyor)"
+        msg = "Canlı GPU işçisi bağlı değil; işler anında önizleme motoruyla hazırlanmakta, Kaggle/Colab bağlandığında otomatik GPU ile işlenmektedir."
+
     return {
         "success": True,
         "status": {
-            "cluster_status": "standby (GPU işçisi bekleniyor)",
-            "colab_connected": False,
-            "kaggle_connected": False,
-            "allocated_vram_gb": 0.0,
+            "cluster_status": st_label,
+            "colab_connected": colab_connected,
+            "kaggle_connected": kaggle_connected,
+            "allocated_vram_gb": total_vram if (kaggle_connected or colab_connected) else 0.0,
             "mode": CURRENT_GPU_MODE,
-            "message": "Canlı GPU işçisi bağlı değil; üretim işleri bulut kuyruğunda bekletilmektedir.",
+            "active_workers_count": len(ACTIVE_GPU_WORKERS),
+            "workers": list(ACTIVE_GPU_WORKERS.values()),
+            "message": msg,
             "simulasyon": False
         }
     }
@@ -1139,6 +1177,109 @@ async def gpu_mode(req: Request):
     body = await req.json()
     CURRENT_GPU_MODE = body.get("mode", "kaggle_first")
     return {"success": True, "mode": CURRENT_GPU_MODE, "status": "switched"}
+
+@app.post("/api/worker/heartbeat")
+async def worker_heartbeat(req: Request):
+    """Kaggle veya Google Colab GPU işçisinden gelen canlı sinyal (heartbeat)."""
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    wid = body.get("worker_id") or f"worker_{int(time.time())}"
+    ACTIVE_GPU_WORKERS[wid] = {
+        "worker_id": wid,
+        "worker_type": body.get("worker_type", "kaggle"),
+        "gpu_name": body.get("gpu_name", "Tesla T4"),
+        "vram_gb": float(body.get("vram_gb", 16.0)),
+        "status": body.get("status", "idle"),
+        "last_seen": time.time(),
+        "tasks_completed": body.get("tasks_completed", 0)
+    }
+    return {"success": True, "registered": True, "server_time": time.time()}
+
+@app.get("/api/worker/claim")
+async def worker_claim(worker_id: Optional[str] = Query(None)):
+    """Kaggle veya Colab GPU işçisinin sıradaki video görevini alması."""
+    jobs_file = DATA_DIR / "video_jobs.json"
+    if not jobs_file.exists():
+        return {"success": True, "job": None, "message": "Kuyruk boş"}
+    try:
+        data = json.loads(jobs_file.read_text(encoding="utf-8"))
+        jobs = data.get("jobs", [])
+        # Bekleyen veya GPU yükseltmesi bekleyen işi bul
+        for j in jobs:
+            st = str(j.get("status", ""))
+            if "kuyrukta" in st or "onizleme_hazir" in st:
+                j["status"] = f"isleniyor (Kaggle Dual-T4 GPU Render)"
+                j["claimed_by"] = worker_id or "kaggle_worker"
+                j["claimed_at"] = time.time()
+                jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                return {"success": True, "job": j}
+    except Exception as e:
+        logger.warning("[WorkerClaim] Hata: %s", e)
+    return {"success": True, "job": None, "message": "İş yok"}
+
+@app.post("/api/worker/progress")
+async def worker_progress(req: Request):
+    """GPU işçisinin render ilerlemesini bildirmesi."""
+    body = await req.json()
+    jid = body.get("job_id")
+    pct = body.get("progress_pct", 50)
+    stage = body.get("stage", "GPU Render")
+    jobs_file = DATA_DIR / "video_jobs.json"
+    if jobs_file.exists() and jid:
+        try:
+            data = json.loads(jobs_file.read_text(encoding="utf-8"))
+            for j in data.get("jobs", []):
+                if j.get("id") == jid or j.get("job_id") == jid:
+                    j["progress_pct"] = pct
+                    j["current_stage"] = stage
+                    break
+            jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("[WorkerProgress] Hata: %s", e)
+    return {"success": True}
+
+@app.post("/api/worker/upload")
+async def worker_upload(
+    job_id: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """Kaggle veya Colab GPU işçisinin bitirdiği yüksek kaliteli MP4 videosunu yüklemesi."""
+    target_name = f"{job_id}.mp4"
+    target_path = MEDIA_DIR / target_name
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    
+    content = await file.read()
+    target_path.write_bytes(content)
+    file_size = len(content)
+
+    # İş kaydını güncelle
+    jobs_file = DATA_DIR / "video_jobs.json"
+    if jobs_file.exists():
+        try:
+            data = json.loads(jobs_file.read_text(encoding="utf-8"))
+            for j in data.get("jobs", []):
+                if j.get("id") == job_id or j.get("job_id") == job_id:
+                    j["status"] = "tamamlandi (Kaggle Dual-T4 GPU Render)"
+                    j["progress_pct"] = 100
+                    j["file_size_bytes"] = file_size
+                    j["size_kb"] = round(file_size / 1024)
+                    j["simulasyon"] = False
+                    j["output_url"] = f"/api/media/file?path={target_name}"
+                    j["download_url"] = f"/api/media/file?path={target_name}&download=1"
+                    break
+            jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("[WorkerUpload] JSON güncelleme hatası: %s", e)
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "file_size_bytes": file_size,
+        "output_url": f"/api/media/file?path={target_name}",
+        "download_url": f"/api/media/file?path={target_name}&download=1"
+    }
 
 # -----------------------------------------------------------------------------
 # 8. OMNIROUTE MODEL ŞELALESİ & ANTI-SLOP

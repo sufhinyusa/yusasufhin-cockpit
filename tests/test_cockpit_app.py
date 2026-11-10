@@ -274,12 +274,67 @@ def test_audio_honest_queue(client, auth_headers):
 
 def test_gpu_cluster_honest_standby(client):
     """GPU kümesi bağlı işçi yokken standby dönmelidir."""
+    from main import ACTIVE_GPU_WORKERS
+    ACTIVE_GPU_WORKERS.clear()
     res = client.get("/api/gpu/cluster/status")
     assert res.status_code == 200
     st = res.json()["status"]
     assert st["colab_connected"] is False
     assert st["allocated_vram_gb"] == 0.0
     assert "standby" in st["cluster_status"]
+
+
+def test_worker_protocol_and_gpu_activation(client, auth_headers):
+    """Kaggle/Colab GPU işçisi bağlandığında telemetrinin active olduğunu, iş claim ve upload sürecini doğrular."""
+    from main import ACTIVE_GPU_WORKERS
+    ACTIVE_GPU_WORKERS.clear()
+
+    # 1. Başlangıçta standby
+    st1 = client.get("/api/gpu/cluster/status").json()["status"]
+    assert st1["kaggle_connected"] is False
+
+    # 2. worker.py erişimi
+    w_res = client.get("/worker.py")
+    assert w_res.status_code == 200
+    assert "FABRİKA BULUT GPU İŞÇİSİ" in w_res.text
+
+    # 3. Heartbeat gönder
+    hb = client.post("/api/worker/heartbeat", json={
+        "worker_id": "test_kaggle_01",
+        "worker_type": "kaggle",
+        "gpu_name": "2x Tesla T4",
+        "vram_gb": 32.0
+    })
+    assert hb.status_code == 200
+    assert hb.json()["registered"] is True
+
+    # 4. Telemetri aktif olmalı
+    st2 = client.get("/api/gpu/cluster/status").json()["status"]
+    assert st2["kaggle_connected"] is True
+    assert st2["allocated_vram_gb"] == 32.0
+    assert "Kaggle Dual-T4" in st2["cluster_status"]
+
+    # 5. İş oluştur ve claim et
+    v_res = client.post("/api/studio/video/generate", json={
+        "channel": "Tech_AI_Fabrika",
+        "prompt": "Test GPU render",
+        "render_target": "kaggle_32gb"
+    }, headers=auth_headers)
+    assert v_res.status_code == 200
+    job_id = v_res.json()["task"]["job_id"]
+
+    claim = client.get("/api/worker/claim?worker_id=test_kaggle_01").json()
+    assert claim["success"] is True
+
+    # 6. Upload
+    up = client.post(
+        "/api/worker/upload",
+        data={"job_id": job_id},
+        files={"file": (f"{job_id}.mp4", b"\x00\x00\x00\x20ftypisom" + b"\x00" * 2000, "video/mp4")}
+    )
+    assert up.status_code == 200
+    assert up.json()["success"] is True
+    assert up.json()["download_url"].endswith("&download=1")
 
 
 def test_rea_scan_and_history_dynamic(client, auth_headers):
