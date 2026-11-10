@@ -210,7 +210,7 @@ def test_media_legitimate_file_serving(client, auth_headers, tmp_path):
 # 4. KURAL 1 DÜRÜSTLÜK & DURUM MAKİNESİ TESTLERİ
 # -----------------------------------------------------------------------------
 def test_studio_video_honest_state(client, auth_headers):
-    """Video üretim isteği dürüst 'kuyrukta' durumu ve None output_url dönmelidir."""
+    """Video üretim isteği gerçek indirilebilir MP4 ve Kural 1 dürüst önizleme etiketi dönmelidir."""
     res = client.post("/api/studio/video/generate", json={
         "channel": "Tech_AI_Fabrika",
         "prompt": "Test sinematik render",
@@ -220,21 +220,56 @@ def test_studio_video_honest_state(client, auth_headers):
     data = res.json()
     assert data["success"] is True
     task = data["task"]
-    assert "kuyrukta" in task["status"]
-    assert task["output_url"] is None
-    assert task["progress_pct"] == 10
+    job_id = task["job_id"]
+    mp4_path = MEDIA_DIR / f"{job_id}.mp4"
+    try:
+        assert "simülasyon" in task["status"]
+        assert task["simulasyon"] is True
+        assert task["output_url"] == f"/api/media/file?path={job_id}.mp4"
+        assert task["download_url"] == f"/api/media/file?path={job_id}.mp4&download=1"
+        assert mp4_path.exists() and mp4_path.stat().st_size > 1000
+
+        # İndirme bağlantısı (download=1) Content-Disposition: attachment dönmeli
+        dl_res = client.get(task["download_url"], headers=auth_headers)
+        assert dl_res.status_code == 200
+        assert "attachment" in dl_res.headers.get("content-disposition", "")
+        assert f"{job_id}.mp4" in dl_res.headers.get("content-disposition", "")
+    finally:
+        if mp4_path.exists():
+            mp4_path.unlink()
 
 
 def test_audio_honest_queue(client, auth_headers):
-    """Ses üretimi dürüst 'queued' durumu dönmelidir."""
+    """Ses üretimi gerçek indirilebilir WAV dosyası, geçmiş listesi ve Kural 1 etiketi dönmelidir."""
     res = client.post("/api/audio/process", json={
         "action": "generate_music",
-        "params": {"prompt": "Roman ritmi"}
+        "params": {"prompt": "Roman ritmi", "duration_sec": 3}
     }, headers=auth_headers)
     assert res.status_code == 200
     d = res.json()["data"]
-    assert d["status"] == "queued"
-    assert "kuyruğuna alındı" in d["message"]
+    job_id = d["job_id"]
+    wav_path = MEDIA_DIR / f"{job_id}.wav"
+    try:
+        assert "simülasyon" in d["status"]
+        assert d["simulasyon"] is True
+        assert d["output_url"] == f"/api/media/file?path={job_id}.wav"
+        assert d["download_url"] == f"/api/media/file?path={job_id}.wav&download=1"
+        assert wav_path.exists() and wav_path.stat().st_size > 1000
+
+        # Ses geçmişi listelenmeli
+        hist_res = client.get("/api/audio/history", headers=auth_headers)
+        assert hist_res.status_code == 200
+        items = hist_res.json()["items"]
+        assert any(it["job_id"] == job_id for it in items)
+
+        # İndirme bağlantısı (download=1) Content-Disposition: attachment dönmeli
+        dl_res = client.get(d["download_url"], headers=auth_headers)
+        assert dl_res.status_code == 200
+        assert "attachment" in dl_res.headers.get("content-disposition", "")
+        assert f"{job_id}.wav" in dl_res.headers.get("content-disposition", "")
+    finally:
+        if wav_path.exists():
+            wav_path.unlink()
 
 
 def test_gpu_cluster_honest_standby(client):

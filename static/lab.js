@@ -60,8 +60,9 @@
   var sonIsKaydi = null;
 
   function token() {
-    try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+    try { return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('cockpit_token') || ''; } catch (e) { return ''; }
   }
+  window.token = token;
 
   function esc(metin) {
     return String(metin === null || metin === undefined ? '' : metin)
@@ -243,8 +244,11 @@
   function videoyuOynaticiyaBagla(job) {
     if (!job) return;
     sonIsKaydi = job;
-    var t = token();
-    var tamUrl = job.video_url + (job.video_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t || '');
+    var t = token() || localStorage.getItem('cockpit_token') || '';
+    var rawUrl = job.video_url || job.output_url || '';
+    if (!rawUrl) return;
+    var tamUrl = rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t);
+    var indirUrl = tamUrl + '&download=1';
 
     if (videoPlaceholderEl) videoPlaceholderEl.style.display = 'none';
     if (videoPlayerEl) {
@@ -258,19 +262,20 @@
     }
 
     if (outputBadgeEl) {
-      outputBadgeEl.textContent = '✅ Gerçek Üretim (' + (job.elapsed_sec || 1) + ' sn)';
+      outputBadgeEl.textContent = '✅ Üretildi — İndirmeye Hazır';
       outputBadgeEl.className = 'site-badge site-badge-free';
     }
     if (outputMetaEl) outputMetaEl.hidden = false;
     if (outputActionsEl) outputActionsEl.hidden = false;
-    if (metaModelNameEl) metaModelNameEl.textContent = (job.model_ad || job.model_id) + (job.kaynak ? ' [' + job.kaynak + ']' : '');
-    if (metaResFpsEl) metaResFpsEl.textContent = (job.resolution || 'HD') + ' @ ' + (job.fps || 24) + ' FPS';
+    if (metaModelNameEl) metaModelNameEl.textContent = (job.model_ad || job.channel || job.model_id || 'Fabrika Video') + (job.status ? ' [' + job.status + ']' : '');
+    if (metaResFpsEl) metaResFpsEl.textContent = (job.resolution || '1920x1080') + ' @ ' + (job.fps || 30) + ' FPS';
     if (metaDurScenesEl) metaDurScenesEl.textContent = (job.duration || 5) + ' sn';
-    if (metaFileSizeEl) metaFileSizeEl.textContent = (job.size_kb || 0) + ' KB';
+    var kbVal = job.size_kb || (job.file_size_bytes ? Math.max(1, Math.round(Number(job.file_size_bytes) / 1024)) : 0);
+    if (metaFileSizeEl) metaFileSizeEl.textContent = kbVal + ' KB';
 
     if (downloadLinkEl) {
-      downloadLinkEl.href = tamUrl;
-      downloadLinkEl.setAttribute('download', (job.id || 'kovalab_video') + '.mp4');
+      downloadLinkEl.href = indirUrl;
+      downloadLinkEl.setAttribute('download', (job.id || job.job_id || 'kovalab_video') + '.mp4');
     }
   }
 
@@ -500,34 +505,98 @@
   }
 
   function gecmisiCiz(items) {
-    if (!historyGridEl) return;
+    var studioGridEl = document.getElementById('studioVideoHistoryGrid');
     if (!items || !items.length) {
-      historyGridEl.innerHTML = '<div class="site-empty">Henüz gerçek bulut sürücüsüyle üretilmiş bir video yok. Yukarıdan Luma veya Leonardo seçerek ilk gerçek videonuzu üretin!</div>';
+      var bosHtml = '<div class="site-empty">Henüz üretilmiş bir video bulunmuyor. Yukarıdaki formdan "Video Prodüksiyonunu Başlat" butonuna basarak ilk videonuzu üretin!</div>';
+      if (historyGridEl) historyGridEl.innerHTML = bosHtml;
+      if (studioGridEl) studioGridEl.innerHTML = bosHtml;
       return;
     }
-    var t = token();
-    historyGridEl.innerHTML = items.map(function (item) {
-      var vUrl = item.video_url + (item.video_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t || '');
+    var t = token() || localStorage.getItem('cockpit_token') || '';
+    var kartlarHtml = items.map(function (item) {
+      var rawUrl = item.output_url || item.video_url || '';
+      var vUrl = rawUrl ? (rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t)) : '';
+      var dlUrl = vUrl ? (vUrl + '&download=1') : '#';
+      var jid = item.job_id || item.id || 'video';
+      var baslik = item.channel || item.model_ad || item.method || item.model_id || 'Fabrika Video';
+      var durumEtiket = item.status || item.kaynak || 'onizleme_hazir (simülasyon)';
+      var kb = item.size_kb || (item.file_size_bytes ? Math.max(1, Math.round(Number(item.file_size_bytes) / 1024)) : 0);
+      var coz = item.resolution || '1920x1080';
       return '' +
         '<article class="site-card site-model-card">' +
-          '<video controls playsinline preload="metadata" style="width:100%; border-radius:10px; margin-bottom:10px; background:#000; max-height:220px;" src="' + esc(vUrl) + '"></video>' +
-          '<h3 style="font-size:0.96rem;">' + esc(item.model_ad || item.model_id) + ' <span class="site-badge site-badge-free">' + esc(item.kaynak || 'bulut') + '</span></h3>' +
-          '<p style="font-size:0.82rem; margin-bottom:8px;">' + esc(item.prompt || 'Gerçek Bulut Üretimi') + '</p>' +
-          '<div class="site-model-meta">' +
-            '<div>Render Süresi<strong>' + esc(item.elapsed_sec || item.duration || 5) + ' sn</strong></div>' +
-            '<div>Boyut<strong>' + esc(item.size_kb || 0) + ' KB</strong></div>' +
+          '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
+            '<span class="site-badge site-badge-free">✅ ÜRETİLDİ (İndirilebilir)</span>' +
+            '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
           '</div>' +
-          '<div style="margin-top:8px; display:flex; gap:8px;">' +
-            '<a class="site-btn site-btn-ghost" href="' + esc(vUrl) + '" download="' + esc((item.id || 'video') + '.mp4') + '" style="padding:6px 14px; font-size:0.78rem;">⬇️ MP4 İndir</a>' +
+          (vUrl ? '<video controls playsinline preload="metadata" style="width:100%; border-radius:10px; margin-bottom:10px; background:#000; max-height:220px;" src="' + esc(vUrl) + '"></video>' : '') +
+          '<h3 style="font-size:0.96rem; margin:0 0 4px;">' + esc(baslik) + '</h3>' +
+          '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Sinematik Video Üretimi') + '</p>' +
+          '<div class="site-model-meta">' +
+            '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
+            '<div>Çözünürlük<strong>' + esc(coz) + '</strong></div>' +
+            '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
+          '</div>' +
+          '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
+            '<a href="' + esc(dlUrl) + '" download="fabrika-video-' + esc(jid) + '.mp4" ' +
+               'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
+               '⬇️ Videoyu İndir (MP4)' +
+            '</a>' +
+            '<a class="site-btn site-btn-ghost" href="' + esc(vUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
+               '🔗 Yeni Sekmede Aç' +
+            '</a>' +
+          '</div>' +
+        '</article>';
+    }).join('');
+    if (historyGridEl) historyGridEl.innerHTML = kartlarHtml;
+    if (studioGridEl) studioGridEl.innerHTML = kartlarHtml;
+  }
+
+  function sesGecmisiniCiz(items) {
+    var audioGridEl = document.getElementById('studioAudioHistoryGrid');
+    if (!audioGridEl) return;
+    if (!items || !items.length) {
+      audioGridEl.innerHTML = '<div class="site-empty">Henüz üretilmiş bir ses/müzik dosyası yok. Yukarıdaki formdan "Sentezle &amp; Üret" butonuna basarak ilk ses dosyanızı üretin!</div>';
+      return;
+    }
+    var t = token() || localStorage.getItem('cockpit_token') || '';
+    audioGridEl.innerHTML = items.map(function (item) {
+      var rawUrl = item.output_url || '';
+      var aUrl = rawUrl ? (rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t)) : '';
+      var dlUrl = aUrl ? (aUrl + '&download=1') : '#';
+      var jid = item.job_id || 'ses';
+      var kb = item.size_kb || (item.file_size_bytes ? Math.max(1, Math.round(Number(item.file_size_bytes) / 1024)) : 0);
+      var sure = item.duration_sec || 6;
+      var durumEtiket = item.status || 'onizleme_hazir (simülasyon)';
+      return '' +
+        '<article class="site-card site-model-card">' +
+          '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
+            '<span class="site-badge site-badge-free">✅ SES ÜRETİLDİ (İndirilebilir)</span>' +
+            '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
+          '</div>' +
+          '<h3 style="font-size:0.95rem; margin:0 0 4px;">🎵 ' + esc(item.action || 'Ses Üretimi') + '</h3>' +
+          '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Ses Sentezi') + '</p>' +
+          (aUrl ? '<audio controls preload="metadata" src="' + esc(aUrl) + '" style="width:100%; margin-bottom:10px;"></audio>' : '') +
+          '<div class="site-model-meta">' +
+            '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
+            '<div>Süre<strong>' + esc(sure) + ' sn</strong></div>' +
+            '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
+          '</div>' +
+          '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
+            '<a href="' + esc(dlUrl) + '" download="fabrika-ses-' + esc(jid) + '.wav" ' +
+               'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
+               '⬇️ Sesi İndir (.WAV)' +
+            '</a>' +
+            '<a class="site-btn site-btn-ghost" href="' + esc(aUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
+               '🔗 Yeni Sekmede Aç' +
+            '</a>' +
           '</div>' +
         '</article>';
     }).join('');
   }
 
   function gecmisiYukle() {
-    var t = token();
-    if (!t || !historyGridEl) return;
-    fetch('/api/lab/history', { headers: { Authorization: 'Bearer ' + t } })
+    var t = token() || localStorage.getItem('cockpit_token') || '';
+    fetch('/api/lab/history', { headers: t ? { Authorization: 'Bearer ' + t } : {} })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
       .then(function (veri) {
         var items = veri.items || [];
@@ -537,7 +606,15 @@
         }
       })
       .catch(function () { /* yoksay */ });
+
+    fetch('/api/audio/history', { headers: t ? { Authorization: 'Bearer ' + t } : {} })
+      .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .then(function (veri) {
+        sesGecmisiniCiz(veri.items || []);
+      })
+      .catch(function () { /* yoksay */ });
   }
+  window.refreshStudioMediaLists = gecmisiYukle;
 
   function yukle() {
     var t = token();
@@ -546,6 +623,7 @@
       return;
     }
     bosDurum('Model kataloğu ve gerçek bulut sürücüleri yükleniyor…');
+    gecmisiYukle();
 
     fetch('/api/lab/models', { headers: { Authorization: 'Bearer ' + t } })
       .then(function (r) {
@@ -601,6 +679,9 @@ window.switchStudioView = function(viewKey) {
   if (viewKey === 'gpu') {
     window.refreshGpuStatus();
   }
+  if ((viewKey === 'video' || viewKey === 'audio' || viewKey === 'wan') && window.refreshStudioMediaLists) {
+    window.refreshStudioMediaLists();
+  }
 };
 
 // URL Hash Kontrolü (#videoStudio, #audioStudio vb.)
@@ -638,7 +719,7 @@ window.handleStudioVideoSubmit = function(e) {
     return;
   }
 
-  taskBadge.textContent = 'Render Ediliyor';
+  taskBadge.textContent = '⏳ Video Üretiliyor...';
   taskBadge.className = 'site-badge site-badge-free';
 
   hudLog.innerHTML = `[PRODÜKSİYON BAŞLATILDI]<br>` +
@@ -646,9 +727,8 @@ window.handleStudioVideoSubmit = function(e) {
     `• Metot: <strong>${esc(method)}</strong><br>` +
     `• Donanım: <strong>${esc(renderTarget)}</strong><br>` +
     `• Konu: "${esc(promptVal)}"<br>` +
-    `• Durum: Aşama 1/5 Senaryo hazırlanıyor...`;
+    `• Durum: Aşama 1/5 Senaryo ve MP4 Video hazırlanıyor...`;
 
-  // Aşama 1: Done
   var step1 = document.getElementById('step1');
   var step2 = document.getElementById('step2');
   var step3 = document.getElementById('step3');
@@ -658,11 +738,13 @@ window.handleStudioVideoSubmit = function(e) {
   step1.className = 'site-pipeline-step done';
   step2.className = 'site-pipeline-step active';
 
+  var tok = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+
   fetch('/api/studio/video/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+      'Authorization': 'Bearer ' + tok
     },
     body: JSON.stringify({
       channel: channel,
@@ -676,41 +758,89 @@ window.handleStudioVideoSubmit = function(e) {
   .then(function(data) {
     if (data.success && data.task) {
       var task = data.task;
-      step1.className = 'site-pipeline-step done';
-      step2.className = 'site-pipeline-step done';
-      step3.className = 'site-pipeline-step active';
-      step4.className = 'site-pipeline-step';
-      step5.className = 'site-pipeline-step';
+      var outUrl = task.output_url || '';
+      var boyut = (task.artifacts && task.artifacts.file_size_bytes) ? task.artifacts.file_size_bytes : 0;
+      var boyutKb = boyut ? (boyut / 1024).toFixed(1) : '';
+      var cozunurluk = (task.artifacts && task.artifacts.resolution) ? task.artifacts.resolution : '';
+      var tamUrl = outUrl ? (outUrl + (outUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok)) : '';
+      var indirUrl = tamUrl ? (tamUrl + '&download=1') : '';
 
-      taskBadge.textContent = 'Kuyrukta (GPU Bekleniyor)';
-      taskBadge.className = 'site-badge site-badge-free';
+      if (outUrl) {
+        step1.className = 'site-pipeline-step done';
+        step2.className = 'site-pipeline-step done';
+        step3.className = 'site-pipeline-step done';
+        step4.className = 'site-pipeline-step done';
+        step5.className = 'site-pipeline-step';
 
-      hudLog.innerHTML += `<br>• ✅ <strong>Senaryo ve Prompt Analizi Hazırlandı.</strong><br>` +
-        `• ⏳ <strong>Prodüksiyon Görevi Kuyruğa Alındı:</strong> <code>${esc(task.job_id)}</code><br>` +
-        `• Hedef Donanım: <strong>${esc(renderTarget).toUpperCase()}</strong> | Oran: <strong>${esc(aspect)}</strong><br>` +
-        `• 📡 <em>GPU İşçisi (Kaggle Dual-T4 / Colab) sıradaki işi aldığında render otomatik başlayacaktır.</em>`;
+        taskBadge.textContent = '✅ Üretildi (İndirilebilir)';
+        taskBadge.className = 'site-badge site-badge-free';
 
-      stageArea.innerHTML = `
-        <div style="text-align:center; padding:16px;">
-          <div style="font-size:2.8rem; margin-bottom:8px;">⏳</div>
-          <strong style="color:var(--site-accent);">Görev Bulut Kuyruğuna Yazıldı</strong>
-          <p style="margin:4px 0 8px; font-size:0.84rem; color:var(--site-text-dim);">
-            Bilet ID: <code>${esc(task.job_id)}</code> | Kanal: <strong>${esc(task.channel)}</strong>
-          </p>
-          <p style="margin:0 0 12px; font-size:0.78rem; color:var(--site-text-muted);">
-            Render Motoru: <strong>${esc(task.method)}</strong> &bull; Donanım: <strong>${esc(task.render_target)}</strong>
-          </p>
-          <span class="site-badge site-badge-free">Sıraya Alındı (Kural 1 Uyumlu Dürüst Kuyruk)</span>
-        </div>
-      `;
+        hudLog.innerHTML += `<br>• ✅ <strong>VİDEO ÜRETİLDİ!</strong> <code>${esc(task.job_id)}</code><br>` +
+          `• Boyut: <strong>${esc(boyutKb ? boyutKb + ' KB' : String(boyut) + ' bayt')}</strong> | Çözünürlük: <strong>${esc(cozunurluk)}</strong><br>` +
+          `• Durum: <strong>${esc(task.status)}</strong><br>` +
+          `• <em>${esc(task.message || '')}</em>`;
+
+        stageArea.innerHTML = `
+          <div style="padding:12px; width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.45); padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700;">
+                ✅ VİDEO ÜRETİLDİ (${esc(boyutKb ? boyutKb + ' KB' : 'MP4')})
+              </span>
+              <span style="font-size:0.76rem; color:var(--site-text-dim);">
+                Çözünürlük: <strong>${esc(cozunurluk || 'MP4')}</strong> &bull; <code>${esc(task.job_id)}</code>
+              </span>
+            </div>
+            <video controls autoplay playsinline preload="metadata" src="${esc(tamUrl)}"
+                   style="width:100%; max-height:340px; border-radius:10px; background:#000; display:block; margin-bottom:12px;">
+              Tarayıcınız video etiketini desteklemiyor.
+            </video>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+              <a href="${esc(indirUrl)}" download="fabrika-video-${esc(task.job_id)}.mp4"
+                 style="background:#059669; color:#fff; padding:10px 18px; border-radius:8px; font-weight:700; text-decoration:none; display:inline-block;">
+                ⬇️ Videoyu İndir (MP4)
+              </a>
+              <a href="${esc(tamUrl)}" target="_blank" rel="noopener"
+                 style="background:#1e293b; color:#e2e8f0; padding:10px 18px; border-radius:8px; font-weight:600; text-decoration:none; display:inline-block; border:1px solid #334155;">
+                🔗 Yeni Sekmede Aç
+              </a>
+            </div>
+            <p style="margin:10px 0 0; font-size:0.74rem; color:var(--site-text-muted); text-align:center;">
+              Bilet: <code>${esc(task.job_id)}</code> &bull; Motor: <strong>${esc(task.method)}</strong> &bull;
+              Durum: <strong>${esc(task.status)}</strong>
+            </p>
+          </div>
+        `;
+        if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
+      } else {
+        step1.className = 'site-pipeline-step done';
+        step2.className = 'site-pipeline-step active';
+
+        taskBadge.textContent = '⏳ Kuyrukta (Dosya Henüz Yok)';
+        taskBadge.className = 'site-badge site-badge-free';
+
+        hudLog.innerHTML += `<br>• ⚠️ <strong>MP4 Dosyası Henüz Üretilmedi — Kuyrukta:</strong> <code>${esc(task.job_id)}</code><br>` +
+          `• Hedef Donanım: <strong>${esc(renderTarget).toUpperCase()}</strong> | Oran: <strong>${esc(aspect)}</strong><br>` +
+          `• 📡 <em>${esc(task.message || 'GPU İşçisi sıradaki işi aldığında render başlayacaktır.')}</em>`;
+
+        stageArea.innerHTML = `
+          <div style="text-align:center; padding:16px;">
+            <div style="font-size:2.4rem; margin-bottom:8px;">⏳</div>
+            <strong style="color:#f59e0b;">MP4 Dosyası Henüz Üretilmedi (Kuyrukta)</strong>
+            <p style="margin:4px 0 8px; font-size:0.84rem; color:var(--site-text-dim);">
+              Bilet ID: <code>${esc(task.job_id)}</code> | Kanal: <strong>${esc(task.channel)}</strong>
+            </p>
+            <span class="site-badge site-badge-free">Durum: ${esc(task.status || 'queued')}</span>
+          </div>
+        `;
+      }
     } else {
-      hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Hata: ${esc(data.error || 'Prodüksiyon başlatılamadı.')}</span>`;
-      taskBadge.textContent = 'Hata';
+      hudLog.innerHTML += `<br><span style="color:var(--site-danger);">❌ Üretilemedi: ${esc(data.detail || data.error || 'Prodüksiyon başlatılamadı.')}</span>`;
+      taskBadge.textContent = '❌ Üretilemedi';
     }
   })
   .catch(function(err) {
-    hudLog.innerHTML += `<br><span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
-    taskBadge.textContent = 'Hata';
+    hudLog.innerHTML += `<br><span style="color:var(--site-danger);">❌ Ağ Hatası: ${esc(err.message)}</span>`;
+    taskBadge.textContent = '❌ Hata';
   });
 };
 
@@ -758,6 +888,8 @@ window.handleAudioSubmit = function(e) {
   e.preventDefault();
   var inputVal = document.getElementById('audioPromptInput').value.trim();
   var hud = document.getElementById('audioOutputHud');
+  var audioBadge = document.getElementById('audioTaskBadge');
+  var audioStage = document.getElementById('audioStageArea');
   var genre = document.getElementById('audioGenreSelect').value;
   var bpm = Number(document.getElementById('audioBpmInput').value) || 120;
 
@@ -766,11 +898,15 @@ window.handleAudioSubmit = function(e) {
     return;
   }
 
-  hud.innerHTML = `[İŞLENİYOR...] Aksiyon: ${currentAudioAction}`;
+  if (audioBadge) {
+    audioBadge.textContent = '⏳ Ses Üretiliyor...';
+    audioBadge.className = 'site-badge site-badge-free';
+  }
+  hud.innerHTML = `[SES SENTEZLENİYOR...] Aksiyon: <strong>${esc(currentAudioAction)}</strong> — Lütfen bekleyin...`;
 
   var params = {};
   if (currentAudioAction === 'generate_music') {
-    params = { prompt: inputVal, genre: genre, bpm: bpm, duration_sec: 60 };
+    params = { prompt: inputVal, genre: genre, bpm: bpm, duration_sec: 8 };
   } else if (currentAudioAction === 'voice_clone_tts') {
     params = { text: inputVal, voice_profile: 'yusuf_sahin_tr', emotion: 'enerjik' };
   } else if (currentAudioAction === 'generate_podcast') {
@@ -779,9 +915,10 @@ window.handleAudioSubmit = function(e) {
     params = { lyrics: inputVal };
   }
 
+  var tok = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
   var authHeader = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + (token() || localStorage.getItem('cockpit_token') || '')
+    'Authorization': 'Bearer ' + tok
   };
 
   fetch('/api/audio/process', {
@@ -794,6 +931,7 @@ window.handleAudioSubmit = function(e) {
     if (resp.success && resp.data) {
       var d = resp.data;
       if (currentAudioAction === 'identify_music') {
+        if (audioBadge) audioBadge.textContent = d.matched ? '✅ Şarkı Bulundu' : '🔍 Sonuç Yok';
         if (d.matched) {
           hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
             `• Başlık: <strong>${esc(d.title || 'Bilinmeyen')}</strong><br>` +
@@ -805,24 +943,62 @@ window.handleAudioSubmit = function(e) {
             `• Durum: ${esc(d.status || 'Tamamlandı')}<br>` +
             `• Sonuç: ${esc(d.message || 'Eşleşen parça bulunamadı.')}`;
         }
-      } else if (d.status === 'queued' || (d.message && d.message.includes('kuyruğuna'))) {
-        hud.innerHTML = `⏳ <strong>Kuyruğa Alındı (GPU Bekleniyor):</strong><br>` +
-          `• Motor: <strong>${esc(d.engine)}</strong><br>` +
-          `• Durum: <em>${esc(d.message)}</em><br>` +
-          `• Çıktı Formatı: <code>${esc(d.output_format || d.format || 'wav/mp3')}</code><br>` +
-          `• Bilgi: Bulut GPU düğümü bağlandığında otomatik işlenecektir.`;
+      } else if (d.output_url) {
+        var tamSesUrl = d.output_url + (d.output_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok);
+        var indirSesUrl = (d.download_url || (d.output_url + '&download=1')) + '&token=' + encodeURIComponent(tok);
+        var sesBoyutKb = d.size_kb || (d.file_size_bytes ? (d.file_size_bytes / 1024).toFixed(1) : '');
+
+        if (audioBadge) {
+          audioBadge.textContent = '✅ Ses Üretildi (İndirilebilir)';
+          audioBadge.className = 'site-badge site-badge-free';
+        }
+
+        hud.innerHTML = `✅ <strong>SES DOSYASI ÜRETİLDİ!</strong> <code>${esc(d.job_id || '')}</code><br>` +
+          `• Motor: <strong>${esc(d.engine || '')}</strong><br>` +
+          `• Boyut: <strong>${esc(sesBoyutKb ? sesBoyutKb + ' KB' : '')}</strong> | Süre: <strong>${esc(d.duration_sec || '')} sn</strong><br>` +
+          `• Durum: <strong>${esc(d.status || '')}</strong><br>` +
+          `• Mesaj: <em>${esc(d.message || '')}</em>`;
+
+        if (audioStage) {
+          audioStage.innerHTML = `
+            <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.35); border-radius:10px; padding:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+                <span style="background:rgba(16,185,129,0.2); color:#34d399; padding:3px 10px; border-radius:6px; font-size:0.78rem; font-weight:700;">
+                  ✅ SES ÜRETİLDİ (${esc(sesBoyutKb ? sesBoyutKb + ' KB' : 'WAV')})
+                </span>
+                <span style="font-size:0.75rem; color:var(--site-text-dim);">
+                  Süre: <strong>${esc(d.duration_sec || '')} sn</strong> &bull; <code>${esc(d.job_id || '')}</code>
+                </span>
+              </div>
+              <audio controls autoplay preload="metadata" src="${esc(tamSesUrl)}" style="width:100%; height:40px; margin-bottom:10px;"></audio>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="${esc(indirSesUrl)}" download="fabrika-ses-${esc(d.job_id || 'audio')}.wav"
+                   style="background:#059669; color:#fff; padding:8px 16px; border-radius:8px; font-weight:700; font-size:0.82rem; text-decoration:none; display:inline-block;">
+                  ⬇️ Sesi İndir (.WAV)
+                </a>
+                <a href="${esc(tamSesUrl)}" target="_blank" rel="noopener"
+                   style="background:#1e293b; color:#e2e8f0; padding:8px 14px; border-radius:8px; font-weight:600; font-size:0.82rem; text-decoration:none; display:inline-block; border:1px solid #334155;">
+                  🔗 Yeni Sekmede Aç
+                </a>
+              </div>
+            </div>
+          `;
+        }
+        if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
       } else {
-        hud.innerHTML = `✅ <strong>Üretim Tamamlandı:</strong><br>` +
-          `• Motor: <strong>${esc(d.engine)}</strong><br>` +
-          `• Mesaj: ${esc(d.message)}<br>` +
-          `• Çıktı Formatı: <code>${esc(d.output_format || d.format || 'wav/mp3')}</code>`;
+        if (audioBadge) audioBadge.textContent = '❌ Ses Üretilemedi';
+        hud.innerHTML = `⚠️ <strong>Ses Dosyası Üretilemedi:</strong><br>` +
+          `• Motor: <strong>${esc(d.engine || '-')}</strong><br>` +
+          `• Durum: <em>${esc(d.message || d.status || 'Dosya oluşturulamadı')}</em>`;
       }
     } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz')}</span>`;
+      if (audioBadge) audioBadge.textContent = '❌ Hata';
+      hud.innerHTML = `<span style="color:var(--site-danger);">❌ Hata: ${esc(resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz')}</span>`;
     }
   })
   .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
+    if (audioBadge) audioBadge.textContent = '❌ Ağ Hatası';
+    hud.innerHTML = `<span style="color:var(--site-danger);">❌ Ağ Hatası: ${esc(err.message)}</span>`;
   });
 };
 

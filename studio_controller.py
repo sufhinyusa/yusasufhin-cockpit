@@ -506,33 +506,48 @@ class VideoStudioController:
             target_br = "2500k"
 
         filter_chain = f"color=c={color_bg}:s={res}:d=5:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
+        filter_chain_fallback = f"color=c={color_bg}:s={res}:d=5:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
 
         # Gerçek MP4 Render Motoru (FFmpeg CBR ile 2.5 - 2.9 Mbps bandında kılavuz önizleme video üretimi)
         output_mp4 = job_dir / "rendered_output.mp4"
         render_success = False
 
         try:
+            import shutil as _sh
             import subprocess
-            cmd = [
-                "/opt/homebrew/bin/ffmpeg", "-y",
-                "-f", "lavfi", "-i", filter_chain,
-                "-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100",
-                "-c:v", "libx264", "-x264-params", "nal-hrd=cbr",
-                "-b:v", target_br, "-minrate", target_br, "-maxrate", target_br, "-bufsize", target_br,
-                "-preset", "fast", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "192k",
-                str(output_mp4)
-            ]
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
-            if output_mp4.exists() and output_mp4.stat().st_size > 10000:
-                render_success = True
-                file_sz = output_mp4.stat().st_size
-                artifacts["rendered_mp4"] = str(output_mp4)
-                artifacts["file_size_bytes"] = str(file_sz)
-                artifacts["duration_sec"] = "5.0"
-                artifacts["resolution"] = res
-                artifacts["audio_track_origin"] = f"Procedural {sine_freq}Hz pilot tone (Kılavuz Senkronizasyon Sinyali)"
-                artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {target_br} kılavuz render tamamlandı ({file_sz} bytes) (simülasyon: kılavuz önizleme)"
+
+            ffmpeg_bin = _sh.which("ffmpeg")
+            if not ffmpeg_bin and os.path.isfile("/opt/homebrew/bin/ffmpeg"):
+                ffmpeg_bin = "/opt/homebrew/bin/ffmpeg"
+            if not ffmpeg_bin:
+                try:
+                    import imageio_ffmpeg
+                    ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+                except Exception:
+                    ffmpeg_bin = "ffmpeg"
+
+            for vf_chain in (filter_chain, filter_chain_fallback):
+                cmd = [
+                    ffmpeg_bin, "-y",
+                    "-f", "lavfi", "-i", vf_chain,
+                    "-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100",
+                    "-c:v", "libx264", "-x264-params", "nal-hrd=cbr",
+                    "-b:v", target_br, "-minrate", target_br, "-maxrate", target_br, "-bufsize", target_br,
+                    "-preset", "fast", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k",
+                    str(output_mp4)
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                if proc.returncode == 0 and output_mp4.exists() and output_mp4.stat().st_size > 10000:
+                    render_success = True
+                    file_sz = output_mp4.stat().st_size
+                    artifacts["rendered_mp4"] = str(output_mp4)
+                    artifacts["file_size_bytes"] = str(file_sz)
+                    artifacts["duration_sec"] = "5.0"
+                    artifacts["resolution"] = res
+                    artifacts["audio_track_origin"] = f"Procedural {sine_freq}Hz pilot tone (Kılavuz Senkronizasyon Sinyali)"
+                    artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {target_br} kılavuz render tamamlandı ({file_sz} bytes) (simülasyon: kılavuz önizleme)"
+                    break
         except Exception as ffmpeg_err:
             logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)
             render_success = False
