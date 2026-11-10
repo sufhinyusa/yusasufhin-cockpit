@@ -25,18 +25,12 @@ def ensure_packages():
         import requests
     except ImportError:
         pkgs.append("requests")
-    try:
-        import edge_tts
-    except ImportError:
-        pkgs.append("edge-tts")
     if pkgs:
         print(f"[GPU Worker] Gerekli kütüphaneler kuruluyor: {pkgs}...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + pkgs, check=False)
 
 ensure_packages()
 import requests
-import edge_tts
-import asyncio
 
 # 2. Donanım Tespiti (Tesla T4 / Dual GPU)
 def detect_hardware():
@@ -125,25 +119,41 @@ def main():
             print(f"\n🎬 [YENİ GÖREV ALINDI] {jid} | Kanal: {channel} | Konu: '{prompt[:60]}'")
 
             # Aşama 1: İlerleme bildir (%20 Seslendirme)
-            requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 20, "stage": "Türkçe Nöral Seslendirme"}, timeout=5)
+            requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 20, "stage": "Google Gemini Nöral Seslendirme"}, timeout=5)
 
-            # Seslendirme üret (edge-tts)
-            voice = "tr-TR-EmelNeural" if "Astroloji" in channel else "tr-TR-AhmetNeural"
-            speech_file = os.path.join(work_dir, f"{jid}_narration.mp3")
+            # Seslendirme üret (Google Gemini 2.5 Nöral TTS - Microsoft Edge Kesinlikle Yasaktır)
+            voice = "Aoede" if "Astroloji" in channel else "Puck"
+            speech_file = os.path.join(work_dir, f"{jid}_narration.wav")
             out_mp4 = os.path.join(work_dir, f"{jid}.mp4")
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(edge_tts.Communicate(f"{prompt}. Yeni bölümümüz başlıyor, iyi seyirler.", voice).save(speech_file))
-            loop.close()
+            try:
+                r_aud = requests.post(
+                    f"{server_url}/api/audio/process",
+                    json={"action": "voice_clone_tts", "params": {"prompt": prompt, "voice": voice}},
+                    timeout=25
+                )
+                if r_aud.status_code == 200:
+                    aud_data = r_aud.json().get("data", {})
+                    out_aud_url = aud_data.get("output_url")
+                    if out_aud_url:
+                        if not out_aud_url.startswith("http"):
+                            out_aud_url = f"{server_url}{out_aud_url}"
+                        r_down = requests.get(out_aud_url, timeout=30)
+                        if r_down.status_code == 200 and len(r_down.content) > 1000:
+                            with open(speech_file, "wb") as f_sp:
+                                f_sp.write(r_down.content)
+            except Exception as e_aud:
+                print(f"[Worker] Google Gemini seslendirme isteği hatası: {e_aud}")
 
             # Ses süresini ölç
             dur = 6.0
-            try:
-                out = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", speech_file], text=True).strip()
-                dur = max(3.0, round(float(out), 2))
-            except Exception:
-                pass
+            has_speech = os.path.exists(speech_file) and os.path.getsize(speech_file) > 1000
+            if has_speech:
+                try:
+                    out = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", speech_file], text=True).strip()
+                    dur = max(3.0, round(float(out), 2))
+                except Exception:
+                    pass
 
             # Aşama 2: İlerleme bildir (%50 GPU Render)
             requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 50, "stage": "Dual-T4 GPU Render & Kurgu"}, timeout=5)
@@ -157,10 +167,12 @@ def main():
             vcodec = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20"] if hw["has_nvenc"] else ["-c:v", "libx264", "-preset", "fast", "-crf", "22"]
             vf = f"color=c={color_bg}:s={res_str}:d={dur}:r=30,drawbox=x=60:y=180:w={w_val-120}:h=90:color={accent_col}@0.3:t=fill,drawbox=x=60:y=280:w={w_val-120}:h=6:color={accent_col}:t=fill"
 
+            audio_args = ["-i", speech_file] if has_speech else ["-f", "lavfi", "-i", f"sine=frequency=440:duration={dur}:sample_rate=44100"]
+
             cmd = [
                 "ffmpeg", "-y",
                 "-f", "lavfi", "-i", vf,
-                "-i", speech_file,
+                *audio_args,
                 *vcodec,
                 "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "192k",
@@ -189,3 +201,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

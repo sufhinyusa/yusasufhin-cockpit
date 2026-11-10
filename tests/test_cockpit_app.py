@@ -361,3 +361,36 @@ def test_rea_scan_and_history_dynamic(client, auth_headers):
     h = res_hist.json()
     assert h["toplam_tarama"] == 2
     assert isinstance(h["ort_skor"], (int, float))
+
+
+def test_gemini_audio_and_no_edge_tts(client, auth_headers):
+    """Edge-TTS kullanımının tamamen yasaklandığını ve Google Gemini 2.5 ses motorunu doğrular."""
+    import sys
+    import gemini_audio
+
+    # 1. Ses profilleri doğrula
+    assert "Aoede" in gemini_audio.GEMINI_VOICES
+    assert "Puck" in gemini_audio.GEMINI_VOICES
+    assert "Charon" in gemini_audio.GEMINI_VOICES
+    assert "Kore" in gemini_audio.GEMINI_VOICES
+    assert "Fenrir" in gemini_audio.GEMINI_VOICES
+
+    # 2. Kanal ses haritası
+    assert gemini_audio.get_channel_gemini_voice("Astroloji_Kova") == "Aoede"
+    assert gemini_audio.get_channel_gemini_voice("Tech_AI_Fabrika") == "Puck"
+    assert gemini_audio.get_channel_gemini_voice("Belgesel_Sinematik") == "Charon"
+
+    # 3. Video üretimi Gemini seslendirmen seçimiyle çağrılır
+    res = client.post("/api/studio/video/generate", json={
+        "channel": "Tech_AI_Fabrika",
+        "prompt": "Yapay zeka transistör mimarisi",
+        "voice": "Puck",
+        "render_target": "kaggle_32gb"
+    }, headers=auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "download_url" in data["task"]
+    assert data["task"]["download_url"].endswith("&download=1")
+    assert "rendered_mp4" in data["task"]["artifacts"]
+

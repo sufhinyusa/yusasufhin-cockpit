@@ -455,6 +455,7 @@ class VideoStudioController:
         method: str = "remotion_cinema",
         render_target: str = "kaggle_32gb",
         aspect_ratio: str = "16:9",
+        voice: Optional[str] = None,
     ) -> VideoJobSpec:
         """Yeni bir video görevi başlatır, dosyalarını üretir ve kuyruğa yazar."""
         job_id = f"JOB-{int(time.time()*1000)}-{os.urandom(3).hex()}"
@@ -508,42 +509,29 @@ class VideoStudioController:
         filter_chain = f"color=c={color_bg}:s={res}:d=5:r=30,drawtext=text='{engine_title}':fontcolor={accent_col}:fontsize=46:x=(w-text_w)/2:y=240,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
         filter_chain_fallback = f"color=c={color_bg}:s={res}:d=5:r=30,drawbox=x=80:y=220:w={w_val-160}:h=72:color={accent_col}@0.35:t=fill,drawbox=x=80:y=320:w={w_val-160}:h=8:color={accent_col}:t=fill"
 
-        # Gerçek Türkçe Nöral Seslendirme (Edge-TTS)
-        speech_mp3 = job_dir / "narration.mp3"
+        # Gerçek Google Gemini 2.5 Nöral Seslendirme (Microsoft Edge KESİNLİKLE YASAKTIR)
+        speech_wav = job_dir / "narration.wav"
         spoken_dur = None
+        gemini_voice = voice or "Puck"
         try:
-            import edge_tts
-            import concurrent.futures
-            import asyncio
+            from gemini_audio import synthesize_gemini_speech, get_channel_gemini_voice
+            if not voice:
+                gemini_voice = get_channel_gemini_voice(channel)
 
-            voice = "tr-TR-EmelNeural" if channel == "Astroloji_Kova" else "tr-TR-AhmetNeural"
             narration_text = prompt.strip()
             if len(narration_text) < 15:
                 narration_text = f"{narration_text}. Yeni bölümümüz başlıyor, takipte kalın."
 
-            def _tts_thread():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(edge_tts.Communicate(narration_text, voice).save(str(speech_mp3)))
-                finally:
-                    loop.close()
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                ex.submit(_tts_thread).result(timeout=12)
-
-            if speech_mp3.exists() and speech_mp3.stat().st_size > 1000:
-                try:
-                    import subprocess as _sub
-                    dur_raw = _sub.check_output(
-                        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(speech_mp3)],
-                        text=True, timeout=5
-                    ).strip()
-                    spoken_dur = max(3.0, round(float(dur_raw), 2))
-                except Exception:
-                    spoken_dur = 6.0
+            g_path, g_dur = synthesize_gemini_speech(
+                text=narration_text,
+                voice_name=gemini_voice,
+                output_path=speech_wav,
+                output_format="wav",
+            )
+            if g_path and speech_wav.exists() and speech_wav.stat().st_size > 500:
+                spoken_dur = max(3.0, g_dur)
         except Exception as e_tts:
-            logger.debug("[VideoStudioController] Edge-TTS atlandı: %s", e_tts)
+            logger.debug("[VideoStudioController] Gemini TTS atlandı: %s", e_tts)
             spoken_dur = None
 
         final_dur = spoken_dur or 5.0
@@ -570,8 +558,8 @@ class VideoStudioController:
                     ffmpeg_bin = "ffmpeg"
 
             for vf_chain in (filter_chain, filter_chain_fallback):
-                if spoken_dur and speech_mp3.exists():
-                    audio_input_args = ["-i", str(speech_mp3)]
+                if spoken_dur and speech_wav.exists():
+                    audio_input_args = ["-i", str(speech_wav)]
                 else:
                     audio_input_args = ["-f", "lavfi", "-i", f"sine=frequency={sine_freq}:duration=5:sample_rate=44100"]
 
@@ -594,7 +582,7 @@ class VideoStudioController:
                     artifacts["file_size_bytes"] = str(file_sz)
                     artifacts["duration_sec"] = str(final_dur)
                     artifacts["resolution"] = res
-                    artifacts["audio_track_origin"] = f"Edge-TTS Nöral Seslendirme ({final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
+                    artifacts["audio_track_origin"] = f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)" if spoken_dur else f"Procedural {sine_freq}Hz pilot tone"
                     artifacts["render_log"] = f"[{engine_title}] {res} @ 30fps {final_dur}s render tamamlandı ({file_sz} bytes)"
                     break
         except Exception as ffmpeg_err:
@@ -604,7 +592,7 @@ class VideoStudioController:
         if render_success:
             stages = [
                 {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
-                {"ad": "2. Ses Tasarımı & Dublaj", "durum": "onizleme (kılavuz pilot ton) (simülasyon)"},
+                {"ad": "2. Ses Tasarımı & Dublaj", "durum": f"tamamlandi (Google Gemini TTS: {gemini_voice})" if spoken_dur else "onizleme (kılavuz pilot ton) (simülasyon)"},
                 {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "tamamlandi (kod oluşturuldu)"},
                 {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "onizleme_hazir (simülasyon)"},
                 {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "kuyrukta (GPU tam render bekleniyor)"},

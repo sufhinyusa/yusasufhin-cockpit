@@ -144,10 +144,22 @@
               </div>
             </div>
 
+            <!-- Seslendirme Seçimi: Google Gemini 2.5 Nöral TTS -->
+            <div class="site-field" style="margin-bottom: 12px;">
+              <label for="videoVoiceSelect">5. Seslendirme Sanatçısı (Google Gemini 2.5 Nöral TTS)</label>
+              <select id="videoVoiceSelect" class="site-select">
+                <option value="Aoede" selected>🎙️ Aoede (Sıcak, Etkileyici Kadın — Astroloji, Hikaye &amp; YouTube)</option>
+                <option value="Puck">⚡ Puck (Dinamik, Enerjik Erkek — Teknoloji, Kod &amp; Viral Shorts)</option>
+                <option value="Charon">🏛️ Charon (Derin, Otoriter Erkek — Belgesel, Tarih &amp; Felsefe)</option>
+                <option value="Kore">📰 Kore (Net, Sakin Kadın — Haber, Finans &amp; Eğitim)</option>
+                <option value="Fenrir">🔥 Fenrir (Güçlü, Dramatik Erkek — Sinematik Fragman &amp; Aksiyon)</option>
+              </select>
+            </div>
+
             <!-- 3. Prompt & Hızlı Şablonlar -->
             <div class="site-field">
               <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                <label for="videoPromptInput" style="margin:0;">5. Video Konusu veya Senaryo İstemi (Prompt)</label>
+                <label for="videoPromptInput" style="margin:0;">6. Video Konusu veya Senaryo İstemi (Prompt)</label>
                 <div class="site-prompt-chips">
                   <button type="button" class="site-chip-btn" onclick="setStudioPrompt('♒ Kova Burcu Haftalık Analizi: Gezegen kavuşumları ve sezgisel uyanış dönemi')">♒ Kova Analizi</button>
                   <button type="button" class="site-chip-btn" onclick="setStudioPrompt('🤖 Yapay Zeka Çip Devrimi: Transistör seviyesinde sinirsel işlemciler ve yerel modeller')">🤖 AI Çip Devrimi</button>
@@ -298,6 +310,17 @@
                   <label for="audioBpmInput">Hız (BPM)</label>
                   <input type="number" id="audioBpmInput" class="site-input" value="128" min="60" max="200">
                 </div>
+              </div>
+
+              <div class="site-field" id="audioVoiceRow" style="display:none; margin-top:8px;">
+                <label for="audioVoiceSelect">Google Gemini 2.5 Nöral Ses Profili</label>
+                <select id="audioVoiceSelect" class="site-select">
+                  <option value="Aoede" selected>🎙️ Aoede (Sıcak, Etkileyici Kadın — Astroloji &amp; Hikaye)</option>
+                  <option value="Puck">⚡ Puck (Dinamik, Enerjik Erkek — Teknoloji &amp; Viral Shorts)</option>
+                  <option value="Charon">🏛️ Charon (Derin, Otoriter Erkek — Belgesel &amp; Tarih)</option>
+                  <option value="Kore">📰 Kore (Net, Sakin Kadın — Haber &amp; Eğitici)</option>
+                  <option value="Fenrir">🔥 Fenrir (Güçlü, Dramatik Erkek — Sinematik Fragman)</option>
+                </select>
               </div>
             </div>
 

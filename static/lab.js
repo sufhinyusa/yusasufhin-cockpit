@@ -321,7 +321,8 @@
         camera_motion: cameraSelectEl ? cameraSelectEl.value : 'otomatik',
         style: styleSelectEl ? styleSelectEl.value : 'sinematik',
         tts_enabled: sesSecimi !== 'none',
-        tts_voice: sesSecimi !== 'none' ? sesSecimi : 'tr-TR-AhmetNeural',
+        tts_voice: sesSecimi !== 'none' ? sesSecimi : 'Puck',
+        voice: sesSecimi !== 'none' ? sesSecimi : 'Puck',
         subtitles_enabled: subtitlesCheckEl ? Boolean(subtitlesCheckEl.checked) : true
       };
 
@@ -709,6 +710,8 @@ window.handleStudioVideoSubmit = function(e) {
   var method = document.getElementById('videoMethodSelect').value;
   var renderTarget = document.getElementById('videoRenderTarget').value;
   var aspect = document.getElementById('videoAspectSelect').value;
+  var voiceEl = document.getElementById('videoVoiceSelect');
+  var voiceVal = voiceEl ? voiceEl.value : 'Aoede';
   var promptVal = document.getElementById('videoPromptInput').value.trim();
   var hudLog = document.getElementById('studioHudLog');
   var taskBadge = document.getElementById('studioTaskBadge');
@@ -726,6 +729,7 @@ window.handleStudioVideoSubmit = function(e) {
     `• Hedef Kanal: <strong>${esc(channel)}</strong><br>` +
     `• Metot: <strong>${esc(method)}</strong><br>` +
     `• Donanım: <strong>${esc(renderTarget)}</strong><br>` +
+    `• Seslendirmen: <strong>Google Gemini 2.5 (${esc(voiceVal)})</strong><br>` +
     `• Konu: "${esc(promptVal)}"<br>` +
     `• Durum: Aşama 1/5 Senaryo ve MP4 Video hazırlanıyor...`;
 
@@ -751,7 +755,8 @@ window.handleStudioVideoSubmit = function(e) {
       method: method,
       render_target: renderTarget,
       aspect_ratio: aspect,
-      prompt: promptVal
+      prompt: promptVal,
+      voice: voiceVal
     })
   })
   .then(function(res) { return res.json(); })
@@ -928,23 +933,28 @@ window.switchAudioAction = function(action) {
   var label = document.getElementById('audioPromptLabel');
   var input = document.getElementById('audioPromptInput');
   var paramRow = document.getElementById('audioParamRow');
+  var voiceRow = document.getElementById('audioVoiceRow');
 
   if (action === 'generate_music') {
     label.textContent = 'Müzik İstem Açıklaması';
     input.placeholder = 'Örn: Eğlenceli enerjik Trakya Roman havası ritmi, klarnet ve darbuka solosu...';
     paramRow.style.display = 'grid';
+    if (voiceRow) voiceRow.style.display = 'none';
   } else if (action === 'voice_clone_tts') {
-    label.textContent = 'Seslendirilecek Metin (VoiceStudio)';
+    label.textContent = 'Seslendirilecek Metin (Google Gemini 2.5 Nöral TTS)';
     input.placeholder = 'Örn: Merhaba, Fabrika otonom ses stüdyosuna hoş geldiniz...';
     paramRow.style.display = 'none';
+    if (voiceRow) voiceRow.style.display = 'block';
   } else if (action === 'generate_podcast') {
     label.textContent = 'Podcast Konusu veya Doküman Özeti (Podcastfy)';
     input.placeholder = 'Örn: Kaggle ve Colab GPU mimarisi ile sıfır maliyetle yapay zeka işletimi...';
     paramRow.style.display = 'none';
+    if (voiceRow) voiceRow.style.display = 'block';
   } else if (action === 'identify_music') {
     label.textContent = 'Şarkı Sözleri veya Sosyal Medya İpucu';
     input.placeholder = 'Örn: Aman aman aman kara gözlüm sana yandı benim gönlüm...';
     paramRow.style.display = 'none';
+    if (voiceRow) voiceRow.style.display = 'none';
   }
 };
 
@@ -956,6 +966,8 @@ window.handleAudioSubmit = function(e) {
   var audioStage = document.getElementById('audioStageArea');
   var genre = document.getElementById('audioGenreSelect').value;
   var bpm = Number(document.getElementById('audioBpmInput').value) || 120;
+  var voiceSelectEl = document.getElementById('audioVoiceSelect');
+  var voiceVal = voiceSelectEl ? voiceSelectEl.value : 'Aoede';
 
   if (!inputVal) {
     alert('Lütfen bir metin veya arama terimi girin.');
@@ -966,15 +978,15 @@ window.handleAudioSubmit = function(e) {
     audioBadge.textContent = '⏳ Ses Üretiliyor...';
     audioBadge.className = 'site-badge site-badge-free';
   }
-  hud.innerHTML = `[SES SENTEZLENİYOR...] Aksiyon: <strong>${esc(currentAudioAction)}</strong> — Lütfen bekleyin...`;
+  hud.innerHTML = `[SES SENTEZLENİYOR...] Aksiyon: <strong>${esc(currentAudioAction)}</strong> (${esc(voiceVal)}) — Lütfen bekleyin...`;
 
   var params = {};
   if (currentAudioAction === 'generate_music') {
     params = { prompt: inputVal, genre: genre, bpm: bpm, duration_sec: 8 };
   } else if (currentAudioAction === 'voice_clone_tts') {
-    params = { text: inputVal, voice_profile: 'yusuf_sahin_tr', emotion: 'enerjik' };
+    params = { text: inputVal, voice: voiceVal, voice_profile: voiceVal, emotion: 'enerjik' };
   } else if (currentAudioAction === 'generate_podcast') {
-    params = { topic: inputVal, length_minutes: 5 };
+    params = { topic: inputVal, voice: voiceVal, length_minutes: 5 };
   } else if (currentAudioAction === 'identify_music') {
     params = { lyrics: inputVal };
   }

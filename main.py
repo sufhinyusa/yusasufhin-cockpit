@@ -662,6 +662,7 @@ async def generate_lab_video(req: Request):
     model_ad = body.get("model_ad", model_id)
     prompt = body.get("prompt", "Günün sinematik videosu")
     aspect_ratio = body.get("aspect_ratio", "16:9")
+    voice = body.get("voice")
 
     try:
         from studio_controller import VideoStudioController
@@ -672,6 +673,7 @@ async def generate_lab_video(req: Request):
             method="blender_wan" if "wan" in str(model_id).lower() else "remotion_cinema",
             render_target="kaggle_32gb",
             aspect_ratio=aspect_ratio,
+            voice=voice,
         )
         sz_b = int(spec.artifacts.get("file_size_bytes") or 0)
         dl_url = f"{spec.output_url}&download=1" if spec.output_url else None
@@ -788,6 +790,7 @@ async def studio_video_generate(req: Request):
     method = body.get("method", "remotion_cinema")
     render_target = body.get("render_target", "kaggle_32gb")
     aspect_ratio = body.get("aspect_ratio", "16:9")
+    voice = body.get("voice")
 
     try:
         from studio_controller import VideoStudioController
@@ -799,6 +802,7 @@ async def studio_video_generate(req: Request):
             method=method,
             render_target=render_target,
             aspect_ratio=aspect_ratio,
+            voice=voice,
         )
         dl_url = f"{spec.output_url}&download=1" if spec.output_url else None
         task_data = {
@@ -876,7 +880,33 @@ def _synthesize_audio_wav(action: str, params: Dict[str, Any], out_path: Path) -
         params.get("prompt") or params.get("text") or params.get("topic") or "Fabrika ses üretimi"
     ).strip()
 
-    # 1) macOS üzerinde gerçek Türkçe TTS seslendirme dene (voice_clone_tts / generate_podcast)
+    # 1) Google Gemini 2.5 Nöral TTS (Hem Linux/Render bulutta hem macOS'ta %100 saf API, Microsoft Edge KESİNLİKLE YASAKTIR)
+    if action in ("voice_clone_tts", "generate_podcast"):
+        try:
+            from gemini_audio import synthesize_gemini_speech
+            tts_text = prompt_text[:350]
+            if action == "generate_podcast":
+                tts_text = f"Fabrika Podcast yayınına hoş geldiniz. Bugünkü konumuz: {tts_text}."
+            voice_choice = str(params.get("voice") or "Aoede")
+            g_path, g_dur = synthesize_gemini_speech(
+                text=tts_text,
+                voice_name=voice_choice,
+                output_path=out_path,
+                output_format="wav"
+            )
+            if g_path and out_path.is_file() and out_path.stat().st_size > 1000:
+                sz = out_path.stat().st_size
+                return {
+                    "duration_sec": g_dur,
+                    "file_size_bytes": sz,
+                    "simulasyon": False,
+                    "status": "tamamlandi",
+                    "engine": f"Google Gemini 2.5 Neural TTS ({voice_choice})",
+                }
+        except Exception as e_gemini:
+            logger.debug("Gemini TTS atlandı: %s", e_gemini)
+
+    # 2) macOS üzerinde yerel seslendirme dene (voice_clone_tts / generate_podcast)
     if action in ("voice_clone_tts", "generate_podcast") and os.path.isfile("/usr/bin/say"):
         try:
             import shutil as _sh

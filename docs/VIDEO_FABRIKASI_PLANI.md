@@ -71,7 +71,7 @@ flowchart LR
    - İşçi `POST /api/worker/heartbeat` ile sunucuya bağlanır. Panelde anında **`🟢 Kaggle Dual-T4 Bağlı (32.0 GB vRAM)`** görünür.
    - İşçi sıradaki işi `GET /api/worker/claim` ile alır, GPU'da yüksek çözünürlüklü render eder (NVENC veya Wan difüzyon) ve biten MP4'ü `POST /api/worker/upload` ile sunucuya yükler.
 2. **Kaggle/Colab Kapalıyken (Akıllı Çift Motor - Anında Nöral Seslendirme):**
-   - Kullanıcı işçi açmadan hemen video indirmek isterse, sistem `edge-tts` ile gerçek Türkçe nöral ses (`tr-TR-AhmetNeural` / `tr-TR-EmelNeural`) ve dinamik kurgu ile **5-10 saniyede gerçek sesli 1080p MP4** üretir.
+   - Kullanıcı işçi açmadan hemen video indirmek isterse, sistem **Google Gemini 2.5 Nöral TTS** (`gemini-2.5-flash-preview-tts` / `gemini-2.5-pro-preview-tts`) ile gerçek yüksek kaliteli seslendirme (`Aoede`, `Puck`, `Charon`, `Kore`, `Fenrir`) ve dinamik kurgu ile **5-10 saniyede gerçek sesli 1080p MP4** üretir.
    - İş kuyrukta GPU için de saklanır; Kaggle açıldığında otomatik olarak GPU ile 4K/AI olarak yükseltilir.
 
 ---
@@ -103,7 +103,7 @@ flowchart LR
 ```
 
 - **Senaryo:** mevcut `/api/omniroute/generate` altyapısı kullanılır; çıktı **zorunlu JSON şeması**: `{title, description, tags[], scenes:[{text, visual_query, duration_hint, on_screen_text}]}`. Şema doğrulanmazsa 2 kez yeniden dene, sonra dürüst hata.
-- **TTS:** `edge-tts` (ücretsiz, Türkçe: `tr-TR-AhmetNeural`, `tr-TR-EmelNeural`). Yedek: macOS `say` (yalnız Mac işçisinde). Sahne süresi = TTS süresi + 0.4 sn.
+- **TTS:** Google Gemini 2.5 Nöral TTS (`gemini_audio.py`, ses profilleri: `Aoede`, `Puck`, `Charon`, `Kore`, `Fenrir`). Microsoft Edge yasaklanmıştır. Sahne süresi = TTS süresi + 0.4 sn.
 - **Altyazı:** TTS metninden doğrudan SRT (zamanlar TTS sürelerinden). Kelime-kelime shorts altyazısı için `faster-whisper` (Mac işçisi).
 - **Müzik:** telifsiz parçalar `assets/music/<mood>/` (kullanıcı ekler) + ffmpeg `sidechaincompress` ile ses altında otomatik kısma.
 - **Kapak:** Pillow ile 1280×720 — en iyi kare + başlık + kanal rengi.
@@ -192,7 +192,7 @@ Yeni paket: `pipeline/` (her dosya ≤ 300 satır)
 | Modül | Görev |
 |---|---|
 | `pipeline/script.py` | LLM'den JSON senaryo (şema doğrulama + 2 yeniden deneme) |
-| `pipeline/tts.py` | edge-tts, sahne başına mp3 + süre ölçümü (`ffprobe`) |
+| `pipeline/tts.py` | Google Gemini 2.5 Nöral TTS, sahne başına wav + süre ölçümü (`ffprobe`) |
 | `pipeline/visuals_stock.py` | Pexels/Pixabay arama (`visual_query`), oran uygun klip seçimi, indirme önbelleği (`temp/cache/`) |
 | `pipeline/subtitles.py` | SRT + ASS (shorts için büyük, ortalı, vurgulu) |
 | `pipeline/compose_ffmpeg.py` | Sahne kurgusu: Ken Burns, crossfade, LUT, metin katmanı, müzik ducking, loudness `-14 LUFS` (YouTube standardı) |
