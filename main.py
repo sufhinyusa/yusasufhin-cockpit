@@ -81,6 +81,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # -----------------------------------------------------------------------------
 # 1. TEMEL SAYFALAR VE STATİK VARLIKLAR (EXPLICIT ROUTES)
 # -----------------------------------------------------------------------------
+@app.api_route("/ping", methods=["GET", "HEAD"])
+@app.api_route("/healthz", methods=["GET", "HEAD"])
+async def ping_health():
+    """UptimeRobot ve harici 7/24 uyanık tutma servisleri için ultra-hafif ping."""
+    return JSONResponse(content={"status": "ok", "service": "yusasufhin-cockpit", "live": True})
+
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root_index():
     return FileResponse(STATIC_DIR / "index.html")
