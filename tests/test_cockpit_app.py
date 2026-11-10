@@ -210,7 +210,13 @@ def test_media_legitimate_file_serving(client, auth_headers, tmp_path):
 # 4. KURAL 1 DÜRÜSTLÜK & DURUM MAKİNESİ TESTLERİ
 # -----------------------------------------------------------------------------
 def test_studio_video_honest_state(client, auth_headers):
-    """Video üretim isteği gerçek indirilebilir MP4 ve Kural 1 dürüst önizleme etiketi dönmelidir."""
+    """Video üretimi gerçek indirilebilir MP4 ve DÜRÜST durum etiketi dönmelidir.
+
+    2026-11-10: Hat iki modlu hale geldi ve ikisi de dürüstçe etiketlenir:
+      * `yz_montaj_hazir`      → gerçek YZ sahneleri (FLUX difüzyon), simulasyon=False
+      * `onizleme_hazir (simülasyon)` → YZ erişimi yoksa başlık kartı yedeği
+    Test ikisini de kabul eder ama etiketin İÇERİKLE tutarlı olmasını şart koşar.
+    """
     res = client.post("/api/studio/video/generate", json={
         "channel": "Tech_AI_Fabrika",
         "prompt": "Test sinematik render",
@@ -223,11 +229,26 @@ def test_studio_video_honest_state(client, auth_headers):
     job_id = task["job_id"]
     mp4_path = MEDIA_DIR / f"{job_id}.mp4"
     try:
-        assert "simülasyon" in task["status"]
-        assert task["simulasyon"] is True
+        status = str(task["status"])
+        kaynak = str((task.get("artifacts") or {}).get("kaynak") or "")
+
+        # Etiket içerikle tutarlı olmalı (Kural 1: sessiz sahte başarı yok)
+        if "simülasyon" in status:
+            assert task["simulasyon"] is True
+            assert kaynak == "baslik_karti"
+        else:
+            assert status == "yz_montaj_hazir"
+            assert task["simulasyon"] is False
+            assert kaynak == "flux_montaj"
+
         assert task["output_url"] == f"/api/media/file?path={job_id}.mp4"
         assert task["download_url"] == f"/api/media/file?path={job_id}.mp4&download=1"
-        assert mp4_path.exists() and mp4_path.stat().st_size > 1000
+        assert mp4_path.exists() and mp4_path.stat().st_size > 20000
+
+        # İndirilen MP4 gerçekten oynatılabilir olmalı (moov atomu)
+        from video_render import mp4_gecerli_mi
+
+        assert mp4_gecerli_mi(mp4_path)[0] is True
 
         # İndirme bağlantısı (download=1) Content-Disposition: attachment dönmeli
         dl_res = client.get(task["download_url"], headers=auth_headers)
@@ -237,6 +258,7 @@ def test_studio_video_honest_state(client, auth_headers):
     finally:
         if mp4_path.exists():
             mp4_path.unlink()
+
 
 
 def test_audio_honest_queue(client, auth_headers):

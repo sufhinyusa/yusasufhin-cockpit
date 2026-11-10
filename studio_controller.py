@@ -526,66 +526,126 @@ class VideoStudioController:
 
         final_dur = spoken_dur or 5.0
 
-        # GERÇEK MP4 RENDER (2026-11-10 onarımı)
-        # ESKİ HATA: `subprocess.run(..., timeout=15)` ffmpeg'i 15. saniyede
-        # öldürüyordu → MP4'ün `moov` atomu yazılmıyor, geriye 2 KB'lık
-        # açılamayan dosya kalıyordu ("moov atom not found"). Ayrıca video
-        # `color=` + iki `drawbox`tan ibaretti; prompt ile hiçbir ilişkisi yoktu
-        # (5 sn düz renk ≈ 85 KB → "boş video").
-        # ÇÖZÜM: `video_render.py` — prompt metnini taşıyan başlık kartı +
-        # zoompan hareketi + 120 sn gerçek zaman aşımı + atomik yazma +
-        # moov/ftyp/mdat doğrulaması.
+        # GERÇEK YZ VİDEO HATTI (2026-11-10 ikinci onarım)
+        # ÖNCEKİ DURUM: video, prompt metnini kareye basan TEK statik karttı
+        # (2.0s/3.5s/4.8s kareleri birebir aynı, sahne değişimi 0). Kurucu
+        # haklıydı: "sadece o promptu okuyor, video üretimi yok".
+        # ÇÖZÜM: `ai_video_montaj.py` — FLUX.1-schnell difüzyonuyla prompt'tan
+        # N adet gerçek YZ sahnesi üretilir, her sahne Ken Burns hareketine
+        # sokulur ve xfade geçişlerle sinematik montaja bağlanır.
+        # YZ sahne üretilemezse (HF_TOKEN/Space erişimi yok) `video_render.py`
+        # başlık kartı hattına dürüst yedek yapılır ve `kaynak` alanı bunu
+        # açıkça söyler.
         output_mp4 = job_dir / "rendered_output.mp4"
         render_success = False
+        render_kaynak = "baslik_karti"
 
         try:
-            from video_render import video_render_et
+            from ai_video_montaj import ai_video_uret
 
-            render = video_render_et(
+            ai_sonuc = ai_video_uret(
                 hedef_mp4=output_mp4,
-                baslik=channel or "Fabrika Stüdyo",
                 prompt=prompt,
                 genislik=w_val,
                 yukseklik=h_val,
-                sure_sn=final_dur,
+                sahne_sayisi=3,
+                sahne_sure_sn=3.0,
                 ses_yolu=speech_wav if spoken_dur else None,
-                vurgu=tuple(int(accent_col.replace("0x", "")[i:i + 2], 16) for i in (0, 2, 4)),
-                pilot_frekans=sine_freq,
+                log=lambda m: logger.info("[AIVideo] %s", m),
             )
-            if render.get("basarili"):
+            if ai_sonuc.get("basarili"):
                 render_success = True
-                file_sz = int(render.get("boyut") or 0)
+                render_kaynak = "flux_montaj"
+                file_sz = int(ai_sonuc.get("boyut") or 0)
+                sahne_sayisi = int(ai_sonuc.get("sahne") or 0)
                 artifacts["rendered_mp4"] = str(output_mp4)
                 artifacts["file_size_bytes"] = str(file_sz)
-                artifacts["duration_sec"] = str(final_dur)
                 artifacts["resolution"] = res
-                artifacts["audio_track_origin"] = (
-                    f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice}, {final_dur}s)"
-                    if spoken_dur else f"Procedural {sine_freq}Hz pilot tone (simülasyon)"
-                )
+                artifacts["sahne_sayisi"] = str(sahne_sayisi)
+                artifacts["kaynak"] = "flux_montaj"
                 artifacts["render_log"] = (
-                    f"[{engine_title}] {res} @ 30fps {final_dur}s render tamamlandı "
+                    f"[{engine_title}] GERÇEK YZ MONTAJ — FLUX.1-schnell ile "
+                    f"{sahne_sayisi} sahne, {res}, Ken Burns + xfade "
                     f"({file_sz} bytes, moov doğrulandı)"
                 )
             else:
-                artifacts["render_error"] = str(render.get("hata") or "bilinmeyen render hatası")
-                logger.warning(
-                    "[VideoStudioController] Render başarısız: %s", artifacts["render_error"]
+                artifacts["ai_hata"] = str(ai_sonuc.get("hata") or "bilinmeyen hata")
+                logger.warning("[VideoStudioController] YZ video hattı başarısız: %s",
+                               artifacts["ai_hata"])
+        except Exception as e_ai:
+            logger.warning("[VideoStudioController] YZ video hattı istisnası: %s", e_ai)
+            artifacts["ai_hata"] = str(e_ai)[:200]
+
+        # YEDEK: YZ sahne üretilemediyse prompt metnini taşıyan başlık kartı
+        if not render_success:
+            try:
+                from video_render import video_render_et
+
+                render = video_render_et(
+                    hedef_mp4=output_mp4,
+                    baslik=channel or "Fabrika Stüdyo",
+                    prompt=prompt,
+                    genislik=w_val,
+                    yukseklik=h_val,
+                    sure_sn=final_dur,
+                    ses_yolu=speech_wav if spoken_dur else None,
+                    vurgu=tuple(int(accent_col.replace("0x", "")[i:i + 2], 16) for i in (0, 2, 4)),
+                    pilot_frekans=sine_freq,
                 )
-        except Exception as ffmpeg_err:
-            logger.warning("[VideoStudioController] FFmpeg render atlandı veya başarısız: %s", ffmpeg_err)
-            render_success = False
+                if render.get("basarili"):
+                    render_success = True
+                    render_kaynak = "baslik_karti"
+                    file_sz = int(render.get("boyut") or 0)
+                    artifacts["rendered_mp4"] = str(output_mp4)
+                    artifacts["file_size_bytes"] = str(file_sz)
+                    artifacts["duration_sec"] = str(final_dur)
+                    artifacts["resolution"] = res
+                    artifacts["kaynak"] = "baslik_karti"
+                    artifacts["render_log"] = (
+                        f"[{engine_title}] YEDEK başlık kartı (YZ sahne üretilemedi) "
+                        f"{res} @ 30fps {final_dur}s ({file_sz} bytes, moov doğrulandı)"
+                    )
+                else:
+                    artifacts["render_error"] = str(render.get("hata") or "bilinmeyen hata")
+            except Exception as e_yedek:
+                logger.warning("[VideoStudioController] Yedek render hatası: %s", e_yedek)
+
+        if render_success:
+            artifacts["audio_track_origin"] = (
+                f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice})"
+                if spoken_dur else f"Procedural {sine_freq}Hz pilot tone (simülasyon)"
+            )
+
 
 
         if render_success:
+            if render_kaynak == "flux_montaj":
+                gorsel_durum = (
+                    f"tamamlandi (GERÇEK YZ: FLUX.1-schnell difüzyonu, "
+                    f"{artifacts.get('sahne_sayisi', '?')} sahne, Ken Burns + xfade)"
+                )
+                render_durum = "tamamlandi (YZ görsel montajı — video difüzyonu değil)"
+                yayin_durum = "kuyrukta (Wan/LTX video difüzyonu için GPU kotası bekleniyor)"
+            else:
+                gorsel_durum = (
+                    "YEDEK: başlık kartı (YZ sahne üretilemedi — "
+                    f"{artifacts.get('ai_hata', 'HF erişimi yok')[:80]})"
+                )
+                render_durum = "onizleme_hazir (simülasyon)"
+                yayin_durum = "kuyrukta (GPU tam render bekleniyor)"
+
             stages = [
                 {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
                 {"ad": "2. Ses Tasarımı & Dublaj", "durum": f"tamamlandi (Google Gemini TTS: {gemini_voice})" if spoken_dur else "onizleme (kılavuz pilot ton) (simülasyon)"},
-                {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "tamamlandi (kod oluşturuldu)"},
-                {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "onizleme_hazir (simülasyon)"},
-                {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "kuyrukta (GPU tam render bekleniyor)"},
+                {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": gorsel_durum},
+                {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": render_durum},
+                {"ad": "5. YouTube & Yayın Dağıtımı", "durum": yayin_durum},
             ]
-            job_status = "onizleme_hazir (simülasyon)"
+            job_status = (
+                "yz_montaj_hazir" if render_kaynak == "flux_montaj"
+                else "onizleme_hazir (simülasyon)"
+            )
+
             # MEDYA SUNUMU (2026-11-09): `/api/media/file` yalnız MEDIA_DIR /
             # DATA_MEDIA_DIR içinde ve DOSYA ADIYLA arıyor. Video `video_factory/
             # JOB-xxx/rendered_output.mp4` altında olduğu için URL 404 veriyordu.
