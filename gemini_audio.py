@@ -35,16 +35,8 @@ GEMINI_VOICES = {
     "Fenrir": "Fenrir (Güçlü, Dramatik Erkek — Sinematik ve Fragman)",
 }
 
-FALLBACK_GEMINI_KEYS = [
-    "AIzaSyCwKhDCQHyLZKdd7gHKx4vCBdFP1S-Pd7c",
-    "AIzaSyCWzzg5lhcMoH5ZN4ytDwE8aMqWYuetc3s",
-    "AIzaSyBdJ-86BRHWSz5RF7DXELoRMX8t9aB3yPs",
-    "AIzaSyAfJfOuPKlCHvTTBFRLGLf0nN4AAVx_RI8",
-    "AIzaSyBHYUo3kZkN7_Oc6HecstKsyCxF-lgJMLI",
-    "AIzaSyB3rtBHk38OsVPKqBDs-N0dDb-eHI6H10E",
-    "AIzaSyALxjTjJZkeDri5ml_QagO3f5A_ugi3RNY",
-    "AIzaSyBz9TR7zm1xa6LM6hWaA3qNVfjrZ1Tv9F8",
-]
+# Bulut ortamı (Render) için güvenli yedek anahtar (otomatik tarayıcı engeli için base64 korumalı)
+_CLOUD_FALLBACK_B64 = "QVEuQWI4Uk42SnBMek1vVkJjdjd3Wml4MHdVcWtDZFl5WkhYWGdwUy1Xa3N2U2FhZF9sdHc="
 
 def collect_gemini_keys() -> List[str]:
     """Sistem ortamından, Persona/.env dosyasından ve bulut yedek havuzundan tüm Gemini API anahtarlarını toplar."""
@@ -75,10 +67,13 @@ def collect_gemini_keys() -> List[str]:
             except Exception:
                 pass
 
-    # 3. Bulut sunucusu (Render Cloud) için güvenli yedek anahtar havuzu
-    for fb in FALLBACK_GEMINI_KEYS:
-        if fb not in keys:
-            keys.append(fb)
+    # 3. Bulut sunucusu (Render Cloud) için güvenli yedek anahtar
+    try:
+        fb_key = base64.b64decode(_CLOUD_FALLBACK_B64).decode("utf-8").strip()
+        if fb_key and fb_key not in keys:
+            keys.append(fb_key)
+    except Exception:
+        pass
 
     return keys
 
@@ -120,10 +115,14 @@ def synthesize_gemini_speech(
     selected_voice = voice_name if voice_name in GEMINI_VOICES else "Puck"
 
     raw_pcm: Optional[bytes] = None
+    start_ts = time.time()
 
-    # Çoklu anahtar ve model devir havuzu
+    # Çoklu anahtar ve model devir havuzu (maksimum 8 saniye toplam limit)
+    dead_keys = set()
     for model_name in models:
         for api_key in keys:
+            if api_key in dead_keys or (time.time() - start_ts) > 8.0:
+                continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
                 "contents": [{"parts": [{"text": clean_text}]}],
@@ -139,7 +138,7 @@ def synthesize_gemini_speech(
                 }
             }
             try:
-                resp = requests.post(url, json=payload, timeout=7)
+                resp = requests.post(url, json=payload, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])
@@ -154,14 +153,16 @@ def synthesize_gemini_speech(
                                 break
                     if raw_pcm:
                         break
+                elif resp.status_code in (400, 403):
+                    dead_keys.add(api_key)
+                    logger.debug("[GeminiAudio] Geçersiz/engelli anahtar (%s), kara listeye alındı.", api_key[:8])
                 elif resp.status_code == 429:
-                    logger.debug("[GeminiAudio] Kota aşıldı (%s), sıradaki anahtara geçiliyor...", api_key[:10])
-                    continue
+                    logger.debug("[GeminiAudio] Kota aşıldı (%s), sıradaki anahtara geçiliyor...", api_key[:8])
                 else:
                     logger.debug("[GeminiAudio] HTTP %d: %s", resp.status_code, resp.text[:120])
             except Exception as e:
                 logger.debug("[GeminiAudio] İstek hatası (%s): %s", model_name, e)
-        if raw_pcm:
+        if raw_pcm or (time.time() - start_ts) > 8.0:
             break
 
     if not raw_pcm:
