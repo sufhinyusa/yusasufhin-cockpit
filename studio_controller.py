@@ -555,19 +555,22 @@ class VideoStudioController:
             )
             if ai_sonuc.get("basarili"):
                 render_success = True
-                render_kaynak = "flux_montaj"
+                render_kaynak = str(ai_sonuc.get("kaynak") or "flux_montaj")
                 file_sz = int(ai_sonuc.get("boyut") or 0)
                 sahne_sayisi = int(ai_sonuc.get("sahne") or 0)
+                saglayici = str(ai_sonuc.get("saglayici") or "flux")
                 artifacts["rendered_mp4"] = str(output_mp4)
                 artifacts["file_size_bytes"] = str(file_sz)
                 artifacts["resolution"] = res
                 artifacts["sahne_sayisi"] = str(sahne_sayisi)
-                artifacts["kaynak"] = "flux_montaj"
+                artifacts["kaynak"] = render_kaynak
+                artifacts["saglayici"] = saglayici
                 artifacts["render_log"] = (
-                    f"[{engine_title}] GERÇEK YZ MONTAJ — FLUX.1-schnell ile "
+                    f"[{engine_title}] GERÇEK YZ MONTAJ — {saglayici} difüzyonu ile "
                     f"{sahne_sayisi} sahne, {res}, Ken Burns + xfade "
                     f"({file_sz} bytes, moov doğrulandı)"
                 )
+
             else:
                 artifacts["ai_hata"] = str(ai_sonuc.get("hata") or "bilinmeyen hata")
                 logger.warning("[VideoStudioController] YZ video hattı başarısız: %s",
@@ -619,13 +622,15 @@ class VideoStudioController:
 
 
         if render_success:
-            if render_kaynak == "flux_montaj":
+            if render_kaynak.startswith("yz_montaj") or render_kaynak == "flux_montaj":
                 gorsel_durum = (
-                    f"tamamlandi (GERÇEK YZ: FLUX.1-schnell difüzyonu, "
-                    f"{artifacts.get('sahne_sayisi', '?')} sahne, Ken Burns + xfade)"
+                    f"tamamlandi (GERÇEK YZ: {artifacts.get('saglayici', 'flux')} "
+                    f"difüzyonu, {artifacts.get('sahne_sayisi', '?')} sahne, "
+                    f"Ken Burns + xfade)"
                 )
                 render_durum = "tamamlandi (YZ görsel montajı — video difüzyonu değil)"
                 yayin_durum = "kuyrukta (Wan/LTX video difüzyonu için GPU kotası bekleniyor)"
+
             else:
                 gorsel_durum = (
                     "YEDEK: başlık kartı (YZ sahne üretilemedi — "
@@ -642,7 +647,8 @@ class VideoStudioController:
                 {"ad": "5. YouTube & Yayın Dağıtımı", "durum": yayin_durum},
             ]
             job_status = (
-                "yz_montaj_hazir" if render_kaynak == "flux_montaj"
+                "yz_montaj_hazir"
+                if (render_kaynak.startswith("yz_montaj") or render_kaynak == "flux_montaj")
                 else "onizleme_hazir (simülasyon)"
             )
 

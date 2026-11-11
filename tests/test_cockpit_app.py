@@ -20,6 +20,50 @@ from main import app, ACTIVE_SESSIONS, FAILED_ATTEMPTS, MEDIA_DIR
 
 
 @pytest.fixture(autouse=True)
+def _ag_bagimliligi_kapat(monkeypatch):
+    """Testler AĞA ÇIKMAMALI (2026-11-11).
+
+    `studio/video/generate` gerçek YZ sahne üretimi çağırıyor; testlerde bu
+    Pollinations/FLUX'a gidip 60+ sn bekliyordu (hatta rate limit'e takılıyordu).
+    Burada sahne üretimi yerel bir PNG'ye kısaltılır: hat, montaj ve etiketleme
+    mantığı gerçek kalır, yalnız difüzyon çağrısı taklit edilir.
+    """
+    try:
+        import ai_video_montaj as av
+    except Exception:
+        return
+
+    def _sahte_sahneleri_uret(prompt, adet, genislik, yukseklik, log=None):
+        import tempfile
+        from pathlib import Path
+
+        try:
+            from PIL import Image, ImageDraw
+        except Exception:
+            return []
+        d = Path(tempfile.mkdtemp(prefix="test_sahne_"))
+        yollar = []
+        for i in range(min(adet, 2)):
+            p = d / f"s{i}.png"
+            # Gerçek renkli gradyan + şekil (düz renk değil) — montaj anlamlı kalsın
+            im = Image.new("RGB", (genislik, yukseklik), (10 + i * 40, 40, 90))
+            dr = ImageDraw.Draw(im)
+            for y in range(0, yukseklik, 2):
+                oran = y / max(1, yukseklik - 1)
+                dr.line([(0, y), (genislik, y)],
+                        fill=(int(30 + 180 * oran), int(60 + 90 * oran), 140))
+            dr.ellipse([genislik // 4, yukseklik // 4,
+                        genislik * 3 // 4, yukseklik * 3 // 4],
+                       fill=(200 - i * 60, 150, 80))
+            im.save(p, "PNG")
+            yollar.append(p)
+        _sahte_sahneleri_uret.son_saglayici = "test"
+        return yollar
+
+    monkeypatch.setattr(av, "sahneleri_uret", _sahte_sahneleri_uret)
+
+
+@pytest.fixture(autouse=True)
 def isolate_test_environment(tmp_path, monkeypatch):
     """Testlerin üretim veri dosyalarını (video_jobs, rea_scans) kirletmesini önler."""
     test_data = tmp_path / "data"
@@ -239,7 +283,7 @@ def test_studio_video_honest_state(client, auth_headers):
         else:
             assert status == "yz_montaj_hazir"
             assert task["simulasyon"] is False
-            assert kaynak == "flux_montaj"
+            assert kaynak.startswith("yz_montaj") or kaynak == "flux_montaj"
 
         assert task["output_url"] == f"/api/media/file?path={job_id}.mp4"
         assert task["download_url"] == f"/api/media/file?path={job_id}.mp4&download=1"
@@ -480,10 +524,50 @@ def test_media_bozuk_mp4_422_doner(client, auth_headers, tmp_path, monkeypatch):
         bozuk.unlink(missing_ok=True)
 
 
+def test_ai_video_montaj_fonksiyonlari_mevcut():
+    """ai_video_montaj modülünün tüm iç fonksiyonları gerçekten tanımlı olmalı.
+
+    2026-11-11: `tesis_durumu` eklenirken `_sahne_promptlari` tanımı yanlışlıkla
+    silindi; modül import edildi ama canlıda `name '_sahne_promptlari' is not
+    defined` ile yedeğe düştü. Bu test o hata sınıfını kilitler.
+    """
+    import ai_video_montaj as av
+
+    for ad in ("_hf_token", "_sahne_promptlari", "_ffmpeg", "_sahne_video",
+               "montaj_birlestir", "sahneleri_uret", "ai_video_uret", "tesis_durumu"):
+        assert hasattr(av, ad), f"ai_video_montaj.{ad} tanımlı değil"
+        assert callable(getattr(av, ad)), f"ai_video_montaj.{ad} çağrılabilir değil"
+
+    # Sahne prompt'ları gerçekten üretilmeli (boş liste = sessiz bozulma)
+    pl = av._sahne_promptlari("emerald alpine lake", 3)
+    assert len(pl) == 3
+    assert all("emerald alpine lake" in p for p in pl)
+
+
+def test_ai_video_uret_hata_mesaji_teshis_icerir(tmp_path, monkeypatch):
+    """YZ sahne üretilemezse hata mesajı EKSİK ADIMI söylemeli (belirsiz mesaj yok)."""
+    import ai_video_montaj as av
+
+    monkeypatch.setattr(av, "sahneleri_uret", lambda *a, **k: [])
+    monkeypatch.setattr(av, "_hf_token", lambda: None)
+
+    sonuc = av.ai_video_uret(
+        hedef_mp4=tmp_path / "x.mp4",
+        prompt="test",
+        genislik=320,
+        yukseklik=180,
+        sahne_sayisi=1,
+    )
+    assert sonuc["basarili"] is False
+    assert "HF_TOKEN" in sonuc["hata"]
+    assert sonuc["tesis"]["hf_token"] is False
+
+
 def test_galeri_bozuk_mp4_listelemez(client, auth_headers):
     """Galeri yalnız oynatılabilir MP4'leri döner."""
     res = client.get("/api/lab/history", headers=auth_headers)
     assert res.status_code == 200
     for item in res.json()["items"]:
         assert item.get("video_url")
+
 

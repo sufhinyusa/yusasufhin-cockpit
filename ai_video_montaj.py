@@ -107,6 +107,8 @@ def tesis_durumu() -> Dict[str, Any]:
     durum["hazir"] = not durum["eksikler"]
     return durum
 
+
+def _sahne_promptlari(prompt: str, adet: int) -> List[str]:
     """Tek prompt'u sinematik sahne dizisine böler (geniş → detay → geniş)."""
     temel = prompt.strip().rstrip(".")
     kalip = [
@@ -134,9 +136,99 @@ def _ffmpeg() -> str:
         return "ffmpeg"
 
 
+def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
+                        tohum: int) -> Optional[Path]:
+    """Pollinations.ai ile ÜCRETSİZ, kotasız, token'sız görsel üretir.
+
+    NEDEN: HF ZeroGPU ücretsiz kotası dolduğunda ("90s requested vs 0s left")
+    FLUX hattı tamamen duruyordu ve video yedeğe düşüyordu. Pollinations
+    anahtar/kota gerektirmez; bu yüzden birincil sağlayıcı yapıldı.
+    """
+    import urllib.parse
+    import urllib.request
+
+    try:
+        from PIL import Image
+    except Exception:
+        return None
+
+    # Pollinations 1024x576 gibi 16:9 oranları destekler
+    w, h = (1024, 576) if genislik >= yukseklik else (576, 1024)
+    url = (
+        "https://image.pollinations.ai/prompt/"
+        + urllib.parse.quote(prompt)
+        + f"?width={w}&height={h}&nologo=true&seed={tohum}"
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "yusasufhin-cockpit/1.0"})
+        with urllib.request.urlopen(req, timeout=150) as y:
+            ham = y.read()
+        if len(ham) < 5000:
+            return None
+        gecici = hedef.with_suffix(".raw")
+        gecici.write_bytes(ham)
+        Image.open(gecici).convert("RGB").resize(
+            (genislik, yukseklik), Image.LANCZOS
+        ).save(hedef, "PNG")
+        gecici.unlink(missing_ok=True)
+        return hedef
+    except Exception as e:
+        logger.info("[AIVideoMontaj] Pollinations sahne hatası: %s", str(e)[:120])
+        return None
+
+
+def _pollinations_sahne_tekrar(prompt: str, hedef: Path, genislik: int, yukseklik: int,
+                               tohum: int, deneme: int = 4) -> Optional[Path]:
+    """`_pollinations_sahne` + üstel geri çekilme.
+
+    NEDEN: Pollinations hızlı ardışık isteklerde 429 (rate limit) döndürüyor;
+    ilk sahne geçip 2. ve 3. sahne 0.3 sn'de başarısız oluyordu (montaj tek
+    sahneye düşüyordu). 4 deneme + artan bekleme bunu çözer.
+    """
+    bekleme = 3.0
+    for deneme_no in range(1, deneme + 1):
+        sonuc = _pollinations_sahne(prompt, hedef, genislik, yukseklik, tohum)
+        if sonuc is not None:
+            return sonuc
+        if deneme_no < deneme:
+            logger.info("[AIVideoMontaj] Pollinations %s. deneme başarısız, "
+                        "%.0f sn bekleniyor", deneme_no, bekleme)
+            time.sleep(bekleme)
+            bekleme *= 2
+    return None
+
+
+
+def _flux_sahne(istemci, prompt: str, hedef: Path, genislik: int, yukseklik: int,
+                tohum: int) -> Optional[Path]:
+    """FLUX.1-schnell (HF ZeroGPU) ile sahne üretir. Kota doluysa None."""
+    try:
+        from PIL import Image
+    except Exception:
+        return None
+    w, h = (1024, 576) if genislik >= yukseklik else (576, 1024)
+    try:
+        sonuc = istemci.predict(
+            prompt=prompt, seed=tohum, randomize_seed=True,
+            width=w, height=h, num_inference_steps=4, api_name="/infer",
+        )
+        kaynak = sonuc[0] if isinstance(sonuc, (list, tuple)) else sonuc
+        Image.open(kaynak).convert("RGB").resize(
+            (genislik, yukseklik), Image.LANCZOS
+        ).save(hedef, "PNG")
+        return hedef
+    except Exception as e:
+        logger.info("[AIVideoMontaj] FLUX sahne hatası: %s", str(e)[:120])
+        return None
+
+
 def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
                    log=None) -> List[Path]:
-    """FLUX.1-schnell ile gerçek YZ sahne görselleri üretir.
+    """Prompt'tan gerçek YZ sahne görselleri üretir.
+
+    Sağlayıcı sırası (dürüstlük: hangisi kullanıldıysa `saglayici` alanında döner):
+      1. **Pollinations.ai** — ücretsiz, kotasız, token'sız (birincil)
+      2. **FLUX.1-schnell** (HF ZeroGPU) — kota varsa (ikincil)
 
     Döner: üretilen PNG yolları (başarısız sahne atlanır).
     """
@@ -148,59 +240,62 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
             except Exception:
                 pass
 
-    token = _hf_token()
-    if not token:
-        _log("⚠️ HF_TOKEN yok — gerçek YZ sahne üretimi yapılamaz")
+    try:
+        from PIL import Image  # noqa: F401
+    except Exception as e:
+        _log(f"⚠️ Pillow yok: {e}")
         return []
 
+    gecici = Path(tempfile.mkdtemp(prefix="ai_sahne_"))
+    yollar: List[Path] = []
+    promptlar = _sahne_promptlari(prompt, adet)
+
+    # --- Sağlayıcı 1: Pollinations (kotasız) ---
+    for i, sahne_prompt in enumerate(promptlar, 1):
+        _log(f"🎨 Sahne {i}/{adet} — Pollinations difüzyon…")
+        hedef = gecici / f"sahne_{i}.png"
+        if _pollinations_sahne_tekrar(sahne_prompt, hedef, genislik, yukseklik, 42 + i):
+            yollar.append(hedef)
+            _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
+        else:
+            _log(f"   ⚠️ Sahne {i} Pollinations'ta üretilemedi")
+
+
+    if yollar:
+        sahneleri_uret.son_saglayici = "pollinations"  # type: ignore[attr-defined]
+        return yollar
+
+    # --- Sağlayıcı 2: FLUX (HF ZeroGPU, kota varsa) ---
+    token = _hf_token()
+    if not token:
+        _log("⚠️ Pollinations başarısız ve HF_TOKEN yok — sahne üretilemedi")
+        return []
     try:
         from gradio_client import Client
     except Exception as e:
         _log(f"⚠️ gradio_client yok: {e}")
         return []
 
-    try:
-        from PIL import Image
-    except Exception as e:
-        _log(f"⚠️ Pillow yok: {e}")
-        return []
-
     os.environ["HF_TOKEN"] = token
-    gecici = Path(tempfile.mkdtemp(prefix="ai_sahne_"))
-    yollar: List[Path] = []
-
     try:
         istemci = Client(FLUX_SPACE, verbose=False, token=token)
     except Exception as e:
         _log(f"⚠️ FLUX Space'e bağlanılamadı: {str(e)[:160]}")
         return []
 
-    # FLUX 1024x576 gibi 16:9 oranları destekler; hedefe en yakın olanı seç
-    flux_w, flux_h = (1024, 576) if genislik >= yukseklik else (576, 1024)
-
-    for i, sahne_prompt in enumerate(_sahne_promptlari(prompt, adet), 1):
-        try:
-            _log(f"🎨 Sahne {i}/{adet} — FLUX.1-schnell difüzyon…")
-            sonuc = istemci.predict(
-                prompt=sahne_prompt,
-                seed=42 + i,
-                randomize_seed=True,
-                width=flux_w,
-                height=flux_h,
-                num_inference_steps=4,
-                api_name="/infer",
-            )
-            kaynak = sonuc[0] if isinstance(sonuc, (list, tuple)) else sonuc
-            hedef = gecici / f"sahne_{i}.png"
-            Image.open(kaynak).convert("RGB").resize(
-                (genislik, yukseklik), Image.LANCZOS
-            ).save(hedef, "PNG")
+    for i, sahne_prompt in enumerate(promptlar, 1):
+        _log(f"🎨 Sahne {i}/{adet} — FLUX.1-schnell (ZeroGPU)…")
+        hedef = gecici / f"sahne_{i}.png"
+        if _flux_sahne(istemci, sahne_prompt, hedef, genislik, yukseklik, 42 + i):
             yollar.append(hedef)
             _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
-        except Exception as e:
-            _log(f"   ⚠️ Sahne {i} üretilemedi: {str(e)[:140]}")
+        else:
+            _log(f"   ⚠️ Sahne {i} üretilemedi (ZeroGPU kotası dolu olabilir)")
 
+    if yollar:
+        sahneleri_uret.son_saglayici = "flux"  # type: ignore[attr-defined]
     return yollar
+
 
 
 
@@ -378,10 +473,13 @@ def ai_video_uret(
     shutil.rmtree(gecici, ignore_errors=True)
 
     boyut = son.stat().st_size
+    saglayici = getattr(sahneleri_uret, "son_saglayici", "bilinmiyor")
     _log(f"✅ Gerçek YZ montaj hazır: {len(parcalar)} sahne, {boyut // 1024} KB, "
-         f"{round(time.time() - baslangic, 1)} sn")
+         f"sağlayıcı={saglayici}, {round(time.time() - baslangic, 1)} sn")
     return {
         "basarili": True, "yol": son, "boyut": boyut, "sahne": len(parcalar),
-        "kaynak": "flux_montaj", "hata": None,
+        "kaynak": f"yz_montaj_{saglayici}" if saglayici != "bilinmiyor" else "flux_montaj",
+        "saglayici": saglayici, "hata": None,
     }
+
 
