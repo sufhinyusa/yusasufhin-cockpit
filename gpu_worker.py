@@ -190,23 +190,34 @@ _WAN_I2V = None
 
 
 def wan21_t2v_yukle(log=print):
-    """Wan2.1-T2V-1.3B (1.42 B) — 16 GB'a rahat sığar."""
+    """Wan2.1-T2V-1.3B (1.42 B) — 16 GB T4'e sığar.
+
+    ÖLÇÜLMÜŞ OOM (2026-11-11, Kaggle T4 15.0 GB):
+    832x480 / 33 kare / 25 adım → `CUDA out of memory. Tried to allocate
+    8.81 GiB ... 2.09 GiB is free`. Sebep: VAE decode tüm videoyu tek seferde
+    açıyor. Çözüm: `vae.enable_slicing()` + `vae.enable_tiling()` ZORUNLU.
+    """
     global _WAN_T2V
     if _WAN_T2V is not None:
         return _WAN_T2V
+    import torch
     from diffusers import AutoencoderKLWan, WanPipeline
 
     log(f"⏳ {WAN21_T2V} yükleniyor…")
     vae = AutoencoderKLWan.from_pretrained(
-        WAN21_T2V, subfolder="vae", torch_dtype=_dtype()
+        WAN21_T2V, subfolder="vae", torch_dtype=torch.float32
     )
     pipe = WanPipeline.from_pretrained(
         WAN21_T2V, vae=vae, torch_dtype=_dtype(), low_cpu_mem_usage=True
     )
     pipe.enable_model_cpu_offload()
+    # OOM koruması — bu iki satır olmadan 832x480/33 kare T4'te patlıyor
+    pipe.vae.enable_slicing()
+    pipe.vae.enable_tiling()
     _WAN_T2V = pipe
-    log("✅ Wan2.1-T2V-1.3B hazır")
+    log("✅ Wan2.1-T2V-1.3B hazır (VAE slicing+tiling açık)")
     return pipe
+
 
 
 def wan21_i2v_yukle(log=print):
@@ -348,11 +359,21 @@ def wan21_i2v_uret(gorsel_yolu: Path, prompt: str, genislik: int, yukseklik: int
 # 4. GÖREV YÖNLENDİRME — iş kaydındaki `method` alanına göre
 # -----------------------------------------------------------------------------
 def _cozunurluk(oran: str, kalite: str = "480p") -> Tuple[int, int]:
-    """En-boy oranını Wan/FLUX sınırlarına uygun piksele çevirir."""
+    """En-boy oranını Wan/FLUX sınırlarına uygun piksele çevirir.
+
+    ÖLÇÜM (2026-11-11, Kaggle T4 15.0 GB): Wan2.1-T2V-1.3B için 832x480 +
+    33 kare OOM verdi. Wan'ın "480p" sınıfı teknik olarak 832x480'dir ama
+    16 GB'da güvenli değil. Bu yüzden varsayılan 480p → 480x320 (VAE
+    slicing+tiling ile birlikte güvenli). `--kalite 832p` ile eski değer.
+    """
     dikey = str(oran).replace(" ", "") == "9:16"
+    if kalite in ("832p", "480p-genis"):
+        return (480, 832) if dikey else (832, 480)
     if kalite == "720p":
         return (720, 1280) if dikey else (1280, 720)
-    return (480, 832) if dikey else (832, 480)
+    # Varsayılan: T4 16 GB'da güvenli 480p sınıfı
+    return (320, 480) if dikey else (480, 320)
+
 
 
 def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print) -> Path:
@@ -548,7 +569,7 @@ def main() -> int:
     ap.add_argument("--isci-id", default=None, help="Sabit işçi kimliği")
     ap.add_argument("--aralik", type=int, default=15, help="Boş kuyruk bekleme (sn)")
     ap.add_argument("--tek-seferlik", action="store_true", help="Tek iş al ve çık")
-    ap.add_argument("--kalite", choices=["480p", "720p"], default="480p")
+    ap.add_argument("--kalite", choices=["480p", "832p", "720p"], default="480p")
     ap.add_argument("--t2v-adim", type=int, default=25)
     ap.add_argument("--i2v-adim", type=int, default=20)
     ap.add_argument("--flux-adim", type=int, default=4)

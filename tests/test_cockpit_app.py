@@ -576,20 +576,25 @@ def test_gpu_worker_gpu_yoksa_durust_reddeder():
 
 
 def test_gpu_worker_cozunurluk_eslemesi():
-    """En-boy oranı Wan/FLUX sınırlarına (16'nın katı) çevrilmeli."""
+    """En-boy oranı Wan/FLUX sınırlarına (16'nın katı) çevrilmeli.
+
+    2026-11-11: 832x480 + 33 kare Kaggle T4'te OOM verdi (ölçüldü). Bu yüzden
+    varsayılan 480p artık 480x320; 832x480 yalnız `--kalite 832p` ile.
+    """
     import gpu_worker as gw
 
     for oran, beklenen in (
-        ("16:9", (832, 480)),
-        ("9:16", (480, 832)),
-        ("16:9 ", (832, 480)),
+        ("16:9", (480, 320)),
+        ("9:16", (320, 480)),
+        ("16:9 ", (480, 320)),
     ):
         w, h = gw._cozunurluk(oran, "480p")
         assert (w, h) == beklenen, f"{oran} -> {(w, h)}"
         assert w % 16 == 0 and h % 16 == 0
 
-    w, h = gw._cozunurluk("9:16", "720p")
-    assert (w, h) == (720, 1280)
+    # Geniş 480p sınıfı açıkça istendiğinde eski değer
+    assert gw._cozunurluk("16:9", "832p") == (832, 480)
+    assert gw._cozunurluk("9:16", "720p") == (720, 1280)
 
 
 def test_gpu_worker_prompt_yoksa_hata():
