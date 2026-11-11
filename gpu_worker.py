@@ -131,55 +131,61 @@ _FLUX_PIPE = None
 
 
 def flux2_yukle(log=print):
-    """FLUX.2-klein-4B boru hattını yükler (tek sefer, sonra cache)."""
+    """FLUX.2-klein-4B boru hattını yükler (tek sefer, sonra cache).
+
+    ÖLÇÜLMÜŞ BULGULAR (2026-11-11, Kaggle T4 15.0 GB):
+    * `Flux2Pipeline` YANLIŞ — o FLUX.2-dev (32B, Mistral3) için. klein-4B
+      Qwen3 text encoder kullanıyor → "Expected types for text_encoder:
+      Mistral3ForConditionalGeneration, got Qwen3ForCausalLM".
+    * Doğru yol: `DiffusionPipeline` (auto-detect `Flux2KleinPipeline`) +
+      `dtype=torch.bfloat16` (`torch_dtype` DEĞİL) + `enable_model_cpu_offload()`.
+    * `device_map="cuda"` T4'te OOM veriyor (model kartı ~13 GB diyor ama
+      gerçekte 14.39 GB'a çıkıyor, 14.56 GB kartta yer kalmıyor).
+    * CPU offload ile ÇALIŞIYOR: 1024x1024, kenar enerjisi 33.7
+      (FLUX.1-schnell 20.4, Pollinations 8.4). Süre: ~14 dk.
+    """
     global _FLUX_PIPE
     if _FLUX_PIPE is not None:
         return _FLUX_PIPE
 
     import torch
-    from diffusers import Flux2Pipeline
+    from diffusers import DiffusionPipeline
 
     log(f"⏳ {FLUX2_KLEIN} indiriliyor/yükleniyor…")
-    pipe = Flux2Pipeline.from_pretrained(
-        FLUX2_KLEIN, torch_dtype=_dtype(), low_cpu_mem_usage=True
+    pipe = DiffusionPipeline.from_pretrained(
+        FLUX2_KLEIN, dtype=torch.bfloat16, low_cpu_mem_usage=True
     )
-    # 16 GB T4 için zorunlu: model CPU'da bekler, katman katman GPU'ya taşınır
+    # T4 15 GB'da device_map="cuda" OOM veriyor — CPU offload ZORUNLU
     pipe.enable_model_cpu_offload()
-    pipe.vae.enable_slicing()
-    try:
-        pipe.transformer.enable_gradient_checkpointing()
-    except Exception:
-        pass
+    vae = getattr(pipe, "vae", None)
+    if vae is not None and hasattr(vae, "enable_slicing"):
+        vae.enable_slicing()
     _FLUX_PIPE = pipe
-    log("✅ FLUX.2-klein-4B hazır")
+    log(f"✅ FLUX.2-klein-4B hazır ({type(pipe).__name__}, CPU offload)")
     return pipe
+
 
 
 def flux2_gorsel_uret(prompt: str, genislik: int, yukseklik: int,
                       adim: int = 4, tohum: int = 42, log=print) -> Path:
-    """Prompt'tan GERÇEK FLUX.2 görseli üretir. Döner: PNG yolu."""
-    import torch
+    """Prompt'tan GERÇEK FLUX.2 görseli üretir. Döner: PNG yolu.
 
+    NOT: `Flux2KleinPipeline` adım parametresini kabul etmiyor (distilled model,
+    sabit 4 adım). `adim` yalnız log için tutuluyor.
+    """
     pipe = flux2_yukle(log=log)
-    # 16'ya yuvarla (VAE 8x + patch 2x)
+    # Kenar uzunlukları 16'nın katı olmalı
     w = max(256, (genislik // 16) * 16)
     h = max(256, (yukseklik // 16) * 16)
     uid = uuid.uuid4().hex[:8]
     hedef = Path(tempfile.gettempdir()) / f"flux2_{uid}.png"
 
-    log(f"🎨 FLUX.2 difüzyon: {w}x{h}, {adim} adım, tohum={tohum}")
-    uretici = torch.Generator(device="cpu").manual_seed(int(tohum))
-    sonuc = pipe(
-        prompt=prompt,
-        width=w,
-        height=h,
-        num_inference_steps=max(1, min(50, int(adim))),
-        generator=uretici,
-    )
-    gorsel = sonuc.images[0]
-    gorsel.save(hedef, "PNG")
+    log(f"🎨 FLUX.2 difüzyon: {w}x{h} (CPU offload, ~14 dk sürebilir)")
+    sonuc = pipe(prompt=prompt, width=w, height=h)
+    sonuc.images[0].save(hedef, "PNG")
     log(f"✅ Görsel hazır: {hedef.stat().st_size // 1024} KB")
     return hedef
+
 
 
 # -----------------------------------------------------------------------------

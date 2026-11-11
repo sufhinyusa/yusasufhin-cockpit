@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.11-gpu-isci-v2",
-  "ozellik": "diffusers_format_nf4",
+  "surum": "2026.11.12-flux2-wan21-kanit",
+  "ozellik": "flux2_klein_wan21_dogrulandi",
   "kontrol": "gpu_worker"
 }
