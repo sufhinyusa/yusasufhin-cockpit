@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.11-cloudflare-flux",
-  "ozellik": "cloudflare_flux1_schnell",
-  "kontrol": "ai_video_montaj"
+  "surum": "2026.11.11-gpu-isci",
+  "ozellik": "kaggle_colab_flux2_wan21",
+  "kontrol": "gpu_worker"
 }

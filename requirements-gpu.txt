@@ -1,0 +1,26 @@
+# gpu_worker.py — Kaggle / Colab GPU işçisi bağımlılıkları
+#
+# DİKKAT: Bu dosya yalnız GPU işçisi içindir; web sunucusu (main.py) bunları
+# KURMAZ. torch/diffusers ~3 GB olduğu için Render'ın 512 MB'lık free planına
+# asla eklenmemelidir.
+#
+# Kurulum (Kaggle/Colab hücresi):
+#   !pip -q install -r requirements-gpu.txt
+#
+# NOT: FLUX.2 desteği diffusers'ta yeni eklendi; PyPI sürümü geride kalırsa
+# aşağıdaki git satırını açın:
+#   !pip -q install "git+https://github.com/huggingface/diffusers.git"
+
+torch>=2.4.0
+torchvision>=0.19.0
+diffusers>=0.36.0
+transformers>=4.46.0
+accelerate>=1.0.0
+safetensors>=0.4.5
+sentencepiece>=0.2.0
+protobuf>=5.28.0
+ftfy>=6.2.0
+Pillow>=10.1.0
+imageio>=2.35.0
+imageio-ffmpeg>=0.5.1
+huggingface_hub>=0.26.0

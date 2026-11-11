@@ -35,6 +35,11 @@ app = FastAPI(
 
 DEFAULT_PORT = 27491
 
+# GPU işçisine (Kaggle/Colab) devredilecek render hedefleri (2026-11-11).
+# Bu hedeflerle üretilen işler `gpu_kuyruk=True` alır; Kaggle/Colab işçisi
+# `/api/worker/claim` ile alıp GERÇEK FLUX.2/Wan2.1 difüzyonuyla yeniden üretir.
+GPU_HEDEFLERI = {"kaggle_32gb", "google_colab", "hybrid_cluster", "gpu"}
+
 # CORS Ayarları (Özel Origin Kısıtlaması & CSRF Koruması)
 ALLOWED_ORIGINS = [
     "https://yusasufhin.com",
@@ -934,6 +939,12 @@ async def studio_video_generate(req: Request):
 
     # İş geçmişine kaydet
     jobs_file = DATA_DIR / "video_jobs.json"
+    # GPU KUYRUĞU (2026-11-11): Kaggle/Colab işçisi bu kaydı alıp GERÇEK
+    # FLUX.2/Wan2.1 difüzyonuyla yeniden üretir. Yerel önizleme korunur;
+    # işçi bağlandığında `gpu_kuyruk=True` olan kayıtlar claim edilir.
+    if str(render_target) in GPU_HEDEFLERI:
+        task_data["gpu_kuyruk"] = True
+        task_data["gpu_durum"] = "bekliyor"
     try:
         if jobs_file.exists():
             history = json.loads(jobs_file.read_text(encoding="utf-8"))
@@ -943,6 +954,7 @@ async def studio_video_generate(req: Request):
         jobs_file.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as save_err:
         logger.warning("Video iş kaydı yazılamadı: %s", save_err)
+
 
     return {"success": bool(task_data.get("output_url")), "task": task_data}
 
@@ -1314,25 +1326,43 @@ async def worker_heartbeat(req: Request):
 
 @app.get("/api/worker/claim")
 async def worker_claim(worker_id: Optional[str] = Query(None)):
-    """Kaggle veya Colab GPU işçisinin sıradaki video görevini alması."""
+    """Kaggle veya Colab GPU işçisinin sıradaki video görevini alması.
+
+    2026-11-11: `gpu_kuyruk=True` işaretli kayıtlar ÖNCELİKLİ alınır. Stüdyo
+    artık yerel YZ montajıyla `yz_montaj_hazir` durumu ürettiği için eski
+    "kuyrukta/onizleme_hazir" filtresi GPU işlerini göremiyordu.
+    """
     jobs_file = DATA_DIR / "video_jobs.json"
     if not jobs_file.exists():
         return {"success": True, "job": None, "message": "Kuyruk boş"}
     try:
         data = json.loads(jobs_file.read_text(encoding="utf-8"))
         jobs = data.get("jobs", [])
-        # Bekleyen veya GPU yükseltmesi bekleyen işi bul
+
+        # 1) Açıkça GPU'ya bırakılmış işler (öncelik)
+        for j in jobs:
+            if j.get("gpu_kuyruk") and j.get("gpu_durum") == "bekliyor":
+                j["gpu_durum"] = "isleniyor"
+                j["claimed_by"] = worker_id or "gpu_worker"
+                j["claimed_at"] = time.time()
+                jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
+                return {"success": True, "job": j, "mod": "gpu_kuyruk"}
+
+        # 2) Eski davranış (geriye dönük uyumluluk)
         for j in jobs:
             st = str(j.get("status", ""))
             if "kuyrukta" in st or "onizleme_hazir" in st:
-                j["status"] = f"isleniyor (Kaggle Dual-T4 GPU Render)"
+                j["status"] = "isleniyor (Kaggle Dual-T4 GPU Render)"
                 j["claimed_by"] = worker_id or "kaggle_worker"
                 j["claimed_at"] = time.time()
-                jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-                return {"success": True, "job": j}
+                jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
+                return {"success": True, "job": j, "mod": "eski"}
     except Exception as e:
         logger.warning("[WorkerClaim] Hata: %s", e)
     return {"success": True, "job": None, "message": "İş yok"}
+
 
 @app.post("/api/worker/progress")
 async def worker_progress(req: Request):
@@ -1381,6 +1411,8 @@ async def worker_upload(
                     j["file_size_bytes"] = file_size
                     j["size_kb"] = round(file_size / 1024)
                     j["simulasyon"] = False
+                    j["gpu_durum"] = "tamam"
+                    j["kaynak"] = "gpu_worker_wan21_flux2"
                     j["output_url"] = f"/api/media/file?path={target_name}"
                     j["download_url"] = f"/api/media/file?path={target_name}&download=1"
                     break

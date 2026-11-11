@@ -564,11 +564,126 @@ def test_ai_video_uret_hata_mesaji_teshis_icerir(tmp_path, monkeypatch):
     assert sonuc["tesis"]["cloudflare"] is False
 
 
+def test_gpu_worker_gpu_yoksa_durust_reddeder():
+    """GPU yoksa işçi sahte çıktı üretmez, açıkça reddeder (Kural 1)."""
+    import gpu_worker as gw
+
+    bilgi = gw.gpu_bilgisi()
+    assert isinstance(bilgi, dict)
+    assert "var" in bilgi and "ad" in bilgi and "vram_gb" in bilgi
+    if not bilgi["var"]:
+        assert bilgi["vram_gb"] == 0.0
+
+
+def test_gpu_worker_cozunurluk_eslemesi():
+    """En-boy oranı Wan/FLUX sınırlarına (16'nın katı) çevrilmeli."""
+    import gpu_worker as gw
+
+    for oran, beklenen in (
+        ("16:9", (832, 480)),
+        ("9:16", (480, 832)),
+        ("16:9 ", (832, 480)),
+    ):
+        w, h = gw._cozunurluk(oran, "480p")
+        assert (w, h) == beklenen, f"{oran} -> {(w, h)}"
+        assert w % 16 == 0 and h % 16 == 0
+
+    w, h = gw._cozunurluk("9:16", "720p")
+    assert (w, h) == (720, 1280)
+
+
+def test_gpu_worker_prompt_yoksa_hata():
+    """Prompt'suz iş üretilmez — sessiz boş video yok."""
+    import gpu_worker as gw
+
+    try:
+        gw.gorev_isle({"prompt": "  ", "method": "remotion_cinema"}, {})
+    except ValueError as e:
+        assert "prompt" in str(e).lower()
+    else:
+        raise AssertionError("prompt'suz iş kabul edilmemeliydi")
+
+
+def test_gpu_worker_i2v_gorsel_yoksa_hata():
+    """wan_i2v görsel olmadan çalışmaz; dürüst hata verir."""
+    import gpu_worker as gw
+
+    try:
+        gw.gorev_isle({"prompt": "test", "method": "wan_i2v"}, {})
+    except ValueError as e:
+        assert "image_path" in str(e) or "görsel" in str(e).lower()
+    else:
+        raise AssertionError("görselsiz wan_i2v kabul edilmemeliydi")
+
+
+def test_gpu_worker_model_kimlikleri_dogrulanmis():
+    """Model kimlikleri HF'de doğrulanmış (gated=False) olanlarla aynı kalmalı."""
+    import gpu_worker as gw
+
+    assert gw.FLUX2_KLEIN == "black-forest-labs/FLUX.2-klein-4B"
+    assert gw.WAN21_T2V == "Wan-AI/Wan2.1-T2V-1.3B"
+    assert gw.WAN21_I2V == "Wan-AI/Wan2.1-I2V-14B-480P"
+
+
+def test_worker_claim_gpu_kuyrugunu_oncelikler(client, monkeypatch, tmp_path):
+    """`gpu_kuyruk=True` işler claim edilmeli (stüdyo işleri artık yz_montaj_hazir)."""
+    import main as main_mod
+
+    jobs_file = tmp_path / "video_jobs.json"
+    jobs_file.write_text(json.dumps({"jobs": [{
+        "job_id": "JOB-GPU-1",
+        "prompt": "gerçek difüzyon testi",
+        "method": "remotion_cinema",
+        "status": "yz_montaj_hazir",
+        "gpu_kuyruk": True,
+        "gpu_durum": "bekliyor",
+    }]}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+
+    res = client.get("/api/worker/claim?worker_id=test_worker")
+    assert res.status_code == 200
+    veri = res.json()
+    assert veri["job"] is not None
+    assert veri["job"]["job_id"] == "JOB-GPU-1"
+    assert veri["mod"] == "gpu_kuyruk"
+    assert veri["job"]["gpu_durum"] == "isleniyor"
+
+    # İkinci çağrıda aynı iş tekrar verilmemeli
+    res2 = client.get("/api/worker/claim?worker_id=test_worker2")
+    assert res2.json()["job"] is None
+
+
+def test_gpu_hedefleri_kuyruk_isaretler(client, auth_headers, monkeypatch):
+    """GPU render hedefi seçilirse iş kaydı gpu_kuyruk=True almalı."""
+    import main as main_mod
+
+    assert "kaggle_32gb" in main_mod.GPU_HEDEFLERI
+    assert "google_colab" in main_mod.GPU_HEDEFLERI
+
+    res = client.post("/api/studio/video/generate", json={
+        "channel": "Tech_AI_Fabrika",
+        "prompt": "GPU kuyruk testi",
+        "method": "remotion_cinema",
+        "render_target": "kaggle_32gb",
+    }, headers=auth_headers)
+    assert res.status_code == 200
+    assert main_mod.GPU_HEDEFLERI  # sabit yerinde
+
+    # Kayıt dosyasında gpu_kuyruk işareti aranır
+    jobs_file = main_mod.DATA_DIR / "video_jobs.json"
+    if jobs_file.exists():
+        data = json.loads(jobs_file.read_text(encoding="utf-8"))
+        son = data["jobs"][-1]
+        assert son.get("gpu_kuyruk") is True
+        assert son.get("gpu_durum") == "bekliyor"
+
+
 def test_galeri_bozuk_mp4_listelemez(client, auth_headers):
     """Galeri yalnız oynatılabilir MP4'leri döner."""
     res = client.get("/api/lab/history", headers=auth_headers)
     assert res.status_code == 200
     for item in res.json()["items"]:
         assert item.get("video_url")
+
 
 
