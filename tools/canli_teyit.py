@@ -30,7 +30,7 @@ TABAN = "https://yusasufhin.com"
 # (Eski dedektör `fonts/DejaVuSans.ttf` idi; o dosya bir kez deploy edildikten
 #  sonra hep 200 döndüğü için yeni sürümleri ayırt edemiyordu.)
 SURUM_YOLU = "/static/surum.json"
-BEKLENEN_SURUM = "2026.11.11-pollinations"
+BEKLENEN_SURUM = "2026.11.11-cloudflare-flux"
 RAPOR = Path("/tmp/canli_teyit_rapor.txt")
 
 

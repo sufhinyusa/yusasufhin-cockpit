@@ -550,6 +550,7 @@ def test_ai_video_uret_hata_mesaji_teshis_icerir(tmp_path, monkeypatch):
 
     monkeypatch.setattr(av, "sahneleri_uret", lambda *a, **k: [])
     monkeypatch.setattr(av, "_hf_token", lambda: None)
+    monkeypatch.setattr(av, "_cf_kimlik", lambda: (None, None))
 
     sonuc = av.ai_video_uret(
         hedef_mp4=tmp_path / "x.mp4",
@@ -559,8 +560,8 @@ def test_ai_video_uret_hata_mesaji_teshis_icerir(tmp_path, monkeypatch):
         sahne_sayisi=1,
     )
     assert sonuc["basarili"] is False
-    assert "HF_TOKEN" in sonuc["hata"]
-    assert sonuc["tesis"]["hf_token"] is False
+    assert "CLOUDFLARE" in sonuc["hata"] or "HF_TOKEN" in sonuc["hata"]
+    assert sonuc["tesis"]["cloudflare"] is False
 
 
 def test_galeri_bozuk_mp4_listelemez(client, auth_headers):

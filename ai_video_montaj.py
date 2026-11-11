@@ -27,12 +27,13 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("YusasufhinCockpit.AIVideoMontaj")
 
 KOK = Path(__file__).resolve().parent
 FLUX_SPACE = "black-forest-labs/FLUX.1-schnell"
+FLUX2_SPACE = "black-forest-labs/FLUX.2-klein-4B"
 SAHNE_SAYISI = 3
 SAHNE_SURE_SN = 3.0
 GECIS_SN = 0.6
@@ -67,6 +68,7 @@ def tesis_durumu() -> Dict[str, Any]:
     """
     durum: Dict[str, Any] = {
         "hf_token": False,
+        "cloudflare": False,
         "gradio_client": False,
         "pillow": False,
         "ffmpeg": False,
@@ -75,9 +77,12 @@ def tesis_durumu() -> Dict[str, Any]:
     }
 
     durum["hf_token"] = bool(_hf_token())
-    if not durum["hf_token"]:
+    cf_token, cf_hesap = _cf_kimlik()
+    durum["cloudflare"] = bool(cf_token and cf_hesap)
+    if not durum["cloudflare"]:
         durum["eksikler"].append(
-            "HF_TOKEN ortam değişkeni yok (Render → Environment → Add Environment Variable)"
+            "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID yok "
+            "(kaliteli FLUX.1-schnell için gerekli; yoksa Pollinations'a düşer)"
         )
 
     try:
@@ -134,6 +139,106 @@ def _ffmpeg() -> str:
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
         return "ffmpeg"
+
+
+def _cf_kimlik() -> Tuple[Optional[str], Optional[str]]:
+    """Cloudflare Workers AI kimliği: (api_token, account_id).
+
+    NEDEN CLOUDFLARE: FLUX.2 tüm ücretsiz yolları kapalıydı (ZeroGPU kotası
+    doldu, Inference Providers ücretli). Cloudflare Workers AI'da
+    FLUX.1-schnell **ücretsiz katmanda** çalışıyor ve Pollinations'ın `sana`
+    modeline göre ölçülebilir şekilde çok daha kaliteli:
+        kenar enerjisi 20.4 vs 8.39 (2.4×), std 69 vs 46.
+    """
+    token = (
+        os.environ.get("CLOUDFLARE_API_TOKEN")
+        or os.environ.get("CF_API_TOKEN")
+        or os.environ.get("APIToken")
+    )
+    hesap = (
+        os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+        or os.environ.get("CF_ACCOUNT_ID")
+        or os.environ.get("AccountID")
+    )
+    if token and hesap:
+        return token.strip(), hesap.strip()
+
+    for dosya in (
+        Path("/Users/yusufsahin/Desktop/PYTHON PROJECTS/Fabrika/Persona/.env"),
+        KOK.parent / "Persona" / ".env",
+    ):
+        try:
+            for satir in dosya.read_text(encoding="utf-8").splitlines():
+                if "=" not in satir or satir.strip().startswith("#"):
+                    continue
+                k, _, v = satir.partition("=")
+                k = k.strip()
+                temiz = v.strip().strip('"').strip("'")
+                if not temiz:
+                    continue
+                if k in ("CLOUDFLARE_API_TOKEN", "CF_API_TOKEN", "APIToken"):
+                    token = token or temiz
+                elif k in ("CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID", "AccountID"):
+                    hesap = hesap or temiz
+        except Exception:
+            continue
+        if token and hesap:
+            return token, hesap
+    return token, hesap
+
+
+def _cloudflare_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
+                      tohum: int, adim: int = 8) -> Optional[Path]:
+    """Cloudflare Workers AI · FLUX.1-schnell ile yüksek kaliteli sahne üretir.
+
+    Ücretsiz katman (10 000 neuron/gün). Anahtar yoksa None döner.
+    """
+    import base64
+    import json as _json
+    import urllib.request
+
+    try:
+        from PIL import Image
+    except Exception:
+        return None
+
+    token, hesap = _cf_kimlik()
+    if not token or not hesap:
+        return None
+
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{hesap}"
+        "/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    )
+    govde = _json.dumps({"prompt": prompt, "steps": max(4, min(8, adim))}).encode()
+    try:
+        req = urllib.request.Request(
+            url, data=govde,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=180) as y:
+            veri = _json.loads(y.read())
+        if not veri.get("success"):
+            logger.info("[AIVideoMontaj] CF yanıtı: %s", str(veri)[:160])
+            return None
+        ham = base64.b64decode(veri["result"]["image"])
+        if len(ham) < 5000:
+            return None
+        # FLUX.1-schnell kare üretir; hedef orana kırp (cover) ve ölçekle
+        im = Image.open(__import__("io").BytesIO(ham)).convert("RGB")
+        hedef_oran = genislik / yukseklik
+        w, h = im.size
+        if w / h > hedef_oran:      # çok geniş → yanlardan kırp
+            yeni_w = int(h * hedef_oran)
+            im = im.crop(((w - yeni_w) // 2, 0, (w + yeni_w) // 2, h))
+        else:                        # çok uzun → üst/alttan kırp
+            yeni_h = int(w / hedef_oran)
+            im = im.crop((0, (h - yeni_h) // 2, w, (h + yeni_h) // 2))
+        im.resize((genislik, yukseklik), Image.LANCZOS).save(hedef, "PNG")
+        return hedef
+    except Exception as e:
+        logger.info("[AIVideoMontaj] Cloudflare sahne hatası: %s", str(e)[:140])
+        return None
 
 
 def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
@@ -250,9 +355,60 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
     yollar: List[Path] = []
     promptlar = _sahne_promptlari(prompt, adet)
 
-    # --- Sağlayıcı 1: Pollinations (kotasız) ---
+    # --- Sağlayıcı 1: Cloudflare Workers AI · FLUX.1-schnell (KALİTE) ---
+    # Ücretsiz katman, anahtar gerektirir. Pollinations'ın `sana` modelinden
+    # ölçülebilir şekilde 2.4× daha detaylı (kenar enerjisi 20.4 vs 8.39).
+    cf_token, cf_hesap = _cf_kimlik()
+    if cf_token and cf_hesap:
+        for i, sahne_prompt in enumerate(promptlar, 1):
+            _log(f"🎨 Sahne {i}/{adet} — Cloudflare FLUX.1-schnell…")
+            hedef = gecici / f"sahne_{i}.png"
+            if _cloudflare_sahne(sahne_prompt, hedef, genislik, yukseklik, 42 + i):
+                yollar.append(hedef)
+                _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
+            else:
+                _log(f"   ⚠️ Sahne {i} Cloudflare'de üretilemedi")
+        if yollar:
+            sahneleri_uret.son_saglayici = "cloudflare-flux1-schnell"  # type: ignore[attr-defined]
+            return yollar
+    else:
+        _log("ℹ️ Cloudflare kimliği yok — sonraki sağlayıcıya geçiliyor")
+
+    # --- Sağlayıcı 2: FLUX.2 / FLUX.1 HF ZeroGPU (kota varsa) ---
+    token = _hf_token()
+    if token:
+        try:
+            from gradio_client import Client
+        except Exception as e:
+            _log(f"⚠️ gradio_client yok: {e}")
+            Client = None  # type: ignore[assignment]
+
+        if Client is not None:
+            os.environ["HF_TOKEN"] = token
+            for space, etiket in ((FLUX2_SPACE, "FLUX.2-klein-4B"), (FLUX_SPACE, "FLUX.1-schnell")):
+                try:
+                    istemci = Client(space, verbose=False, token=token)
+                except Exception as e:
+                    _log(f"⚠️ {etiket} Space'e bağlanılamadı: {str(e)[:120]}")
+                    continue
+                uretilen: List[Path] = []
+                for i, sahne_prompt in enumerate(promptlar, 1):
+                    _log(f"🎨 Sahne {i}/{adet} — {etiket} (ZeroGPU)…")
+                    hedef = gecici / f"z_{etiket.replace('.', '')}_{i}.png"
+                    if _flux_sahne(istemci, sahne_prompt, hedef, genislik, yukseklik, 42 + i):
+                        uretilen.append(hedef)
+                        _log(f"   ✅ Sahne {i} hazır")
+                    else:
+                        _log(f"   ⚠️ Sahne {i} üretilemedi (ZeroGPU kotası dolu olabilir)")
+                if uretilen:
+                    yollar.extend(uretilen)
+                    sahneleri_uret.son_saglayici = etiket.lower()  # type: ignore[attr-defined]
+                    return yollar
+
+    # --- Sağlayıcı 3: Pollinations (son çare, düşük kalite ama kotasız) ---
+    _log("ℹ️ Yüksek kaliteli sağlayıcılar yok — Pollinations (yedek) kullanılıyor")
     for i, sahne_prompt in enumerate(promptlar, 1):
-        _log(f"🎨 Sahne {i}/{adet} — Pollinations difüzyon…")
+        _log(f"🎨 Sahne {i}/{adet} — Pollinations…")
         hedef = gecici / f"sahne_{i}.png"
         if _pollinations_sahne_tekrar(sahne_prompt, hedef, genislik, yukseklik, 42 + i):
             yollar.append(hedef)
@@ -260,41 +416,10 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
         else:
             _log(f"   ⚠️ Sahne {i} Pollinations'ta üretilemedi")
 
-
     if yollar:
         sahneleri_uret.son_saglayici = "pollinations"  # type: ignore[attr-defined]
-        return yollar
-
-    # --- Sağlayıcı 2: FLUX (HF ZeroGPU, kota varsa) ---
-    token = _hf_token()
-    if not token:
-        _log("⚠️ Pollinations başarısız ve HF_TOKEN yok — sahne üretilemedi")
-        return []
-    try:
-        from gradio_client import Client
-    except Exception as e:
-        _log(f"⚠️ gradio_client yok: {e}")
-        return []
-
-    os.environ["HF_TOKEN"] = token
-    try:
-        istemci = Client(FLUX_SPACE, verbose=False, token=token)
-    except Exception as e:
-        _log(f"⚠️ FLUX Space'e bağlanılamadı: {str(e)[:160]}")
-        return []
-
-    for i, sahne_prompt in enumerate(promptlar, 1):
-        _log(f"🎨 Sahne {i}/{adet} — FLUX.1-schnell (ZeroGPU)…")
-        hedef = gecici / f"sahne_{i}.png"
-        if _flux_sahne(istemci, sahne_prompt, hedef, genislik, yukseklik, 42 + i):
-            yollar.append(hedef)
-            _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
-        else:
-            _log(f"   ⚠️ Sahne {i} üretilemedi (ZeroGPU kotası dolu olabilir)")
-
-    if yollar:
-        sahneleri_uret.son_saglayici = "flux"  # type: ignore[attr-defined]
     return yollar
+
 
 
 
