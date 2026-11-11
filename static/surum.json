@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.11-gpu-isci",
-  "ozellik": "kaggle_colab_flux2_wan21",
+  "surum": "2026.11.11-gpu-isci-v2",
+  "ozellik": "diffusers_format_nf4",
   "kontrol": "gpu_worker"
 }

@@ -24,3 +24,5 @@ Pillow>=10.1.0
 imageio>=2.35.0
 imageio-ffmpeg>=0.5.1
 huggingface_hub>=0.26.0
+# Wan2.1-I2V-14B'yi T4 16GB'a sığdıran NF4 4-bit kuantizasyon (2026-11-11)
+bitsandbytes>=0.44.0

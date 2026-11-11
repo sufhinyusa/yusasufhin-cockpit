@@ -49,9 +49,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 # --- Doğrulanmış model kimlikleri (HF API: gated=False) ---
+# DİKKAT (2026-11-11 düzeltmesi): diffusers kütüphanesi `model_index.json`
+# ister. `Wan-AI/Wan2.1-T2V-1.3B` ve `Wan-AI/Wan2.1-I2V-14B-480P` depolarında
+# bu dosya YOK (ölçüldü) → pipeline yüklenemez. `-Diffusers` ekli sürümler
+# gerekir. Bu hata kurucunun Kaggle notebook'u karşılaştırılırken yakalandı.
 FLUX2_KLEIN = "black-forest-labs/FLUX.2-klein-4B"
-WAN21_T2V = "Wan-AI/Wan2.1-T2V-1.3B"
-WAN21_I2V = "Wan-AI/Wan2.1-I2V-14B-480P"
+WAN21_T2V = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+WAN21_I2V = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
 
 VARSAYILAN_SUNUCU = "https://yusasufhin.com"
 ISCI_DOSYA = Path(__file__).resolve().parent / "gpu_worker_durum.json"
@@ -206,29 +210,72 @@ def wan21_t2v_yukle(log=print):
 
 
 def wan21_i2v_yukle(log=print):
-    """Wan2.1-I2V-14B-480P (16.39 B) — 16 GB'a bf16'da SIĞMAZ.
+    """Wan2.1-I2V-14B-480P (16.39 B) — 16 GB T4'e NF4 4-bit ile sığdırılır.
 
-    `enable_sequential_cpu_offload()` ile katman katman GPU'ya taşınır; çalışır
-    ama yavaştır (5 sn klip ≈ 10–25 dk). Bu yüzden yalnızca açıkça istendiğinde
-    kullanılır; `--i2v-model` ile devre dışı bırakılabilir.
+    TEKNİK (kurucunun Kaggle notebook'undan port edildi, 2026-11-11):
+    bf16'da 33 GB isteyen 14B modeli `bitsandbytes` NF4 4-bit kuantizasyon ile
+    ~10 GB'a iner ve T4 16 GB'a **offload'suz** sığar. Bu, `sequential_cpu_offload`
+    yaklaşımından kat kat hızlıdır (o yöntem 5 sn klip için 10–25 dk harcıyordu).
+    bitsandbytes yoksa veya CUDA yoksa güvenli yola (bf16 + sequential offload)
+    düşülür ve bu durum log'a yazılır.
     """
     global _WAN_I2V
     if _WAN_I2V is not None:
         return _WAN_I2V
+
+    import torch
     from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
 
-    log(f"⏳ {WAN21_I2V} yükleniyor (16.4 B — sequential offload)…")
+    # VAE her durumda fp32 (fp16 VAE bu modelde bozulma üretiyor)
     vae = AutoencoderKLWan.from_pretrained(
-        WAN21_I2V, subfolder="vae", torch_dtype=_dtype()
+        WAN21_I2V, subfolder="vae", torch_dtype=torch.float32
     )
-    pipe = WanImageToVideoPipeline.from_pretrained(
-        WAN21_I2V, vae=vae, torch_dtype=_dtype(), low_cpu_mem_usage=True
-    )
-    pipe.enable_sequential_cpu_offload()
-    pipe.vae.enable_slicing()
+
+    nf4_kullanildi = False
+    if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 24 * 1024**3:
+        try:
+            from diffusers import BitsAndBytesConfig as DiffusersBnB
+            from diffusers import WanTransformer3DModel
+
+            log(f"⏳ {WAN21_I2V} yükleniyor (NF4 4-bit — T4 için)…")
+            transformer = WanTransformer3DModel.from_pretrained(
+                WAN21_I2V,
+                subfolder="transformer",
+                quantization_config=DiffusersBnB(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.float16,
+                ),
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+            )
+            pipe = WanImageToVideoPipeline.from_pretrained(
+                WAN21_I2V,
+                transformer=transformer,
+                vae=vae,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+            )
+            pipe.to("cuda")
+            nf4_kullanildi = True
+            log("✅ Wan2.1-I2V-14B NF4 4-bit hazır (offload YOK — hızlı yol)")
+        except Exception as e:
+            log(f"⚠️ NF4 yüklenemedi ({type(e).__name__}: {str(e)[:120]}) — "
+                f"bf16 + sequential offload'a düşülüyor (yavaş)")
+            _bosalt()
+
+    if not nf4_kullanildi:
+        log(f"⏳ {WAN21_I2V} yükleniyor (bf16 + sequential offload — yavaş)…")
+        pipe = WanImageToVideoPipeline.from_pretrained(
+            WAN21_I2V, vae=vae, torch_dtype=_dtype(), low_cpu_mem_usage=True
+        )
+        pipe.enable_sequential_cpu_offload()
+        pipe.vae.enable_slicing()
+
     _WAN_I2V = pipe
-    log("✅ Wan2.1-I2V-14B-480P hazır (yavaş mod)")
+    pipe._fabrika_nf4 = nf4_kullanildi  # type: ignore[attr-defined]
     return pipe
+
 
 
 

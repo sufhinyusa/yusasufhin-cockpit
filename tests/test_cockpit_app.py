@@ -617,12 +617,21 @@ def test_gpu_worker_i2v_gorsel_yoksa_hata():
 
 
 def test_gpu_worker_model_kimlikleri_dogrulanmis():
-    """Model kimlikleri HF'de doğrulanmış (gated=False) olanlarla aynı kalmalı."""
+    """Model kimlikleri diffusers formatında (model_index.json) olmalı.
+
+    2026-11-11: İlk sürüm `Wan-AI/Wan2.1-T2V-1.3B` kullanıyordu ama o depoda
+    `model_index.json` YOK → diffusers pipeline yükleyemez. `-Diffusers` eki
+    zorunlu (HF API ile ölçüldü). Bu test o regresyonu kilitler.
+    """
     import gpu_worker as gw
 
     assert gw.FLUX2_KLEIN == "black-forest-labs/FLUX.2-klein-4B"
-    assert gw.WAN21_T2V == "Wan-AI/Wan2.1-T2V-1.3B"
-    assert gw.WAN21_I2V == "Wan-AI/Wan2.1-I2V-14B-480P"
+    assert gw.WAN21_T2V == "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+    assert gw.WAN21_I2V == "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+
+    # Wan depoları diffusers formatında olmak ZORUNDA
+    assert gw.WAN21_T2V.endswith("-Diffusers")
+    assert gw.WAN21_I2V.endswith("-Diffusers")
 
 
 def test_worker_claim_gpu_kuyrugunu_oncelikler(client, monkeypatch, tmp_path):
