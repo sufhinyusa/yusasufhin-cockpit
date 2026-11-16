@@ -109,11 +109,11 @@ def synthesize_gemini_speech(
     raw_pcm: Optional[bytes] = None
     start_ts = time.time()
 
-    # Çoklu anahtar ve model devir havuzu (maksimum 8 saniye toplam limit)
+    # Çoklu anahtar ve model devir havuzu (ölü 400/403 anahtarları atla, çalışan anahtara ulaş)
     dead_keys = set()
     for model_name in models:
         for api_key in keys:
-            if api_key in dead_keys or (time.time() - start_ts) > 8.0:
+            if api_key in dead_keys or (time.time() - start_ts) > 15.0:
                 continue
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {

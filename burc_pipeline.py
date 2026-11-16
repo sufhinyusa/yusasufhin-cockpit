@@ -179,8 +179,11 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
     son_hata = "GEMINI_API_KEY bulunamadı"
     istem = _gemini_istem(burc, konu, sn, dil)
 
+    dead_keys: set[str] = set()
     for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-        for anahtar in anahtarlar[:3]:
+        for anahtar in anahtarlar:
+            if anahtar in dead_keys:
+                continue
             try:
                 veri = _json_ayikla(_gemini_istek(anahtar, model, istem))
                 anlatim = str(veri.get("narration_text") or "").strip()
@@ -195,7 +198,49 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
                     "simulasyon": False, "kaynak": f"gemini:{model}",
                 }
             except Exception as e:  # her anahtar/model denenir, son hata raporlanır
-                son_hata = f"{type(e).__name__}: {str(e)[:160]}"
+                msg = str(e)
+                if "HTTP 400" in msg or "HTTP 403" in msg or "HTTP 404" in msg:
+                    dead_keys.add(anahtar)
+                son_hata = f"{type(e).__name__}: {msg[:160]}"
+    # Cloudflare Workers AI LLM yedek denemesi
+    if os.environ.get("PYTEST_CURRENT_TEST") and not (
+        os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CF_API_TOKEN")
+    ):
+        return _cevrimdisi_sonuc(burc, konu, dil, son_hata)
+    try:
+        from prompt_director import _cf_credentials
+        cf_tok, cf_acc = _cf_credentials()
+        if cf_tok and cf_acc:
+            url = f"https://api.cloudflare.com/client/v4/accounts/{cf_acc}/ai/run/@cf/meta/llama-3.1-8b-instruct"
+            req = urllib.request.Request(
+                url,
+                data=json.dumps({
+                    "messages": [
+                        {"role": "system", "content": "Return ONLY a valid JSON object matching the schema."},
+                        {"role": "user", "content": istem},
+                    ],
+                    "max_tokens": 700,
+                    "temperature": 0.4,
+                }).encode("utf-8"),
+                headers={"Authorization": f"Bearer {cf_tok}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=12) as y:
+                ham_cf = json.loads(y.read().decode("utf-8"))
+            txt = ((ham_cf.get("result") or {}).get("response") or "").strip()
+            veri = _json_ayikla(txt)
+            anlatim = str(veri.get("narration_text") or "").strip()
+            gorsel = str(veri.get("image_prompt") or "").strip()
+            hareket = str(veri.get("motion_prompt") or "").strip()
+            if anlatim and gorsel and hareket:
+                return {
+                    "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
+                    "narration_text": anlatim, "image_prompt": gorsel,
+                    "motion_prompt": hareket, "subtitle_text": anlatim,
+                    "simulasyon": False, "kaynak": "cloudflare:llama-3.1-8b",
+                }
+    except Exception:
+        pass
     return _cevrimdisi_sonuc(burc, konu, dil, son_hata)
 
 

@@ -1044,6 +1044,228 @@ def _url_den_gorsel_ham(url: str) -> Optional[bytes]:
     return None
 
 
+def _has_live_gpu_worker() -> bool:
+    """Son 60 saniyede kalp atışı göndermiş gerçek GPU işçisi var mı kontrol eder."""
+    _prune_stale_workers()
+    return bool(ACTIVE_GPU_WORKERS)
+
+
+def _run_instant_cloud_render_sync(
+    *,
+    job_id: str,
+    method: str,
+    prompt: str,
+    image_prompts: List[str],
+    motion_prompt: str,
+    aspect_ratio: str,
+    style_preset: str,
+    camera_motion: str,
+    duration_sec: float,
+    source_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """GPU işçisi yokken anında oynatılabilir PNG/MP4 + HyperFrames HTML üretir.
+
+    Kural 1 uyumu: Video difüzyonu yerine kamera hareketli FFmpeg/HyperFrames kurgusu
+    olduğunda `simulasyon=True`, `video_difuzyonu=False` ve `gpu_upgrade_available=True`
+    alanları dürüstçe işaretlenir.
+    """
+    import ai_video_montaj as _avm
+    from hyperframes_motor import (
+        _cozunurluk,
+        _kinetic_card_png,
+        build_hyperframes_html,
+        hyperframes_studio_render,
+        instant_i2v_motion,
+        verify_onscreen_metrics,
+    )
+
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    w, h = _cozunurluk(aspect_ratio)
+    clean_prompts = [p for p in (image_prompts or []) if p and str(p).strip()] or [prompt]
+
+    if method in ("flux2_resim", "image_first_preview"):
+        hedef_png = MEDIA_DIR / f"{job_id}_preview.png"
+        prev = _avm.preview_single_image(
+            clean_prompts[0],
+            hedef_png,
+            genislik=w,
+            yukseklik=h,
+            style_preset=style_preset,
+            camera_motion=camera_motion,
+        )
+        simulasyon = False
+        saglayici = str(prev.get("provider") or "cloud")
+        if not prev.get("ok") or not hedef_png.is_file():
+            _kinetic_card_png(hedef_png, prompt[:70], clean_prompts[0][:110], w, h)
+            simulasyon = True
+            saglayici = "hyperframes_kinetic_card"
+        preview_url = f"/api/media/file?path={hedef_png.name}"
+        return {
+            "ok": True,
+            "status": "onizleme_hazir",
+            "progress_pct": 100,
+            "output_url": preview_url,
+            "download_url": f"{preview_url}&download=1",
+            "preview_image_url": preview_url,
+            "hyperframes_url": None,
+            "simulasyon": simulasyon,
+            "video_difuzyonu": False,
+            "gpu_upgrade_available": True,
+            "kaynak": saglayici,
+            "file_size_bytes": hedef_png.stat().st_size,
+            "resolution": f"{w}x{h}",
+            "duration_sec": 0.0,
+            "kalite_raporu": None,
+            "open_edit_metrics": None,
+        }
+
+    if method == "wan_i2v" or (MEDIA_DIR / f"{job_id}_input.png").is_file():
+        src_img = MEDIA_DIR / f"{job_id}_input.png"
+        if not src_img.is_file():
+            src_img = MEDIA_DIR / f"{job_id}_preview.png"
+            prev = _avm.preview_single_image(
+                clean_prompts[0],
+                src_img,
+                genislik=w,
+                yukseklik=h,
+                style_preset=style_preset,
+                camera_motion=camera_motion,
+            )
+            if not prev.get("ok") or not src_img.is_file():
+                _kinetic_card_png(src_img, prompt[:70], clean_prompts[0][:110], w, h)
+
+        hedef_mp4 = MEDIA_DIR / f"{job_id}.mp4"
+        hedef_html = MEDIA_DIR / f"{job_id}_hyperframes.html"
+        audio_path = MEDIA_DIR / f"{job_id}.wav"
+        ass_path = MEDIA_DIR / f"{job_id}.ass"
+        res = instant_i2v_motion(
+            src_img,
+            hedef_mp4,
+            prompt=motion_prompt or prompt,
+            camera_motion=camera_motion,
+            aspect_ratio=aspect_ratio,
+            duration_sec=duration_sec,
+            audio_path=audio_path if audio_path.is_file() else None,
+            ass_path=ass_path if ass_path.is_file() else None,
+        )
+        if not res.get("ok"):
+            return res
+        build_hyperframes_html(
+            hedef_html,
+            prompt[:70],
+            motion_prompt[:140] or source_url or style_preset,
+            [{"caption": prompt[:60], "motion": camera_motion}],
+            float(res.get("duration_sec") or duration_sec),
+            aspect_ratio,
+            style_preset,
+        )
+        video_url = f"/api/media/file?path={hedef_mp4.name}"
+        return {
+            "ok": True,
+            "status": "tamamlandi",
+            "progress_pct": 100,
+            "output_url": video_url,
+            "download_url": f"{video_url}&download=1",
+            "preview_image_url": f"/api/media/file?path={src_img.name}" if src_img.is_file() else None,
+            "hyperframes_url": f"/api/studio/hyperframes/{job_id}",
+            "simulasyon": True,
+            "video_difuzyonu": False,
+            "gpu_upgrade_available": True,
+            "kaynak": "bulut_hareket_i2v",
+            "file_size_bytes": res.get("file_size_bytes", 0),
+            "resolution": res.get("resolution", f"{w}x{h}"),
+            "duration_sec": res.get("duration_sec", duration_sec),
+            "kalite_raporu": res.get("kalite"),
+            "open_edit_metrics": verify_onscreen_metrics(prompt, source_url or prompt),
+        }
+
+    hedef_mp4 = MEDIA_DIR / f"{job_id}.mp4"
+    hedef_html = MEDIA_DIR / f"{job_id}_hyperframes.html"
+    audio_path = MEDIA_DIR / f"{job_id}.wav"
+    res = hyperframes_studio_render(
+        hedef_mp4,
+        hedef_html,
+        prompt=prompt,
+        image_prompts=clean_prompts,
+        aspect_ratio=aspect_ratio,
+        style_preset=style_preset,
+        camera_motion=camera_motion,
+        duration_sec=max(6.0, float(duration_sec)),
+        audio_path=audio_path if audio_path.is_file() else None,
+        source_url=source_url,
+    )
+    if not res.get("ok"):
+        return res
+    prev_png = res.get("preview_png")
+    preview_url = f"/api/media/file?path={Path(prev_png).name}" if prev_png and Path(prev_png).is_file() else None
+    video_url = f"/api/media/file?path={hedef_mp4.name}"
+    return {
+        "ok": True,
+        "status": "tamamlandi",
+        "progress_pct": 100,
+        "output_url": video_url,
+        "download_url": f"{video_url}&download=1",
+        "preview_image_url": preview_url,
+        "hyperframes_url": f"/api/studio/hyperframes/{job_id}",
+        "simulasyon": True,
+        "video_difuzyonu": False,
+        "gpu_upgrade_available": True,
+        "kaynak": f"hyperframes_{res.get('saglayici', 'cloud')}",
+        "file_size_bytes": res.get("file_size_bytes", 0),
+        "resolution": res.get("resolution", f"{w}x{h}"),
+        "duration_sec": max(6.0, float(duration_sec)),
+        "gecisler": res.get("gecisler"),
+        "kalite_raporu": res.get("kalite"),
+        "open_edit_metrics": res.get("open_edit_metrics"),
+    }
+
+
+def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dict[str, Any]:
+    """Anında bulut görsel/MP4 çıktısını Kural 1 etiketleriyle iş kaydına işler."""
+    from channels_manager import ChannelStore
+
+    job["status"] = res.get("status") or "tamamlandi"
+    job["progress_pct"] = int(res.get("progress_pct") or 100)
+    job["gpu_kuyruk"] = False
+    job["gpu_durum"] = "tamamlandi_onizleme"
+    job["output_url"] = res.get("output_url")
+    job["download_url"] = res.get("download_url")
+    job["preview_image_url"] = res.get("preview_image_url")
+    if res.get("hyperframes_url"):
+        job["hyperframes_url"] = res["hyperframes_url"]
+    job["simulasyon"] = bool(res.get("simulasyon", True))
+    job["video_difuzyonu"] = bool(res.get("video_difuzyonu", False))
+    job["gpu_upgrade_available"] = bool(res.get("gpu_upgrade_available", True))
+    job["kalite_raporu"] = res.get("kalite_raporu")
+    job["open_edit_metrics"] = res.get("open_edit_metrics")
+    job["file_size_bytes"] = res.get("file_size_bytes", 0)
+    job["resolution"] = res.get("resolution")
+    job["kaynak"] = res.get("kaynak")
+    art = dict(job.get("artifacts") or {})
+    art.update({
+        "kaynak": res.get("kaynak"),
+        "video_difuzyonu": job["video_difuzyonu"],
+        "file_size_bytes": res.get("file_size_bytes", 0),
+        "resolution": res.get("resolution"),
+        "gecisler": res.get("gecisler"),
+    })
+    job["artifacts"] = art
+    if str(job.get("output_url") or "").lower().find(".mp4") >= 0:
+        try:
+            job["youtube_bundle"] = ChannelStore(DATA_DIR).build_publish_bundle(job, MEDIA_DIR)
+        except Exception:
+            pass
+        job["message"] = (
+            "Anında bulut hareket kurgusu MP4 hazır (gerçek GPU video difüzyonu değildir — "
+            "Wan2.1/LTX için GPU işçisi bağlayıp yükseltebilirsiniz)."
+        )
+    else:
+        job["message"] = (
+            f"Anahtar görsel hazır ({res.get('kaynak', 'bulut')}) — 2. Aşamaya geçip videoya çevirebilirsiniz."
+        )
+    return job
+
+
 @app.post("/api/lab/generate", dependencies=[Depends(verify_auth)])
 async def generate_lab_video(req: Request):
     """Kova Lab video/I2V/FLUX önizleme isteğini GERÇEK kuyruğa bağlar.
@@ -1074,17 +1296,28 @@ async def generate_lab_video(req: Request):
     style_preset = str(body.get("style_preset") or body.get("style") or "cinematic_realism").strip()
     camera_motion = str(body.get("camera_motion") or "otomatik").strip()
     neg_prompt_raw = str(body.get("negative_prompt") or "").strip()
+    execution_mode = str(body.get("execution_mode") or "").strip().lower()
+    source_url = str(body.get("source_url") or "").strip()
     try:
         sure_sn = max(3.0, min(60.0, float(body.get("duration") or body.get("sure_sn") or 5.0)))
     except (TypeError, ValueError):
         sure_sn = 5.0
     job_id = _new_job_id()
 
+    effective_prompt = prompt
+    if source_url:
+        from prompt_director import fetch_url_launch_brief
+        url_res = await run_in_threadpool(lambda: fetch_url_launch_brief(source_url))
+        if not url_res.get("ok"):
+            return JSONResponse(status_code=400, content={"success": False, "status": "basarisiz", "message": url_res.get("error") or "Geçersiz source_url"})
+        effective_prompt = f"{prompt} — {url_res['brief']}"
+
+    scene_n = 3 if (workflow in ("hyperframes_motion", "product_launch", "image_then_i2v", "t2v_direct") or execution_mode == "instant_cloud") else 1
     try:
         from channels_manager import compose_story_plan
         story_plan = await run_in_threadpool(
             lambda: compose_story_plan(
-                prompt, style_preset, camera_motion, neg_prompt_raw, scene_count=1, duration_sec=sure_sn
+                effective_prompt, style_preset, camera_motion, neg_prompt_raw, scene_count=scene_n, duration_sec=sure_sn
             )
         )
         img_prompt = story_plan["image_prompt"]
@@ -1092,9 +1325,11 @@ async def generate_lab_video(req: Request):
         neg_prompt = story_plan["negative_prompt"]
         narration_txt = story_plan["narration_text"]
         planner_source = story_plan.get("planner_source", "yerel")
+        scene_prompts = [s.get("image_prompt", "") for s in (story_plan.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")] or [img_prompt]
     except Exception:
-        img_prompt, mot_prompt, neg_prompt = prompt, prompt, neg_prompt_raw
+        img_prompt, mot_prompt, neg_prompt = effective_prompt, effective_prompt, neg_prompt_raw
         narration_txt, planner_source = prompt, "ham"
+        scene_prompts = [img_prompt]
 
     gorsel_ham: Optional[bytes] = None
     try:
@@ -1122,7 +1357,9 @@ async def generate_lab_video(req: Request):
 
     input_url = f"/api/worker/input/{job_id}" if gorsel_ham is not None else None
 
-    if workflow in ("image_first_preview", "flux2_resim"):
+    if workflow in ("hyperframes_motion", "product_launch"):
+        method = workflow
+    elif workflow in ("image_first_preview", "flux2_resim"):
         method = "flux2_resim"
     elif workflow == "image_then_i2v":
         method = "wan_i2v" if gorsel_ham is not None else "image_then_i2v"
@@ -1151,7 +1388,8 @@ async def generate_lab_video(req: Request):
         )
 
     gpu_hedef = render_target in GPU_HEDEFLERI or method in (
-        "wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct"
+        "wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
+        "hyperframes_motion", "product_launch",
     )
     if gpu_hedef:
         tts_enabled = bool(body.get("tts_enabled")) or (voice and voice.lower() not in ("none", "yok", ""))
@@ -1221,6 +1459,45 @@ async def generate_lab_video(req: Request):
                 "not": "Yerel sahte render yapılmadı; gerçek üretim Kaggle/Colab GPU işçisinde.",
             },
         }
+        aninda = method in ("hyperframes_motion", "product_launch") or execution_mode == "instant_cloud"
+        if aninda:
+            res = await run_in_threadpool(
+                lambda: _run_instant_cloud_render_sync(
+                    job_id=job_id,
+                    method=method,
+                    prompt=prompt,
+                    image_prompts=scene_prompts,
+                    motion_prompt=mot_prompt,
+                    aspect_ratio=aspect_ratio,
+                    style_preset=style_preset,
+                    camera_motion=camera_motion,
+                    duration_sec=sure_sn,
+                    source_url=source_url or None,
+                )
+            )
+            if not res.get("ok"):
+                return JSONResponse(status_code=502, content={"success": False, "status": "basarisiz", "message": res.get("error") or "Bulut render başarısız."})
+            _finalize_instant_cloud_job(job, res)
+            _append_job_record(job)
+            return {
+                "success": True,
+                "status": job["status"],
+                "job_id": job_id,
+                "model_id": model_id,
+                "prompt": prompt,
+                "gpu_kuyruk": False,
+                "gpu_durum": job["gpu_durum"],
+                "simulasyon": job["simulasyon"],
+                "video_difuzyonu": job.get("video_difuzyonu", False),
+                "output_url": job.get("output_url"),
+                "download_url": job.get("download_url"),
+                "preview_image_url": job.get("preview_image_url"),
+                "hyperframes_url": job.get("hyperframes_url"),
+                "input_image_url": input_url,
+                "job": job,
+                "message": job["message"],
+            }
+
         _append_job_record(job)
         mesaj = (
             f"1. Adım Anahtar Görsel ({image_model}) GPU kuyruğuna alındı — beğendiğinizde I2V'ye geçebilirsiniz."
@@ -1680,6 +1957,11 @@ async def studio_stitch_clips(req: Request):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     url = f"/api/media/file?path={out_mp4.name}"
+    try:
+        from video_render import video_kalite_denetle
+        kalite_raporu = video_kalite_denetle(out_mp4)
+    except Exception:
+        kalite_raporu = {}
     job = {
         "id": out_id,
         "job_id": out_id,
@@ -1693,6 +1975,7 @@ async def studio_stitch_clips(req: Request):
         "download_url": f"{url}&download=1",
         "file_size_bytes": res["size_bytes"],
         "size_kb": max(1, round(res["size_bytes"] / 1024)),
+        "kalite_raporu": kalite_raporu,
         "simulasyon": False,
         "created_at": time.time(),
     }
@@ -1727,6 +2010,8 @@ async def studio_video_generate(req: Request):
     workflow = str(body.get("workflow") or "").strip().lower()
     method = str(body.get("method") or "").strip().lower()
     mode = str(body.get("mode") or "").strip().lower()
+    execution_mode = str(body.get("execution_mode") or "").strip().lower()
+    source_url = str(body.get("source_url") or "").strip()
     render_target = str(body.get("render_target") or "kaggle_32gb")
     aspect_ratio = str(body.get("aspect_ratio") or ch_cfg.get("aspect_ratio") or "16:9")
     voice = str(body.get("voice") or ch_cfg.get("voice") or "Aoede")
@@ -1740,6 +2025,14 @@ async def studio_video_generate(req: Request):
     except (TypeError, ValueError):
         sure_sn = 5.0
     job_id = _new_job_id()
+
+    effective_prompt = prompt
+    if source_url:
+        from prompt_director import fetch_url_launch_brief
+        url_res = await run_in_threadpool(lambda: fetch_url_launch_brief(source_url))
+        if not url_res.get("ok"):
+            return JSONResponse(status_code=400, content={"success": False, "detail": url_res.get("error") or "Geçersiz source_url"})
+        effective_prompt = f"{prompt} — {url_res['brief']}"
 
     gorsel_ham: Optional[bytes] = None
     try:
@@ -1757,8 +2050,10 @@ async def studio_video_generate(req: Request):
         logger.error("[Studio] Giriş görseli kaydedilemedi: %s", e)
         return JSONResponse(status_code=500, content={"success": False, "detail": "Giriş görseli kaydedilemedi."})
 
-    # Yöntem çözümlemesi (yeni Image-First/I2V iş akışları + eski Remotion/Canvas uyumu)
-    if workflow in ("image_first_preview", "flux2_resim"):
+    # Yöntem çözümlemesi (yeni Image-First/I2V/HyperFrames iş akışları + eski Remotion/Canvas uyumu)
+    if workflow in ("hyperframes_motion", "product_launch"):
+        method = workflow
+    elif workflow in ("image_first_preview", "flux2_resim"):
         method = "flux2_resim"
     elif workflow == "image_then_i2v":
         method = "wan_i2v" if gorsel_ham is not None else "image_then_i2v"
@@ -1779,11 +2074,15 @@ async def studio_video_generate(req: Request):
             content={"success": False, "detail": "wan_i2v için image_base64 veya input_image_url gerekli."},
         )
 
-    gpu_diffusion_methods = ("wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct")
+    gpu_diffusion_methods = (
+        "wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
+        "hyperframes_motion", "product_launch",
+    )
     if method in gpu_diffusion_methods:
+        scene_n = 3 if (method in ("hyperframes_motion", "product_launch", "image_then_i2v", "t2v_direct") or execution_mode == "instant_cloud") else 1
         story = await run_in_threadpool(
             lambda: compose_story_plan(
-                prompt, style_preset, camera_motion, neg_raw, scene_count=1, duration_sec=sure_sn
+                effective_prompt, style_preset, camera_motion, neg_raw, scene_count=scene_n, duration_sec=sure_sn
             )
         )
         img_prompt = story["image_prompt"]
@@ -1791,6 +2090,7 @@ async def studio_video_generate(req: Request):
         neg_prompt = story["negative_prompt"]
         narration_txt = story["narration_text"]
         planner_source = story.get("planner_source", "yerel")
+        scene_prompts = [s.get("image_prompt", "") for s in (story.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")] or [img_prompt]
         audio_url = None
         subtitle_url = None
         if method not in ("flux2_resim", "image_first_preview"):
@@ -1817,6 +2117,7 @@ async def studio_video_generate(req: Request):
             "job_id": job_id,
             "channel": channel,
             "prompt": prompt,
+            "source_url": source_url or None,
             "narration_text": narration_txt,
             "planner_source": planner_source,
             "image_prompt": img_prompt,
@@ -1858,6 +2159,30 @@ async def studio_video_generate(req: Request):
                 else f"Tutarlı 2 aşamalı GPU üretimi ({image_model} → {i2v_model}) kuyruğa alındı."
             ),
         }
+        aninda = method in ("hyperframes_motion", "product_launch") or execution_mode == "instant_cloud"
+        if aninda:
+            res = await run_in_threadpool(
+                lambda: _run_instant_cloud_render_sync(
+                    job_id=job_id,
+                    method=method,
+                    prompt=prompt,
+                    image_prompts=scene_prompts,
+                    motion_prompt=mot_prompt,
+                    aspect_ratio=aspect_ratio,
+                    style_preset=style_preset,
+                    camera_motion=camera_motion,
+                    duration_sec=sure_sn,
+                    source_url=source_url or None,
+                )
+            )
+            if not res.get("ok"):
+                return JSONResponse(status_code=502, content={"success": False, "detail": res.get("error") or "Anında bulut render başarısız."})
+            _finalize_instant_cloud_job(task_data, res)
+            task_data["stages"] = [
+                {"ad": "1. Stil & Prompt Kurgusu", "durum": "tamamlandi"},
+                {"ad": f"2. Anında Bulut Kurgu ({task_data.get('kaynak', 'cloud')})", "durum": "tamamlandi"},
+                {"ad": "3. FFmpeg Kalite & YouTube Paketi", "durum": "tamamlandi"},
+            ]
         _append_job_record(task_data)
         return {"success": True, "task": task_data}
 
@@ -2401,11 +2726,12 @@ async def burc_video_generate(req: Request):
             content={"success": False, "detail": "Girdi görseli kaydedilemedi."})
 
     yontem = str(body.get("method") or body.get("workflow") or "").strip().lower()
+    execution_mode = str(body.get("execution_mode") or "").strip().lower()
     if yontem == "image_first_preview":
         yontem = "flux2_resim"
     elif yontem == "image_then_i2v":
         yontem = "wan_i2v" if gorsel_ham is not None else "image_then_i2v"
-    if yontem not in ("wan_i2v", "flux2_resim", "burc_video", "image_then_i2v"):
+    if yontem not in ("wan_i2v", "flux2_resim", "burc_video", "image_then_i2v", "hyperframes_motion"):
         yontem = "wan_i2v" if gorsel_ham is not None else "flux2_resim"
     if yontem == "wan_i2v" and gorsel_ham is None:
         return JSONResponse(
@@ -2488,6 +2814,50 @@ async def burc_video_generate(req: Request):
         },
         "created_at": time.time(),
     }
+    aninda = yontem == "hyperframes_motion" or execution_mode == "instant_cloud"
+    if aninda:
+        res = await run_in_threadpool(
+            lambda: _run_instant_cloud_render_sync(
+                job_id=job_id,
+                method=yontem if yontem != "burc_video" else "hyperframes_motion",
+                prompt=metin,
+                image_prompts=[job["prompt"]],
+                motion_prompt=job["motion_prompt"],
+                aspect_ratio=job["aspect_ratio"],
+                style_preset="astrology_mystic",
+                camera_motion=str(body.get("camera_motion") or "orbital"),
+                duration_sec=sure_sn,
+            )
+        )
+        if not res.get("ok"):
+            return JSONResponse(status_code=502, content={"success": False, "detail": res.get("error") or "Burç anında bulut render başarısız."})
+        _finalize_instant_cloud_job(job, res)
+        _append_job_record(job)
+        return {
+            "success": True,
+            "job_id": job_id,
+            "task": job,
+            "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"]},
+            "senaryo": {
+                "narration_text": metin,
+                "image_prompt": job["prompt"],
+                "motion_prompt": job["motion_prompt"],
+                "simulasyon": bool(senaryo.get("simulasyon")),
+                "kaynak": job["senaryo_kaynak"],
+            },
+            "input_image_url": input_url,
+            "audio_url": audio_url,
+            "subtitle_url": subtitle_url,
+            "output_url": job.get("output_url"),
+            "download_url": job.get("download_url"),
+            "preview_image_url": job.get("preview_image_url"),
+            "hyperframes_url": job.get("hyperframes_url"),
+            "gpu_kuyruk": False,
+            "gpu_durum": job["gpu_durum"],
+            "simulasyon": job["simulasyon"],
+            "message": job["message"],
+        }
+
     _append_job_record(job)
     mesaj = (
         "Wan2.1 I2V işi GPU kuyruğuna alındı."
@@ -2513,6 +2883,212 @@ async def burc_video_generate(req: Request):
         "gpu_durum": "bekliyor",
         "message": mesaj,
     }
+
+
+@app.get("/api/studio/queue", dependencies=[Depends(verify_auth)])
+async def get_studio_queue(status: str = "all", limit: int = 50):
+    """GPU kuyruğunda bekleyen ve tamamlanan stüdyo işlerini döner."""
+    _release_expired_claims()
+    _prune_stale_workers()
+    with JOBS_LOCK:
+        jobs = list(_load_jobs_unlocked().get("jobs", []))
+    jobs.sort(key=lambda j: float(j.get("created_at") or 0), reverse=True)
+    waiting_count = sum(1 for j in jobs if j.get("gpu_kuyruk") and j.get("gpu_durum") in ("bekliyor", "isleniyor"))
+    st = (status or "all").strip().lower()
+    if st == "bekliyor":
+        jobs = [j for j in jobs if j.get("gpu_kuyruk") and j.get("gpu_durum") in ("bekliyor", "isleniyor")]
+    elif st == "tamamlandi":
+        jobs = [j for j in jobs if j.get("output_url")]
+    lim = max(1, min(int(limit or 50), 100))
+    return {
+        "success": True,
+        "active_workers_count": len(ACTIVE_GPU_WORKERS),
+        "waiting_count": waiting_count,
+        "items": jobs[:lim],
+    }
+
+
+@app.post("/api/studio/queue/{job_id}/instant-render", dependencies=[Depends(verify_auth)])
+async def studio_queue_instant_render(job_id: str):
+    """Kuyrukta bekleyen bir işi GPU işçisi beklemeden anında bulutta render eder."""
+    jid = _validate_job_id(job_id)
+    with JOBS_LOCK:
+        veri = _load_jobs_unlocked()
+        kayit = next((dict(j) for j in veri.get("jobs", []) if _is_job(j, jid)), None)
+    if kayit is None:
+        raise HTTPException(status_code=404, detail="İş kaydı bulunamadı.")
+
+    hedef_yontem = str(kayit.get("method") or "image_then_i2v")
+    if hedef_yontem == "burc_video":
+        hedef_yontem = "hyperframes_motion"
+    res = await run_in_threadpool(
+        lambda: _run_instant_cloud_render_sync(
+            job_id=jid,
+            method=hedef_yontem,
+            prompt=str(kayit.get("prompt") or "yusasufhin Studio"),
+            image_prompts=[str(kayit.get("image_prompt") or kayit.get("prompt") or "")],
+            motion_prompt=str(kayit.get("motion_prompt") or ""),
+            aspect_ratio=str(kayit.get("aspect_ratio") or "16:9"),
+            style_preset=str(kayit.get("style_preset") or "cinematic_realism"),
+            camera_motion=str(kayit.get("camera_motion") or "orbital"),
+            duration_sec=float(kayit.get("sure_sn") or 5.0),
+            source_url=kayit.get("source_url"),
+        )
+    )
+    if not res.get("ok"):
+        return JSONResponse(status_code=502, content={"success": False, "detail": res.get("error") or "Anında render başarısız."})
+
+    guncel: Dict[str, Any] = {}
+
+    def _uygula(data: Dict[str, Any]) -> None:
+        for item in data.get("jobs", []):
+            if _is_job(item, jid):
+                _finalize_instant_cloud_job(item, res)
+                guncel.update(item)
+                break
+
+    _update_jobs(_uygula)
+    return {"success": True, "job_id": jid, "task": guncel, "job": guncel, "message": guncel.get("message")}
+
+
+@app.post("/api/studio/queue/{job_id}/requeue-gpu", dependencies=[Depends(verify_auth)])
+async def studio_queue_requeue_gpu(job_id: str):
+    """Mevcut işi (veya onaylı önizlemesini) gerçek Wan2.1/LTX GPU kuyruğuna yükseltir."""
+    jid = _validate_job_id(job_id)
+    with JOBS_LOCK:
+        veri = _load_jobs_unlocked()
+        eski = next((dict(j) for j in veri.get("jobs", []) if _is_job(j, jid)), None)
+    if eski is None:
+        raise HTTPException(status_code=404, detail="İş kaydı bulunamadı.")
+
+    if eski.get("output_url") or str(eski.get("gpu_durum") or "").startswith("tamamlandi"):
+        yeni_id = _new_job_id()
+        input_url = None
+        for ext_ad in (f"{jid}_input.png", f"{jid}_preview.png"):
+            src = MEDIA_DIR / ext_ad
+            if src.is_file():
+                dst = MEDIA_DIR / f"{yeni_id}_input.png"
+                shutil.copy2(src, dst)
+                input_url = f"/api/worker/input/{yeni_id}"
+                break
+        for ek in (".wav", ".srt", ".ass"):
+            src_ek = MEDIA_DIR / f"{jid}{ek}"
+            if src_ek.is_file():
+                shutil.copy2(src_ek, MEDIA_DIR / f"{yeni_id}{ek}")
+
+        yeni_is = {
+            **eski,
+            "id": yeni_id,
+            "job_id": yeni_id,
+            "parent_job_id": jid,
+            "method": "wan_i2v" if input_url else "image_then_i2v",
+            "mode": "wan_i2v" if input_url else "image_then_i2v",
+            "input_image_url": input_url,
+            "audio_url": f"/api/worker/audio/{yeni_id}" if (MEDIA_DIR / f"{yeni_id}.wav").is_file() else eski.get("audio_url"),
+            "subtitle_url": f"/api/worker/subtitle/{yeni_id}" if (MEDIA_DIR / f"{yeni_id}.srt").is_file() else eski.get("subtitle_url"),
+            "output_url": None,
+            "download_url": None,
+            "gpu_kuyruk": True,
+            "gpu_durum": "bekliyor",
+            "status": "kuyrukta (GPU işçisi bekleniyor)",
+            "progress_pct": 0,
+            "simulasyon": False,
+            "created_at": time.time(),
+            "message": f"Gerçek Wan2.1/LTX GPU yükseltmesi ({yeni_id}) kuyruğa alındı.",
+        }
+        yeni_is.pop("claimed_by", None)
+        yeni_is.pop("claimed_at", None)
+        _append_job_record(yeni_is)
+        return {"success": True, "job_id": yeni_id, "task": yeni_is, "message": yeni_is["message"]}
+
+    guncel: Dict[str, Any] = {}
+
+    def _reset(data: Dict[str, Any]) -> None:
+        for item in data.get("jobs", []):
+            if _is_job(item, jid):
+                item["gpu_kuyruk"] = True
+                item["gpu_durum"] = "bekliyor"
+                item["status"] = "kuyrukta (GPU işçisi bekleniyor)"
+                item["progress_pct"] = 0
+                item.pop("claimed_by", None)
+                item.pop("claimed_at", None)
+                guncel.update(item)
+                break
+
+    _update_jobs(_reset)
+    return {"success": True, "job_id": jid, "task": guncel, "message": "İş GPU kuyruğuna yeniden alındı."}
+
+
+@app.post("/api/studio/queue/{job_id}/cancel", dependencies=[Depends(verify_auth)])
+async def studio_queue_cancel(job_id: str):
+    """Kuyrukta bekleyen işi iptal eder."""
+    jid = _validate_job_id(job_id)
+    bulundu = {"ok": False}
+
+    def _iptal(data: Dict[str, Any]) -> None:
+        for item in data.get("jobs", []):
+            if _is_job(item, jid):
+                item["gpu_kuyruk"] = False
+                item["gpu_durum"] = "iptal"
+                item["status"] = "iptal_edildi"
+                bulundu["ok"] = True
+                break
+
+    _update_jobs(_iptal)
+    if not bulundu["ok"]:
+        raise HTTPException(status_code=404, detail="İş kaydı bulunamadı.")
+    return {"success": True, "job_id": jid, "status": "iptal_edildi"}
+
+
+@app.post("/api/studio/analyze-video", dependencies=[Depends(verify_auth)])
+async def studio_analyze_video(req: Request):
+    """Link #296 (`rea-video`): Seçili MP4'ün sahne kesimleri & teknik şemasını çıkarır."""
+    from hyperframes_motor import rea_video_reverse_blueprint
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    jid_raw = str(body.get("job_id") or "").strip()
+    path_raw = str(body.get("path") or body.get("video_url") or "").strip()
+    target: Optional[Path] = None
+    if jid_raw:
+        jid = _validate_job_id(jid_raw)
+        cand = (MEDIA_DIR / f"{jid}.mp4").resolve()
+        if cand.is_file():
+            target = cand
+    if target is None and path_raw:
+        m = re.search(r"[?&]path=([^&]+)", path_raw)
+        ad = Path(urllib.parse.unquote(m.group(1)) if m else path_raw).name
+        if ad and not ad.startswith(".") and JOB_ID_RE.match(ad):
+            for kok in (MEDIA_DIR, DATA_MEDIA_DIR):
+                cand = (kok / ad).resolve()
+                if cand.is_file() and cand.is_relative_to(kok):
+                    target = cand
+                    break
+    if target is None or not target.is_file():
+        return JSONResponse(status_code=404, content={"success": False, "detail": "Analiz edilecek MP4 dosyası bulunamadı."})
+
+    sonuc = await run_in_threadpool(lambda: rea_video_reverse_blueprint(target))
+    return {"success": bool(sonuc.get("ok")), **sonuc}
+
+
+@app.get("/api/studio/hyperframes/{job_id}", dependencies=[Depends(verify_auth)])
+async def get_studio_hyperframes(job_id: str):
+    """İş için oluşturulan HyperFrames HTML5 zaman çizelgesini güvenle servis eder."""
+    jid = _validate_job_id(job_id)
+    hedef = (MEDIA_DIR / f"{jid}_hyperframes.html").resolve()
+    if not hedef.is_file() or not hedef.is_relative_to(MEDIA_DIR):
+        raise HTTPException(status_code=404, detail="HyperFrames zaman çizelgesi bulunamadı.")
+    return FileResponse(
+        hedef,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src blob:; connect-src 'none'",
+            "Content-Disposition": f'inline; filename="{jid}_hyperframes.html"',
+        },
+    )
 
 
 # -----------------------------------------------------------------------------

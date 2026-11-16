@@ -38,6 +38,26 @@ SAHNE_SAYISI = 3
 SAHNE_SURE_SN = 3.0
 GECIS_SN = 0.6
 FLUX_ZAMAN_ASIMI_SN = 120
+# Link #296 (`saas-motion-kit`): ardışık sahnelerde aynı geçişin tekrarını önleyen palet.
+XFADE_PALETI: Tuple[str, ...] = (
+    "fade", "smoothleft", "wipeleft", "dissolve", "slidedown", "circleopen",
+)
+# Link #296 (`opus-video-skills`): Ken Burns tekdüze zoom yerine kamera hareket çeşitliliği.
+KAMERA_HAREKETLERI: Tuple[str, ...] = ("zoom_in", "pan_right", "zoom_out", "pan_left")
+
+
+def sec_xfade_gecisleri(adet: int, palet: Tuple[str, ...] = XFADE_PALETI) -> List[str]:
+    """Art arda iki aynı geçişin tekrar etmesini engelleyen `xfade` geçiş dizisi döner."""
+    if adet <= 0:
+        return []
+    temiz_palet = [g for g in palet if str(g).strip()] or ["fade"]
+    secilen: List[str] = []
+    for i in range(adet):
+        aday = temiz_palet[i % len(temiz_palet)]
+        if secilen and aday == secilen[-1] and len(temiz_palet) > 1:
+            aday = temiz_palet[(i + 1) % len(temiz_palet)]
+        secilen.append(aday)
+    return secilen
 
 
 def _hf_token() -> Optional[str]:
@@ -495,16 +515,26 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
 
 
 def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
-                 sure_sn: float, zoom_in: bool = True) -> bool:
-    """Tek sahneyi Ken Burns (zoompan) hareketiyle MP4'e çevirir.
+                 sure_sn: float, zoom_in: bool = True,
+                 hareket: Optional[str] = None) -> bool:
+    """Tek sahneyi Ken Burns (`zoompan` / `pan`) hareketiyle MP4'e çevirir.
 
     NOT: `zoompan` filtresinde `d=90` yazmak her giriş karesini 90 kez
     çoğaltır → 274 saniyelik dosya üretir (2026-11-10'da yaşandı). Bu yüzden
     `d=1` kullanılır: her giriş karesi tam bir çıkış karesi olur, süreyi
     `-frames:v` belirler.
     """
-    kare = int(sure_sn * 30)
-    if zoom_in:
+    kare = max(1, int(sure_sn * 30))
+    mod = hareket or ("zoom_in" if zoom_in else "zoom_out")
+    x_ifade = "iw/2-(iw/zoom/2)"
+    y_ifade = "ih/2-(ih/zoom/2)"
+    if mod == "pan_right":
+        z_ifade = "1.12"
+        x_ifade = f"(iw-iw/zoom)*on/{kare}"
+    elif mod == "pan_left":
+        z_ifade = "1.12"
+        x_ifade = f"(iw-iw/zoom)*(1-on/{kare})"
+    elif mod == "zoom_in":
         z_ifade = "min(zoom+0.0015,1.18)"
     else:
         z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"
@@ -514,7 +544,7 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
         "-loop", "1", "-framerate", "30", "-t", f"{sure_sn:.3f}", "-i", str(sahne_png),
         "-vf", (
             f"scale={int(genislik * 1.25)}:{int(yukseklik * 1.25)},"
-            f"zoompan=z='{z_ifade}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+            f"zoompan=z='{z_ifade}':x='{x_ifade}':y='{y_ifade}':"
             f"d=1:s={genislik}x{yukseklik}:fps=30,setsar=1,format=yuv420p"
         ),
         "-frames:v", str(kare),
@@ -543,13 +573,15 @@ def montaj_birlestir(sahne_mp4leri: List[Path], hedef: Path,
     for v in sahne_mp4leri:
         cmd += ["-i", str(v)]
 
+    gecisler = sec_xfade_gecisleri(len(sahne_mp4leri) - 1)
     filtre = ""
     onceki = "[0:v]"
     offset = sure_sn - gecis_sn
     for i in range(1, len(sahne_mp4leri)):
         etiket = f"[x{i}]"
+        gecis = gecisler[i - 1]
         filtre += (
-            f"{onceki}[{i}:v]xfade=transition=fade:duration={gecis_sn}:"
+            f"{onceki}[{i}:v]xfade=transition={gecis}:duration={gecis_sn}:"
             f"offset={offset:.3f}{etiket};"
         )
         onceki = etiket
@@ -618,10 +650,11 @@ def ai_video_uret(
     parcalar: List[Path] = []
     for i, png in enumerate(sahneler):
         parca = gecici / f"p{i}.mp4"
+        hareket = KAMERA_HAREKETLERI[i % len(KAMERA_HAREKETLERI)]
         if _sahne_video(png, parca, genislik, yukseklik, sahne_sure_sn,
-                        zoom_in=(i % 2 == 0)):
+                        zoom_in=(i % 2 == 0), hareket=hareket):
             parcalar.append(parca)
-            _log(f"   ✅ Sahne {i + 1} hareketlendirildi")
+            _log(f"   ✅ Sahne {i + 1} hareketlendirildi ({hareket})")
 
     if not parcalar:
         return {
@@ -657,12 +690,20 @@ def ai_video_uret(
     else:
         shutil.copy2(sessiz, son)
 
+    kalite: Dict[str, Any] = {}
     try:
-        from video_render import mp4_gecerli_mi
+        from video_render import mp4_gecerli_mi, video_kalite_denetle
 
-        gecerli, neden = mp4_gecerli_mi(son)
+        oran = "9:16" if yukseklik > genislik else "16:9"
+        kalite = video_kalite_denetle(son, beklenen_oran=oran)
+        gecerli = bool(kalite.get("gecerli")) and not bool(kalite.get("bos_video"))
+        neden = str(kalite.get("neden") or "kalite denetimi")
     except Exception:
-        gecerli, neden = son.is_file(), "doğrulama atlandı"
+        try:
+            from video_render import mp4_gecerli_mi
+            gecerli, neden = mp4_gecerli_mi(son)
+        except Exception:
+            gecerli, neden = son.is_file(), "doğrulama atlandı"
 
     if not gecerli:
         return {
@@ -670,23 +711,27 @@ def ai_video_uret(
             "kaynak": "flux_montaj", "simulasyon": False,
             "video_difuzyonu": False, "yontem": "flux_goruntu_montaji",
             "hata": f"doğrulama başarısız: {neden}",
+            "kalite": kalite,
         }
 
     shutil.rmtree(gecici, ignore_errors=True)
 
     boyut = son.stat().st_size
     saglayici = getattr(sahneleri_uret, "son_saglayici", "bilinmiyor")
+    gecisler = sec_xfade_gecisleri(max(0, len(parcalar) - 1))
     _log(f"✅ Gerçek YZ montaj hazır: {len(parcalar)} sahne, {boyut // 1024} KB, "
-         f"sağlayıcı={saglayici}, {round(time.time() - baslangic, 1)} sn")
+         f"sağlayıcı={saglayici}, geçişler={gecisler}, {round(time.time() - baslangic, 1)} sn")
     return {
         "basarili": True, "yol": son, "boyut": boyut, "sahne": len(parcalar),
         "kaynak": f"yz_montaj_{saglayici}" if saglayici != "bilinmiyor" else "flux_montaj",
         "saglayici": saglayici, "hata": None,
+        "gecisler": gecisler,
+        "kalite": kalite,
         # Kural 1: görseller gerçek difüzyon çıktısı; video ise kare bazlı
         # Ken Burns montajıdır — video difüzyonu DEĞİLDİR, açıkça söylenir.
         "simulasyon": False,
         "video_difuzyonu": False,
-        "yontem": "flux_goruntu_montaji (Ken Burns + xfade)",
+        "yontem": "flux_goruntu_montaji (Ken Burns + çoklu xfade)",
         "ses": "var" if (ses_yolu is not None and Path(ses_yolu).is_file()) else "yok",
     }
 

@@ -25,8 +25,11 @@ prompt metnini taşıyan kılavuz önizlemedir ve kareye "(simülasyon)" yazıl�
 """
 from __future__ import annotations
 
+import io
+import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -404,5 +407,159 @@ def video_render_et(
             else "ffmpeg hareketli geometri (onizleme, Pillow yok)"
         ),
         "hata": None,
+    }
+
+
+# -----------------------------------------------------------------------------
+# 4. RENDER SONRASI KALİTE VE İLK-KARE DENETİMİ (Link #296: brag + ffmpeg-skill)
+# -----------------------------------------------------------------------------
+def _ffprobe_bul() -> Optional[str]:
+    """Sistemde varsa `ffprobe` yürütülebilir dosya yolunu döner."""
+    aday = shutil.which("ffprobe")
+    if aday:
+        return aday
+    ffmpeg_yol = Path(_ffmpeg_bul())
+    kardes = ffmpeg_yol.with_name("ffprobe")
+    if kardes.is_file():
+        return str(kardes)
+    return None
+
+
+def _medya_akislari_tara(mp4_yolu: Path) -> Dict[str, Any]:
+    """ffprobe (yoksa ffmpeg -i) ile çözünürlük, fps, süre, kodek ve ses bilgisi döner."""
+    sonuc: Dict[str, Any] = {
+        "genislik": 0, "yukseklik": 0, "fps": 0.0,
+        "sure_sn": 0.0, "video_codec": None, "ses_var": False,
+    }
+    ffprobe = _ffprobe_bul()
+    if ffprobe:
+        try:
+            r = subprocess.run(
+                [ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(mp4_yolu)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                veri = json.loads(r.stdout)
+                sonuc["sure_sn"] = round(float((veri.get("format") or {}).get("duration") or 0.0), 2)
+                for s in veri.get("streams") or []:
+                    if s.get("codec_type") == "video" and not sonuc["genislik"]:
+                        sonuc["genislik"] = int(s.get("width") or 0)
+                        sonuc["yukseklik"] = int(s.get("height") or 0)
+                        sonuc["video_codec"] = s.get("codec_name")
+                        fps_ham = str(s.get("avg_frame_rate") or s.get("r_frame_rate") or "0/1")
+                        if "/" in fps_ham:
+                            pay, payda = fps_ham.split("/", 1)
+                            if float(payda or 0) > 0:
+                                sonuc["fps"] = round(float(pay) / float(payda), 2)
+                    elif s.get("codec_type") == "audio":
+                        sonuc["ses_var"] = True
+                return sonuc
+        except Exception as e_fp:
+            logger.debug("[VideoRender] ffprobe taraması atlandı: %s", e_fp)
+
+    try:
+        r2 = subprocess.run(
+            [_ffmpeg_bul(), "-hide_banner", "-i", str(mp4_yolu)],
+            capture_output=True, text=True, timeout=15,
+        )
+        bilgi = r2.stderr or ""
+        m_dur = re.search(r"Duration:\s*(\d+):(\d+):([\d.]+)", bilgi)
+        if m_dur:
+            sonuc["sure_sn"] = round(int(m_dur.group(1)) * 3600 + int(m_dur.group(2)) * 60 + float(m_dur.group(3)), 2)
+        m_vid = re.search(r"Video:\s*([a-zA-Z0-9_]+).*?,\s*(\d{2,5})x(\d{2,5})", bilgi)
+        if m_vid:
+            sonuc["video_codec"] = m_vid.group(1)
+            sonuc["genislik"] = int(m_vid.group(2))
+            sonuc["yukseklik"] = int(m_vid.group(3))
+        m_fps = re.search(r"(\d+(?:\.\d+)?)\s*fps\b", bilgi)
+        if m_fps:
+            sonuc["fps"] = round(float(m_fps.group(1)), 2)
+        sonuc["ses_var"] = "Audio:" in bilgi
+    except Exception as e_ff:
+        logger.debug("[VideoRender] ffmpeg bilgi taraması atlandı: %s", e_ff)
+    return sonuc
+
+
+def _kare_istatistik(mp4_yolu: Path, an_sn: float) -> Optional[Dict[str, float]]:
+    """Belirli saniyeden tek kare çıkarır ve ortalama parlaklık ile piksel standart sapmasını hesaplar."""
+    try:
+        from PIL import Image, ImageStat
+    except Exception:
+        return None
+    cmd = [
+        _ffmpeg_bul(), "-y", "-hide_banner", "-loglevel", "error",
+        "-ss", f"{max(0.0, float(an_sn)):.3f}",
+        "-i", str(mp4_yolu),
+        "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-",
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=15)
+        if r.returncode != 0 or len(r.stdout) < 100:
+            return None
+        im = Image.open(io.BytesIO(r.stdout)).convert("RGB")
+        st = ImageStat.Stat(im)
+        r_m, g_m, b_m = st.mean[:3]
+        luma = 0.2126 * r_m + 0.7152 * g_m + 0.0722 * b_m
+        max_std = max(st.stddev[:3])
+        return {"mean_luma": round(luma, 2), "max_stddev": round(max_std, 2)}
+    except Exception as e_kr:
+        logger.debug("[VideoRender] Kare istatistiği hatası (%.2fs): %s", an_sn, e_kr)
+        return None
+
+
+def video_kalite_denetle(
+    yol: Path | str,
+    beklenen_oran: Optional[str] = None,
+) -> Dict[str, Any]:
+    """MP4 çıkışını yapı, ilk-kare parlaklık/düzlük (brag) ve akış telemetrisi (ffmpeg-skill) açısından denetler."""
+    p = Path(yol)
+    gecerli, neden = mp4_gecerli_mi(p)
+    if not gecerli:
+        return {
+            "gecerli": False, "uygun": False, "neden": neden, "uyarilar": [neden],
+            "genislik": 0, "yukseklik": 0, "fps": 0.0, "sure_sn": 0.0,
+            "video_codec": None, "ses_var": False,
+            "ilk_kare_siyah": False, "ilk_kare_duz": False, "bos_video": False,
+            "platform_uyumu": "bilinmiyor",
+        }
+
+    meta = _medya_akislari_tara(p)
+    sure_sn = float(meta.get("sure_sn") or 0.0)
+    w, h = int(meta.get("genislik") or 0), int(meta.get("yukseklik") or 0)
+
+    ilk = _kare_istatistik(p, 0.0)
+    orta_an = min(max(0.25, sure_sn * 0.5), max(0.25, sure_sn - 0.1)) if sure_sn > 0.5 else 0.0
+    orta = _kare_istatistik(p, orta_an) if orta_an > 0 else ilk
+
+    ilk_duz = bool(ilk and ilk["max_stddev"] < 2.5)
+    ilk_siyah = bool(ilk and ilk["mean_luma"] < 8.0 and ilk["max_stddev"] < 10.0)
+    orta_duz = bool(orta and orta["max_stddev"] < 2.5)
+    orta_siyah = bool(orta and orta["mean_luma"] < 8.0 and orta["max_stddev"] < 10.0)
+    bos_video = bool((ilk_duz and (orta is None or orta_duz)) or (ilk_siyah and orta is not None and orta_siyah))
+
+    uyarilar: List[str] = []
+    if bos_video:
+        uyarilar.append("İlk ve orta kareler düz/siyah — boş render şüphesi")
+    elif ilk_duz or ilk_siyah:
+        uyarilar.append("İlk kare koyu/düz (fade-in veya kararmış giriş karesi)")
+
+    if beklenen_oran and w > 0 and h > 0:
+        oran_temiz = beklenen_oran.strip()
+        if oran_temiz == "9:16" and w > h:
+            uyarilar.append(f"Çözünürlük ({w}x{h}) 9:16 dikey hedefiyle uyumsuz")
+        elif oran_temiz == "16:9" and h > w:
+            uyarilar.append(f"Çözünürlük ({w}x{h}) 16:9 yatay hedefiyle uyumsuz")
+
+    platform_uyumu = "reels_shorts_tiktok" if (h > w and w > 0) else ("youtube_yatay" if w > 0 else "bilinmiyor")
+    return {
+        "gecerli": True,
+        "uygun": not bos_video,
+        "neden": "; ".join(uyarilar) if uyarilar else "geçerli",
+        "uyarilar": uyarilar,
+        **meta,
+        "ilk_kare_siyah": ilk_siyah,
+        "ilk_kare_duz": ilk_duz,
+        "bos_video": bos_video,
+        "platform_uyumu": platform_uyumu,
     }
 

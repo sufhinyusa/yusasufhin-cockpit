@@ -423,13 +423,17 @@ class VideoStudioController:
     """Mobil ve web portalından tetiklenen tam teşekküllü stüdyo iş akışı yöneticisi."""
 
     CHANNELS = {
-        "Astroloji_Kova": {"name": "Kova Astroloji", "style": "mystic_dark", "ratio": "16:9"},
-        "Tech_AI_Fabrika": {"name": "Fabrika AI & Tech", "style": "cyber_tech", "ratio": "16:9"},
-        "Belgesel_Sinematik": {"name": "İstanbul & Tarih Belgeseli", "style": "cinematic_4k", "ratio": "16:9"},
-        "Viral_Shorts": {"name": "Hızlı Viral Kanca", "style": "vertical_fast", "ratio": "9:16"},
+        "Astroloji_Kova": {"name": "Astroloji & Burçlar (Kova Kozmos)", "style": "astrology_mystic", "ratio": "9:16"},
+        "Animasyon_3D": {"name": "3D Animasyon & Hikaye Stüdyosu", "style": "pixar_3d_animation", "ratio": "16:9"},
+        "Anime_Evreni": {"name": "Anime & Fantastik Çizgi Evren", "style": "anime_2d", "ratio": "9:16"},
+        "Tech_AI_Fabrika": {"name": "Fabrika AI & Gelecek Teknolojisi", "style": "tech_futuristic", "ratio": "16:9"},
+        "Belgesel_Sinematik": {"name": "İstanbul & Tarih Sinematik Belgeseli", "style": "history_documentary", "ratio": "16:9"},
+        "Viral_Shorts": {"name": "Viral Sinematik Shorts & Hızlı Kanca", "style": "cinematic_realism", "ratio": "9:16"},
     }
 
     METHODS = {
+        "hyperframes_motion": {"name": "HyperFrames + Opus Canvas (Link #296)", "desc": "Anında çok sahneli HTML5/FFmpeg sinematik kurgu"},
+        "product_launch": {"name": "Product Launch Motion (Link #296)", "desc": "Web sitesi URL'sinden otomatik lansman videosu"},
         "remotion_cinema": {"name": "Remotion Cinema Montage (#246)", "desc": "Kod tabanlı 4K kurgu + gerçek stok video"},
         "blender_wan": {"name": "Blender 3D + Wan 2.2 (#245)", "desc": "3D derinlik ve karakter sürekliliği"},
         "opus_canvas": {"name": "Opus Canvas Code Motion (#179)", "desc": "Saf Canvas/Three.js kod animasyonu"},
@@ -578,6 +582,10 @@ class VideoStudioController:
                 artifacts["sahne_sayisi"] = str(sahne_sayisi)
                 artifacts["kaynak"] = render_kaynak
                 artifacts["saglayici"] = saglayici
+                if ai_sonuc.get("gecisler"):
+                    artifacts["xfade_gecisler"] = ",".join(str(g) for g in ai_sonuc["gecisler"])
+                if isinstance(ai_sonuc.get("kalite"), dict):
+                    artifacts["kalite_raporu"] = json.dumps(ai_sonuc["kalite"], ensure_ascii=False)
                 artifacts["render_log"] = (
                     f"[{engine_title}] GERÇEK YZ MONTAJ — {saglayici} difüzyonu ile "
                     f"{sahne_sayisi} sahne, {res}, Ken Burns + xfade "
@@ -617,6 +625,15 @@ class VideoStudioController:
                     artifacts["duration_sec"] = str(final_dur)
                     artifacts["resolution"] = res
                     artifacts["kaynak"] = "baslik_karti"
+                    try:
+                        from video_render import video_kalite_denetle
+
+                        artifacts["kalite_raporu"] = json.dumps(
+                            video_kalite_denetle(output_mp4, beklenen_oran=aspect_ratio),
+                            ensure_ascii=False,
+                        )
+                    except Exception:
+                        pass
                     artifacts["render_log"] = (
                         f"[{engine_title}] YEDEK başlık kartı (YZ sahne üretilemedi) "
                         f"{res} @ 30fps {final_dur}s ({file_sz} bytes, moov doğrulandı)"

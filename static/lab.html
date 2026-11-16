@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=11">
+  <link rel="stylesheet" href="/site.css?v=12">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
@@ -133,9 +133,25 @@
                   <option value="image_then_i2v">🎬 2. Otomatik 2 Aşama: Görsel Üret + Hemen I2V ile Canlandır</option>
                   <option value="wan_i2v">📸 3. Hazır/Yüklenen Görselden Doğrudan I2V</option>
                   <option value="t2v_direct">📝 4. Doğrudan T2V (Metinden Video — Görsel Adımsız)</option>
-                  <option value="opus_canvas">💻 5. Opus Canvas Code Motion (#179 — Saf Kod Animasyon)</option>
-                  <option value="remotion_cinema">🎞️ 6. Remotion Cinema Yerel Kurgu (#246)</option>
+                  <option value="hyperframes_motion">🎞️ 5. HyperFrames + Opus Stüdyo (#296 — Anında Çok Sahneli MP4 + HTML5)</option>
+                  <option value="product_launch">🚀 6. Ürün / Web Sitesi Lansman Videosu (#296 Product Launch Motion)</option>
+                  <option value="opus_canvas">💻 7. Opus Canvas Code Motion (#179 — Saf Kod Animasyon)</option>
+                  <option value="remotion_cinema">📽️ 8. Remotion Cinema Yerel Kurgu (#246)</option>
                 </select>
+              </div>
+            </div>
+
+            <div class="site-studio-row-2" style="margin-top:6px;">
+              <div class="site-field">
+                <label for="videoExecModeSelect">2B. GPU İşçisi Yoksa Çalıştırma Modu</label>
+                <select id="videoExecModeSelect" class="site-select">
+                  <option value="auto" selected>⚡ Otomatik (0 GPU İşçisi → Anında Bulut + HyperFrames)</option>
+                  <option value="gpu_queue">📦 Sadece GPU Kuyruğuna Al (Wan2.1 / LTX İşçisi Bekle)</option>
+                </select>
+              </div>
+              <div class="site-field" id="videoSourceUrlWrap" hidden>
+                <label for="videoSourceUrlInput">🌐 Hedef Web / Ürün URL'si (Product Launch)</label>
+                <input id="videoSourceUrlInput" type="url" class="site-input" placeholder="https://yusasufhin.com" />
               </div>
             </div>
 
@@ -354,6 +370,24 @@
         </div>
 
       </div>
+
+      <!-- BEKLEYEN GPU KUYRUĞU VE ANINDA BULUT DÖNÜŞÜMÜ (Link #296) -->
+      <section id="studioQueueSection" style="padding-top: 22px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+          <div>
+            <h2 style="margin:0; font-size:1.15rem;">⏳ Bekleyen GPU Biletleri &amp; Kuyruk Yönetimi</h2>
+            <p style="margin:4px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
+              GPU işçisi yokken bekleyen biletleri tek tıkla anında bulutta oynatılabilir MP4/görsele çevirin veya iptal edin.
+            </p>
+          </div>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadStudioQueue()" style="padding:7px 14px; font-size:0.8rem;">
+            🔄 Kuyruğu Yenile
+          </button>
+        </div>
+        <div id="studioQueueList" class="site-cards-grid">
+          <div class="site-empty">Kuyruk yükleniyor...</div>
+        </div>
+      </section>
 
       <!-- ÜRETİLEN VİDEOLAR & DOĞRUDAN İNDİRME LİSTESİ (Sekme 1 üzerinde her zaman görünür) -->
       <section id="studioVideoHistorySection" style="padding-top: 28px;">
@@ -1101,7 +1135,7 @@
     <button type="button" data-site-theme-btn="minimal" aria-pressed="false" title="Minimalist">✨</button>
   </div>
 
-  <script src="/site.js?v=11"></script>
-  <script src="/lab.js?v=16"></script>
+  <script src="/site.js?v=12"></script>
+  <script src="/lab.js?v=17"></script>
 </body>
 </html>

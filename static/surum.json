@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.12-flux2-wan21-kanit",
-  "ozellik": "flux2_klein_wan21_dogrulandi",
-  "kontrol": "gpu_worker"
+  "surum": "2026.11.17-hyperframes-link296",
+  "ozellik": "hyperframes_aninda_bulut_ve_link296",
+  "kontrol": "gpu_worker_or_cloud"
 }

@@ -1193,6 +1193,234 @@ def test_session_hmac_survives_active_session_wipe():
         assert main_mod.is_session_valid(tok) is True
 
 
+def test_xfade_gecis_secimi_ardisik_tekrar_etmez(tmp_path):
+    """Link #296 (saas-motion-kit): ardışık sahne geçişleri asla aynı efekti tekrarlamaz."""
+    import shutil
+    import subprocess
+    import ai_video_montaj as avm
+
+    assert avm.sec_xfade_gecisleri(0) == []
+    gecisler = avm.sec_xfade_gecisleri(8)
+    assert len(gecisler) == 8
+    for i in range(1, len(gecisler)):
+        assert gecisler[i] != gecisler[i - 1]
+    assert len(set(gecisler)) >= 4
+
+    if shutil.which("ffmpeg"):
+        klipler = []
+        for idx in range(3):
+            p = tmp_path / f"s{idx}.mp4"
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "testsrc2=size=320x180:rate=30:duration=2",
+                 "-c:v", "libx264", "-crf", "22", "-pix_fmt", "yuv420p", str(p)],
+                check=True,
+            )
+            klipler.append(p)
+        hedef = tmp_path / "birlesik.mp4"
+        assert avm.montaj_birlestir(klipler, hedef, gecis_sn=0.4, sure_sn=2.0) is True
+        assert hedef.stat().st_size > 20 * 1024
+
+
+def test_video_kalite_denetle_siyah_ve_saglikli_video(tmp_path):
+    """Link #296 (brag + ffmpeg-skill): siyah/boş kare uyarısı ve akış telemetrisi."""
+    import shutil
+    import subprocess
+    import video_render as vr
+
+    if not shutil.which("ffmpeg"):
+        return
+
+    siyah_mp4 = tmp_path / "siyah.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=black:s=640x360:r=24:d=3",
+         "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+         "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(siyah_mp4)],
+        check=True,
+    )
+    assert siyah_mp4.stat().st_size > vr.MIN_GECERLI_BAYT
+    rapor_siyah = vr.video_kalite_denetle(siyah_mp4, beklenen_oran="16:9")
+    assert rapor_siyah["gecerli"] is True
+    assert rapor_siyah["ilk_kare_siyah"] is True
+    assert rapor_siyah["bos_video"] is True
+    assert rapor_siyah["uygun"] is False
+
+    canli_mp4 = tmp_path / "canli.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=640x360:rate=24:d=2",
+         "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p",
+         "-movflags", "+faststart", str(canli_mp4)],
+        check=True,
+    )
+    rapor_canli = vr.video_kalite_denetle(canli_mp4, beklenen_oran="16:9")
+    assert rapor_canli["gecerli"] is True
+    assert rapor_canli["uygun"] is True
+    assert rapor_canli["bos_video"] is False
+    assert rapor_canli["genislik"] == 640
+    assert rapor_canli["yukseklik"] == 360
+    assert rapor_canli["platform_uyumu"] == "youtube_yatay"
+
+
+def test_hyperframes_motor_instant_i2v_and_metrics(tmp_path):
+    """Link #296: instant_i2v_motion, verify_onscreen_metrics ve rea_video şema çıkarma."""
+    import shutil
+    import hyperframes_motor as hf
+
+    m_ok = hf.verify_onscreen_metrics("Yeni motor %40 daha hızlı ve 3 kat verimli", "Kaynak: %40 hız, 3x artış")
+    assert m_ok["checked"] is True
+    assert len(m_ok["unverified_numbers"]) == 0
+
+    m_warn = hf.verify_onscreen_metrics("Garantili %95 kazanç", "Kısa ürün açıklaması")
+    assert m_warn["clean"] is False
+    assert any("95" in x for x in m_warn["unverified_numbers"])
+
+    png = hf._kinetic_card_png(tmp_path / "card.png", "Kova Kozmik Sahne", "Astral Su Taşıyıcı", 640, 360)
+    assert png.is_file()
+    if not shutil.which("ffmpeg"):
+        return
+
+    mp4 = tmp_path / "orbit.mp4"
+    res = hf.instant_i2v_motion(png, mp4, prompt="slow orbit", camera_motion="orbital", aspect_ratio="16:9", duration_sec=3.0)
+    assert res["ok"] is True
+    assert res["simulasyon"] is True
+    assert res["video_difuzyonu"] is False
+    assert mp4.stat().st_size > 20 * 1024
+    bp = hf.rea_video_reverse_blueprint(mp4)
+    assert bp["ok"] is True
+    assert bp["estimated_scenes"] >= 1
+
+
+def test_instant_cloud_wan_i2v_and_aquarius_grounding(client, auth_headers, monkeypatch):
+    """Kova su boşaltan adam grounding'i + instant_cloud wan_i2v MP4 + HyperFrames + rea-video."""
+    import ai_video_montaj as avm
+    import hyperframes_motor as hf
+    import main as main_mod
+    from prompt_director import plan_visual_scenes
+
+    plan = plan_visual_scenes(
+        "kova burcu ile alakalı bir adam elinde gökyüzünden yeryüzüne kovadan su boşaltıyor",
+        style_preset="astrology_mystic",
+        use_llm=False,
+    )
+    img_en = plan["image_prompt"].lower()
+    assert "aquarius" in img_en
+    assert ("man" in img_en or "person" in img_en)
+    assert ("water" in img_en or "pouring" in img_en)
+    assert "earth" in img_en or "sky" in img_en
+
+    def fast_prev(prompt, hedef_yol, genislik=1280, yukseklik=720, **kw):
+        hf._kinetic_card_png(hedef_yol, "Aquarius Frame", prompt[:80], 640, 360)
+        return {"ok": True, "provider": "test_mock", "image_prompt": prompt, "motion_prompt": "orbital", "narration_text": "test", "planner_source": "test"}
+
+    monkeypatch.setattr(avm, "preview_single_image", fast_prev)
+    created_ids = []
+    try:
+        r1 = client.post("/api/studio/video/generate", json={
+            "channel": "Astroloji_Kova",
+            "workflow": "image_first_preview",
+            "execution_mode": "instant_cloud",
+            "style_preset": "astrology_mystic",
+            "aspect_ratio": "16:9",
+            "voice": "none",
+            "prompt": "kova burcu gökyüzünden su boşaltıyor",
+        }, headers=auth_headers)
+        assert r1.status_code == 200
+        t1 = r1.json()["task"]
+        created_ids.append(t1["job_id"])
+        assert t1["status"] == "onizleme_hazir"
+        assert t1["preview_image_url"]
+
+        r2 = client.post("/api/studio/video/generate", json={
+            "channel": "Astroloji_Kova",
+            "workflow": "wan_i2v",
+            "execution_mode": "instant_cloud",
+            "style_preset": "astrology_mystic",
+            "aspect_ratio": "16:9",
+            "duration": 3,
+            "voice": "none",
+            "input_image_url": t1["preview_image_url"],
+            "prompt": "kova burcu gökyüzünden su boşaltıyor",
+        }, headers=auth_headers)
+        assert r2.status_code == 200
+        t2 = r2.json()["task"]
+        created_ids.append(t2["job_id"])
+        assert t2["gpu_kuyruk"] is False
+        assert t2["simulasyon"] is True
+        assert t2["video_difuzyonu"] is False
+        assert t2["output_url"].startswith("/api/media/file?path=")
+        assert t2["hyperframes_url"] == f"/api/studio/hyperframes/{t2['job_id']}"
+
+        hf_resp = client.get(t2["hyperframes_url"], headers=auth_headers)
+        assert hf_resp.status_code == 200
+        assert "HyperFrames" in hf_resp.text
+        assert "content-security-policy" in hf_resp.headers
+
+        an = client.post("/api/studio/analyze-video", json={"job_id": t2["job_id"]}, headers=auth_headers)
+        assert an.status_code == 200
+        assert an.json()["success"] is True
+    finally:
+        for jid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
+                p.unlink(missing_ok=True)
+
+
+def test_product_launch_ssrf_rejected_and_queue_instant_render(client, auth_headers, monkeypatch):
+    """SSRF URL engellenir ve kuyruktaki iş /api/studio/queue/{id}/instant-render ile anında MP4 olur."""
+    import ai_video_montaj as avm
+    import hyperframes_motor as hf
+    import main as main_mod
+
+    bad = client.post("/api/studio/video/generate", json={
+        "channel": "Tech_AI_Fabrika",
+        "workflow": "product_launch",
+        "source_url": "http://127.0.0.1:8080/internal",
+        "prompt": "Lansman testi",
+        "voice": "none",
+    }, headers=auth_headers)
+    assert bad.status_code == 400
+
+    def fast_prev(prompt, hedef_yol, genislik=1280, yukseklik=720, **kw):
+        hf._kinetic_card_png(hedef_yol, "Queue Render", prompt[:80], 640, 360)
+        return {"ok": True, "provider": "test_mock"}
+
+    monkeypatch.setattr(avm, "preview_single_image", fast_prev)
+    created_ids = []
+    try:
+        q = client.post("/api/studio/video/generate", json={
+            "channel": "Tech_AI_Fabrika",
+            "workflow": "image_then_i2v",
+            "execution_mode": "gpu_queue",
+            "aspect_ratio": "16:9",
+            "duration": 3,
+            "voice": "none",
+            "prompt": "Kuyruk dönüşüm testi",
+        }, headers=auth_headers)
+        assert q.status_code == 200
+        qt = q.json()["task"]
+        created_ids.append(qt["job_id"])
+        assert qt["gpu_kuyruk"] is True
+        assert qt["gpu_durum"] == "bekliyor"
+
+        ql = client.get("/api/studio/queue?status=bekliyor", headers=auth_headers)
+        assert ql.status_code == 200
+        assert any(it["job_id"] == qt["job_id"] for it in ql.json()["items"])
+
+        conv = client.post(f"/api/studio/queue/{qt['job_id']}/instant-render", headers=auth_headers)
+        assert conv.status_code == 200
+        ct = conv.json()["task"]
+        assert ct["gpu_kuyruk"] is False
+        assert ct["output_url"].startswith("/api/media/file?path=")
+    finally:
+        for jid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
+                p.unlink(missing_ok=True)
+
+
+
+
 
 
 

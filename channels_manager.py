@@ -170,18 +170,28 @@ PRODUCTION_WORKFLOWS: List[Dict[str, str]] = [
         "ozet": "Yüklediğiniz kendi PNG/JPG görselinizi doğrudan seçili I2V modeliyle videoya çevirir.",
     },
     {
+        "id": "hyperframes_motion",
+        "ad": "4. HyperFrames Sinematik Motion + Kinetik Yazı (#296)",
+        "ozet": "Anında HTML5 zaman çizelgesi + çoklu xfade geçiş + ilk-kare kalite kontrolüyle H.264 MP4 üretir.",
+    },
+    {
+        "id": "product_launch",
+        "ad": "5. Web Sitesi URL → Lansman Videosu (product-launch-motion)",
+        "ozet": "Girilen URL içeriğini okuyup çok sahneli ürün tanıtım/lansman videosu üretir.",
+    },
+    {
         "id": "t2v_direct",
-        "ad": "4. Doğrudan T2V (Metinden Video — Görsel Adımı Olmadan)",
+        "ad": "6. Doğrudan T2V (Metinden Video — Görsel Adımı Olmadan)",
         "ozet": "Ara görsel olmadan doğrudan video difüzyonu çalıştırır.",
     },
     {
         "id": "opus_canvas",
-        "ad": "5. Opus Canvas / Kod Motion Grafik (Sunucu/Deterministik)",
+        "ad": "7. Opus Canvas / Kod Motion Grafik (Sunucu/Deterministik)",
         "ozet": "Metrik, tipografi ve açıklayıcı hareketli grafik kurgusu.",
     },
     {
         "id": "remotion_cinema",
-        "ad": "6. Remotion Cinema Kurgu / GPU İşçisi",
+        "ad": "8. Remotion Cinema Kurgu / GPU İşçisi",
         "ozet": "Kanal stili + TTS seslendirme ile kurgu veya GPU difüzyon hattı.",
     },
 ]
