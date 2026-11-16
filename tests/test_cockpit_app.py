@@ -70,6 +70,8 @@ def isolate_test_environment(tmp_path, monkeypatch):
     test_data.mkdir()
     monkeypatch.setattr(main, "DATA_DIR", test_data)
     ACTIVE_SESSIONS.clear()
+    main.REVOKED_TOKENS.clear()
+    main._TOKEN_MIN_CREATED_AT = 0.0
     FAILED_ATTEMPTS.clear()
 
 
@@ -1181,13 +1183,14 @@ def test_gpu_worker_medya_birlestir_preserves_audio_duration(tmp_path):
 
 
 def test_session_hmac_survives_active_session_wipe():
-    """ACTIVE_SESSIONS temizlense bile (yeniden başlatma) geçerli HMAC token çalışır."""
+    """ACTIVE_SESSIONS temizlense bile (yeniden başlatma) tok ve tok_pin HMAC token çalışır."""
     import main as main_mod
 
-    tok = main_mod.create_session("Yusuf Şahin")
-    assert "." not in tok.split("_")[2]  # int timestamp (float int() hatası yok)
-    main_mod.ACTIVE_SESSIONS.pop(tok, None)
-    assert main_mod.is_session_valid(tok) is True
+    for prefix in ("tok", "tok_pin"):
+        tok = main_mod.create_session("Yusuf Şahin", prefix=prefix)
+        assert "." not in tok.rsplit("_", 2)[1]
+        main_mod.ACTIVE_SESSIONS.pop(tok, None)
+        assert main_mod.is_session_valid(tok) is True
 
 
 

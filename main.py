@@ -178,6 +178,8 @@ async def get_gpu_worker_script():
 # -----------------------------------------------------------------------------
 # Bellekte tutulan oturumlar: {token: {"user": str, "created_at": float, "expires_at": float}}
 ACTIVE_SESSIONS: Dict[str, Dict[str, Any]] = {}
+REVOKED_TOKENS: set[str] = set()
+_TOKEN_MIN_CREATED_AT: float = 0.0
 SESSION_TTL_SEC: float = 86400.0  # 24 saat geçerlilik süresi
 
 # IP bazlı brute-force koruması ve deneme sınırlayıcı
@@ -278,7 +280,7 @@ def create_session(user: str = "Yusuf Şahin", prefix: str = "tok") -> str:
 
 def is_session_valid(token: Optional[str]) -> bool:
     """Token'ın aktifliğini ve süresini kontrol eder; HMAC imzasını doğrular."""
-    if not token:
+    if not token or token in REVOKED_TOKENS:
         return False
     # 1. Aktif bellek oturumu kontrolü
     if token in ACTIVE_SESSIONS:
@@ -292,10 +294,10 @@ def is_session_valid(token: Optional[str]) -> bool:
     try:
         parts = token.split("_")
         if len(parts) >= 4 and parts[0] == "tok":
-            created_at = int(float(parts[1]))
-            exp = int(float(parts[2]))
-            sig = parts[3]
-            if time.time() > exp:
+            created_at = int(float(parts[-3]))
+            exp = int(float(parts[-2]))
+            sig = parts[-1]
+            if time.time() > exp or created_at < _TOKEN_MIN_CREATED_AT:
                 return False
             sig_raw = f"Yusuf Şahin:{created_at}:{exp}"
             expected_sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
@@ -577,6 +579,8 @@ async def auth_check(authorization: Optional[str] = Header(None)):
 @app.post("/api/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
     token = (authorization or "").replace("Bearer ", "").strip()
+    if token:
+        REVOKED_TOKENS.add(token)
     if token in ACTIVE_SESSIONS:
         del ACTIVE_SESSIONS[token]
     return {"success": True}
@@ -633,6 +637,9 @@ async def change_pin(req: Request, token: str = Depends(verify_auth)):
     os.environ["GATEWAY_PIN"] = new_pin
 
     # Tüm eski oturumları feshet ve yeni oturum tokenı üret
+    global _TOKEN_MIN_CREATED_AT
+    REVOKED_TOKENS.update(ACTIVE_SESSIONS.keys())
+    _TOKEN_MIN_CREATED_AT = time.time()
     ACTIVE_SESSIONS.clear()
     new_tok = create_session(user="Yusuf Şahin", prefix="tok_pin_change")
     return {"success": True, "token": new_tok, "message": "PIN başarıyla güncellendi ve eski oturumlar kapatıldı."}
