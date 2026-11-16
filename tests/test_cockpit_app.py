@@ -1180,6 +1180,17 @@ def test_gpu_worker_medya_birlestir_preserves_audio_duration(tmp_path):
         out.unlink(missing_ok=True)
 
 
+def test_session_hmac_survives_active_session_wipe():
+    """ACTIVE_SESSIONS temizlense bile (yeniden başlatma) geçerli HMAC token çalışır."""
+    import main as main_mod
+
+    tok = main_mod.create_session("Yusuf Şahin")
+    assert "." not in tok.split("_")[2]  # int timestamp (float int() hatası yok)
+    main_mod.ACTIVE_SESSIONS.pop(tok, None)
+    assert main_mod.is_session_valid(tok) is True
+
+
+
 
 
 

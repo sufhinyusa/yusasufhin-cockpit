@@ -265,7 +265,7 @@ def get_worker_key() -> str:
 def create_session(user: str = "Yusuf Şahin", prefix: str = "tok") -> str:
     """24 saat TTL süreli yeni kriptografik ve sunucu yeniden başlamalarına dayanıklı oturum tokenı üretir."""
     now = int(time.time())
-    exp = now + SESSION_TTL_SEC
+    exp = int(now + int(SESSION_TTL_SEC))
     sig_raw = f"{user}:{now}:{exp}"
     sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
     token = f"{prefix}_{now}_{exp}_{sig}"
@@ -292,8 +292,8 @@ def is_session_valid(token: Optional[str]) -> bool:
     try:
         parts = token.split("_")
         if len(parts) >= 4 and parts[0] == "tok":
-            created_at = int(parts[1])
-            exp = int(parts[2])
+            created_at = int(float(parts[1]))
+            exp = int(float(parts[2]))
             sig = parts[3]
             if time.time() > exp:
                 return False
