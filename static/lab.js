@@ -1,9 +1,12 @@
-/* lab.js — Kova Lab Doğrudan Video Üretim Stüdyosu (Gerçek Bulut Sürücülü)
+/* lab.js — Kova Lab & Burç Videosu Stüdyosu (Kaggle / Colab GPU I2V + T2V)
  *
  * Uç noktalar:
- *   GET  /api/lab/models    → Kova Lab + Link Havuzu modelleri ve gerçek sürücü durumu
- *   POST /api/lab/generate  → KovaLab Camoufox bulut sürücüleriyle GERÇEK AI video üretimi
- *   GET  /api/lab/history   → Gerçek bulut modelleriyle üretilen videolar galerisi
+ *   GET  /api/lab/models        → Modeller ve sürücü durumu
+ *   POST /api/lab/generate      → Kaggle / Colab GPU işçi kuyruğu (T2V / I2V / FLUX.2 önizleme)
+ *   GET  /api/lab/job/{job_id}  → Canlı iş durumu, önizleme PNG veya bitmiş MP4 takibi
+ *   GET  /api/lab/history       → Doğrulanmış MP4 galerisi
+ *   GET  /api/burc/list         → 12 burç kataloğu
+ *   POST /api/burc/video/generate → Burç senaryo + TTS + SRT/ASS + GPU kuyruğu
  */
 (function () {
   'use strict';
@@ -307,34 +310,58 @@
 
       var seciliModel = tumModeller[seciliModelId] || {};
       var sesSecimi = voiceSelectEl ? voiceSelectEl.value : 'none';
+      var seciliMod = modeSelectEl ? modeSelectEl.value : 'image_first_preview';
+      var imgModelEl = document.getElementById('studioImageModelSelect');
+      var seciliImgModel = imgModelEl ? imgModelEl.value : 'flux2-klein';
+      var seciliI2v = seciliModelId || (modelSelectEl ? modelSelectEl.value : 'wan2.1-i2v-14b');
+      var seciliWorkflow = seciliMod;
+      var seciliYontem = 'flux2_resim';
+      if (yuklenenGorselBase64 || seciliMod === 'i2v') {
+        seciliYontem = 'wan_i2v';
+        seciliWorkflow = 'wan_i2v';
+      } else if (seciliMod === 'image_then_i2v') {
+        seciliYontem = 'image_then_i2v';
+      } else if (seciliMod === 't2v') {
+        seciliYontem = 't2v_direct';
+        seciliWorkflow = 't2v_direct';
+      } else {
+        seciliYontem = 'flux2_resim';
+        seciliWorkflow = 'image_first_preview';
+      }
 
       var payload = {
-        model_id: seciliModelId || (modelSelectEl ? modelSelectEl.value : 'luma'),
-        model_ad: seciliModel.ad || seciliModelId || 'Luma Dream Machine',
-        mode: modeSelectEl ? modeSelectEl.value : 't2v',
+        model_id: seciliI2v,
+        model_ad: seciliModel.ad || seciliI2v || 'Wan 2.1 I2V',
+        image_model: seciliImgModel,
+        i2v_model: seciliI2v,
+        workflow: seciliWorkflow,
+        mode: seciliWorkflow,
+        method: seciliYontem,
+        style_preset: styleSelectEl ? styleSelectEl.value : 'cinematic_realism',
+        render_target: 'kaggle_32gb',
         prompt: promptVal,
         negative_prompt: negPromptInputEl ? negPromptInputEl.value.trim() : '',
         image_base64: yuklenenGorselBase64,
         aspect_ratio: aspectSelectEl ? aspectSelectEl.value : '16:9',
         duration: durationSelectEl ? Number(durationSelectEl.value) : 5,
-        fps: fpsSelectEl ? Number(fpsSelectEl.value) : 24,
+        fps: fpsSelectEl ? Number(fpsSelectEl.value) : 16,
         camera_motion: cameraSelectEl ? cameraSelectEl.value : 'otomatik',
-        style: styleSelectEl ? styleSelectEl.value : 'sinematik',
+        style: styleSelectEl ? styleSelectEl.value : 'cinematic_realism',
         tts_enabled: sesSecimi !== 'none',
-        tts_voice: sesSecimi !== 'none' ? sesSecimi : 'Puck',
-        voice: sesSecimi !== 'none' ? sesSecimi : 'Puck',
+        tts_voice: sesSecimi !== 'none' ? sesSecimi : 'Aoede',
+        voice: sesSecimi !== 'none' ? sesSecimi : 'Aoede',
         subtitles_enabled: subtitlesCheckEl ? Boolean(subtitlesCheckEl.checked) : true
       };
 
       if (generateBtnEl) {
         generateBtnEl.disabled = true;
-        generateBtnEl.textContent = '⏳ Bulutta Gerçek Video Üretiliyor (45–90 sn)…';
+        generateBtnEl.textContent = '⏳ GPU Kuyruğuna Gönderiliyor…';
       }
       if (outputBadgeEl) {
-        outputBadgeEl.textContent = 'Bulutta Render Ediliyor…';
+        outputBadgeEl.textContent = 'GPU Kuyruğunda';
         outputBadgeEl.className = 'site-badge site-badge-auto';
       }
-      durumYaz('Seçilen model (' + payload.model_ad + ') için Camoufox bulut sürücüsü başlatıldı; gerçek AI videosu render ediliyor, lütfen bekleyin…', false);
+      durumYaz('İş (' + payload.model_ad + ') Kaggle/Colab GPU kuyruğuna gönderiliyor…', false);
 
       fetch('/api/lab/generate', {
         method: 'POST',
@@ -352,9 +379,74 @@
             var hata = (res.body && (res.body.detail || res.body.message)) || 'Video üretimi başarısız oldu.';
             throw new Error(hata);
           }
-          durumYaz(res.body.message || 'Gerçek bulut AI videosu başarıyla üretildi!', false);
-          videoyuOynaticiyaBagla(res.body.job);
-          gecmisiYukle();
+          var job = res.body.job || res.body.task;
+          var simNot = (job && job.simulasyon) ? ' (simülasyon)' : '';
+          durumYaz((res.body.message || 'GPU kuyruğuna alındı!') + simNot, false);
+          if (job && job.output_url) {
+            videoyuOynaticiyaBagla(job);
+            gecmisiYukle();
+          } else if (job && job.job_id && window.pollLabJob) {
+            window.pollLabJob(job.job_id, function (guncel) {
+              if (guncel.output_url) {
+                if (outputBadgeEl) {
+                  outputBadgeEl.textContent = guncel.simulasyon ? '⚠️ (simülasyon)' : '✅ GPU Render Tamam';
+                }
+                durumYaz('Video hazır!', false);
+                videoyuOynaticiyaBagla(guncel);
+                gecmisiYukle();
+              } else if (guncel.preview_image_url) {
+                var tamOnizleme = guncel.preview_image_url + '&token=' + encodeURIComponent(t);
+                durumYaz('Önizleme görseli hazır! Aşağıdaki görseli beğendiyseniz I2V ile videoya çevirebilirsiniz.', false);
+                if (videoPlaceholderEl) {
+                  videoPlaceholderEl.style.display = 'block';
+                  var chosenI2v = (modelSelectEl && modelSelectEl.value) ? modelSelectEl.value : 'wan2.1-i2v-14b';
+                  videoPlaceholderEl.innerHTML =
+                    '<img src="' + esc(tamOnizleme) + '" style="max-width:100%;max-height:300px;border-radius:10px;display:block;margin:0 auto 10px;">' +
+                    '<button type="button" class="site-btn site-btn-primary" id="labAnimatePreviewBtn">✅ Görseli Beğendim → ' + esc(chosenI2v) + ' Videoya Çevir</button>';
+                  var ab = document.getElementById('labAnimatePreviewBtn');
+                  if (ab) {
+                    ab.onclick = function () {
+                      yuklenenGorselBase64 = null;
+                      var i2vKey = (modelSelectEl && modelSelectEl.value) ? modelSelectEl.value : 'wan2.1-i2v-14b';
+                      if (modeSelectEl) modeSelectEl.value = 'i2v';
+                      durumYaz('Onaylı görsel ' + i2vKey + ' I2V kuyruğuna gönderiliyor...', false);
+                      fetch('/api/lab/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
+                        body: JSON.stringify({
+                          model_id: i2vKey,
+                          i2v_model: i2vKey,
+                          model_ad: i2vKey,
+                          style_preset: styleSelectEl ? styleSelectEl.value : 'cinematic_realism',
+                          mode: 'video',
+                          method: 'wan_i2v',
+                          workflow: 'wan_i2v',
+                          render_target: 'kaggle_32gb',
+                          prompt: promptVal || 'smooth organic cinematic camera push and motion',
+                          duration: durationSelectEl ? Number(durationSelectEl.value) : 5,
+                          voice: voiceSelectEl ? voiceSelectEl.value : 'Aoede',
+                          input_image_url: guncel.preview_image_url
+                        })
+                      }).then(function (rr) { return rr.json(); }).then(function (dd) {
+                        var jj = dd.job || dd.task;
+                        if (jj && jj.job_id) {
+                          durumYaz('I2V işi kuyruğa alındı: ' + jj.job_id, false);
+                          window.pollLabJob(jj.job_id, function (fin) {
+                            if (fin.output_url) { videoyuOynaticiyaBagla(fin); gecmisiYukle(); }
+                          }, function (e) { durumYaz('I2V hatası: ' + e, true); });
+                        }
+                      });
+                    };
+                  }
+                }
+              } else {
+                durumYaz('Durum: ' + (guncel.status || 'bekliyor') + ' (' + (guncel.progress_pct || 0) + '%)', false);
+              }
+            }, function (errMsg) {
+              durumYaz('GPU işi başarısız: ' + errMsg, true);
+              if (outputBadgeEl) outputBadgeEl.textContent = '❌ Başarısız';
+            });
+          }
         })
         .catch(function (err) {
           durumYaz('Üretim hatası: ' + err.message, true);
@@ -366,10 +458,91 @@
         .finally(function () {
           if (generateBtnEl) {
             generateBtnEl.disabled = false;
-            generateBtnEl.textContent = '🎬 Web Sitemde Video Üret';
+            generateBtnEl.textContent = '🎬 Kaggle / Colab GPU\'da Video Üret';
           }
         });
     });
+
+    var previewFluxBtn = document.getElementById('studioPreviewFluxBtn');
+    if (previewFluxBtn) {
+      previewFluxBtn.addEventListener('click', function () {
+        var t = token();
+        var promptVal = promptInputEl ? promptInputEl.value.trim() : '';
+        if (!t || !promptVal) {
+          durumYaz('Önizleme görseli için oturum ve prompt gerekli.', true);
+          return;
+        }
+        var imgKeyEl = document.getElementById('studioImageModelSelect');
+        var imgKey = imgKeyEl ? imgKeyEl.value : 'flux2-klein';
+        durumYaz('Anahtar görsel (' + imgKey + ') GPU kuyruğuna gönderiliyor...', false);
+        fetch('/api/lab/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
+          body: JSON.stringify({
+            model_id: imgKey,
+            image_model: imgKey,
+            model_ad: imgKey + ' Önizleme',
+            style_preset: styleSelectEl ? styleSelectEl.value : 'cinematic_realism',
+            mode: 'flux2_resim',
+            method: 'flux2_resim',
+            workflow: 'image_first_preview',
+            render_target: 'kaggle_32gb',
+            prompt: promptVal,
+            aspect_ratio: aspectSelectEl ? aspectSelectEl.value : '16:9'
+          })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          var jj = d.job || d.task;
+          if (!d.success || !jj) {
+            durumYaz(d.message || 'Önizleme gönderilemedi.', true);
+            return;
+          }
+          durumYaz('Önizleme kuyruğa alındı (' + jj.job_id + '); worker sonucu bekleniyor...', false);
+          if (window.pollLabJob) {
+            window.pollLabJob(jj.job_id, function (guncel) {
+              if (guncel.preview_image_url && videoPlaceholderEl) {
+                var u = guncel.preview_image_url + '&token=' + encodeURIComponent(t);
+                var i2vKey = (modelSelectEl && modelSelectEl.value) ? modelSelectEl.value : 'wan2.1-i2v-14b';
+                videoPlaceholderEl.style.display = 'block';
+                videoPlaceholderEl.innerHTML =
+                  '<img src="' + esc(u) + '" style="max-width:100%;max-height:300px;border-radius:10px;display:block;margin:0 auto 10px;">' +
+                  '<button type="button" class="site-btn site-btn-primary" id="labFluxApproveBtn">✅ Görseli Beğendim → ' + esc(i2vKey) + ' Videoya Çevir</button>';
+                var b = document.getElementById('labFluxApproveBtn');
+                if (b) {
+                  b.onclick = function () {
+                    fetch('/api/lab/generate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
+                      body: JSON.stringify({
+                        model_id: i2vKey,
+                        i2v_model: i2vKey,
+                        model_ad: i2vKey,
+                        style_preset: styleSelectEl ? styleSelectEl.value : 'cinematic_realism',
+                        mode: 'video',
+                        method: 'wan_i2v',
+                        workflow: 'wan_i2v',
+                        render_target: 'kaggle_32gb',
+                        prompt: promptVal,
+                        duration: durationSelectEl ? Number(durationSelectEl.value) : 5,
+                        voice: voiceSelectEl ? voiceSelectEl.value : 'Aoede',
+                        input_image_url: guncel.preview_image_url
+                      })
+                    }).then(function (rr) { return rr.json(); }).then(function (resI2v) {
+                      var j2 = resI2v.job || resI2v.task;
+                      if (j2 && j2.job_id) {
+                        durumYaz('Onaylı görsel I2V kuyruğunda: ' + j2.job_id, false);
+                        window.pollLabJob(j2.job_id, function (f2) {
+                          if (f2.output_url) { videoyuOynaticiyaBagla(f2); gecmisiYukle(); }
+                        }, function (e) { durumYaz('I2V hatası: ' + e, true); });
+                      }
+                    });
+                  };
+                }
+              }
+            }, function (e) { durumYaz('Önizleme hatası: ' + e, true); });
+          }
+        });
+      });
+    }
   }
 
   function modelKarti(model) {
@@ -398,11 +571,11 @@
 
     return '' +
       '<article class="site-card site-model-card" data-model-id="' + esc(model.id) + '">' +
-        '<h3>' + esc(model.ad || model.id) + ' ' + rozetler(model) + '</h3>' +
-        (model.guclu ? '<p>' + esc(model.guclu) + '</p>' : '') +
-        (meta.length ? '<div class="site-model-meta">' + meta.join('') + '</div>' : '') +
-        (model.not_ ? '<p style="font-size:0.78rem;color:var(--site-text-faint);">' + esc(model.not_) + '</p>' : '') +
-        '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' + secBtn + disBaglanti + '</div>' +
+      '<h3>' + esc(model.ad || model.id) + ' ' + rozetler(model) + '</h3>' +
+      (model.guclu ? '<p>' + esc(model.guclu) + '</p>' : '') +
+      (meta.length ? '<div class="site-model-meta">' + meta.join('') + '</div>' : '') +
+      (model.not_ ? '<p style="font-size:0.78rem;color:var(--site-text-faint);">' + esc(model.not_) + '</p>' : '') +
+      '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' + secBtn + disBaglanti + '</div>' +
       '</article>';
   }
 
@@ -410,8 +583,8 @@
     var kartlar = grup.modeller.map(modelKarti).join('');
     return '' +
       '<section class="site-lab-panel" role="tabpanel" id="panel-' + esc(grup.tur) + '"' +
-        (ilkMi ? '' : ' hidden') + '>' +
-        '<div class="site-model-grid">' + kartlar + '</div>' +
+      (ilkMi ? '' : ' hidden') + '>' +
+      '<div class="site-model-grid">' + kartlar + '</div>' +
       '</section>';
   }
 
@@ -442,14 +615,24 @@
       }
     });
 
-    var tumSelectHtml = '';
+    var gpuActiveGroup = '<optgroup label="⚡ Kaggle/Colab GPU Aktif I2V Modelleri (Tutarlı)">' +
+      '<option value="wan2.1-i2v-14b">⚡ Wan 2.1 I2V 14B (NF4 4-bit)</option>' +
+      '<option value="wan2.2-ti2v-5b">⚡ Wan 2.2 TI2V 5B (Yeni Nesil Hızlı)</option>' +
+      '<option value="ltx-video">⚡ LTX-Video I2V (Hızlı Animasyon)</option>' +
+      '<option value="cogvideox-5b-i2v">⚡ CogVideoX 5B I2V (3D Animasyon)</option>' +
+      '<option value="svd-xt">⚡ Stable Video Diffusion XT (Atmosferik)</option>' +
+      '<option value="wan2.1-t2v-1.3b">📝 Wan 2.1 T2V 1.3B (Görselsiz Taslak)</option>' +
+      '</optgroup>';
+    var tumSelectHtml = gpuActiveGroup;
     if (gercekOps.length) {
-      tumSelectHtml += '<optgroup label="🟢 Otomatik Bulut Üretimi (Gerçek AI Sürücülü)">' + gercekOps.join('') + '</optgroup>';
+      tumSelectHtml += '<optgroup label="🟢 Otomatik Bulut Üretimi">' + gercekOps.join('') + '</optgroup>';
     }
     tumSelectHtml += digerGruplarHtml.join('');
 
     if (modelSelectEl) {
       modelSelectEl.innerHTML = tumSelectHtml;
+      modelSelectEl.value = 'wan2.1-i2v-14b';
+      seciliModelId = 'wan2.1-i2v-14b';
     }
 
     if (ozetEl) {
@@ -473,10 +656,10 @@
       panelsEl.innerHTML = gruplar.map(function (g, i) { return panelOlustur(g, i === 0); }).join('');
     }
 
-    // Varsayılan olarak Luma veya ilk gerçek sürücülü modeli seç
-    var varsayilanId = tumModeller['luma'] ? 'luma' : (tumModeller['leonardo'] ? 'leonardo' : Object.keys(tumModeller)[0]);
-    if (varsayilanId) {
-      modeliStudyoyaSec(varsayilanId, false);
+    // Varsayılan olarak GPU I2V aktif kalır (kullanıcı başka model tıkladıkça güncellenir)
+    if (!seciliModelId) {
+      var varsayilanId = tumModeller['luma'] ? 'luma' : (tumModeller['leonardo'] ? 'leonardo' : Object.keys(tumModeller)[0]);
+      if (varsayilanId) modeliStudyoyaSec(varsayilanId, false);
     }
   }
 
@@ -525,27 +708,30 @@
       var coz = item.resolution || '1920x1080';
       return '' +
         '<article class="site-card site-model-card">' +
-          '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
-            '<span class="site-badge site-badge-free">✅ ÜRETİLDİ (İndirilebilir)</span>' +
-            '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
-          '</div>' +
-          (vUrl ? '<video controls playsinline preload="metadata" style="width:100%; border-radius:10px; margin-bottom:10px; background:#000; max-height:220px;" src="' + esc(vUrl) + '"></video>' : '') +
-          '<h3 style="font-size:0.96rem; margin:0 0 4px;">' + esc(baslik) + '</h3>' +
-          '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Sinematik Video Üretimi') + '</p>' +
-          '<div class="site-model-meta">' +
-            '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
-            '<div>Çözünürlük<strong>' + esc(coz) + '</strong></div>' +
-            '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
-          '</div>' +
-          '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
-            '<a href="' + esc(dlUrl) + '" download="fabrika-video-' + esc(jid) + '.mp4" ' +
-               'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
-               '⬇️ Videoyu İndir (MP4)' +
-            '</a>' +
-            '<a class="site-btn site-btn-ghost" href="' + esc(vUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
-               '🔗 Yeni Sekmede Aç' +
-            '</a>' +
-          '</div>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
+        '<span class="site-badge site-badge-free">✅ ÜRETİLDİ (İndirilebilir)</span>' +
+        '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
+        '</div>' +
+        (vUrl ? '<video controls playsinline preload="metadata" style="width:100%; border-radius:10px; margin-bottom:10px; background:#000; max-height:220px;" src="' + esc(vUrl) + '"></video>' : '') +
+        '<h3 style="font-size:0.96rem; margin:0 0 4px;">' + esc(baslik) + '</h3>' +
+        '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Sinematik Video Üretimi') + '</p>' +
+        '<div class="site-model-meta">' +
+        '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
+        '<div>Çözünürlük<strong>' + esc(coz) + '</strong></div>' +
+        '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
+        '</div>' +
+        '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<a href="' + esc(dlUrl) + '" download="fabrika-video-' + esc(jid) + '.mp4" ' +
+        'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
+        '⬇️ MP4 İndir' +
+        '</a>' +
+        '<a class="site-btn site-btn-ghost" href="' + esc(vUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
+        '🔗 Aç' +
+        '</a>' +
+        '<button type="button" class="site-btn site-btn-ghost" style="padding:8px 12px; font-size:0.78rem;" onclick="publishJobToYoutube(\'' + esc(jid) + '\', \'studioHudLog\')">' +
+        '📺 YouTube Paketi' +
+        '</button>' +
+        '</div>' +
         '</article>';
     }).join('');
     if (historyGridEl) historyGridEl.innerHTML = kartlarHtml;
@@ -570,27 +756,27 @@
       var durumEtiket = item.status || 'onizleme_hazir (simülasyon)';
       return '' +
         '<article class="site-card site-model-card">' +
-          '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
-            '<span class="site-badge site-badge-free">✅ SES ÜRETİLDİ (İndirilebilir)</span>' +
-            '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
-          '</div>' +
-          '<h3 style="font-size:0.95rem; margin:0 0 4px;">🎵 ' + esc(item.action || 'Ses Üretimi') + '</h3>' +
-          '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Ses Sentezi') + '</p>' +
-          (aUrl ? '<audio controls preload="metadata" src="' + esc(aUrl) + '" style="width:100%; margin-bottom:10px;"></audio>' : '') +
-          '<div class="site-model-meta">' +
-            '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
-            '<div>Süre<strong>' + esc(sure) + ' sn</strong></div>' +
-            '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
-          '</div>' +
-          '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
-            '<a href="' + esc(dlUrl) + '" download="fabrika-ses-' + esc(jid) + '.wav" ' +
-               'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
-               '⬇️ Sesi İndir (.WAV)' +
-            '</a>' +
-            '<a class="site-btn site-btn-ghost" href="' + esc(aUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
-               '🔗 Yeni Sekmede Aç' +
-            '</a>' +
-          '</div>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
+        '<span class="site-badge site-badge-free">✅ SES ÜRETİLDİ (İndirilebilir)</span>' +
+        '<code style="font-size:0.74rem; color:var(--site-text-muted);">' + esc(jid) + '</code>' +
+        '</div>' +
+        '<h3 style="font-size:0.95rem; margin:0 0 4px;">🎵 ' + esc(item.action || 'Ses Üretimi') + '</h3>' +
+        '<p style="font-size:0.82rem; margin:0 0 8px; color:var(--site-text-dim);">' + esc(item.prompt || 'Ses Sentezi') + '</p>' +
+        (aUrl ? '<audio controls preload="metadata" src="' + esc(aUrl) + '" style="width:100%; margin-bottom:10px;"></audio>' : '') +
+        '<div class="site-model-meta">' +
+        '<div>Durum<strong>' + esc(durumEtiket) + '</strong></div>' +
+        '<div>Süre<strong>' + esc(sure) + ' sn</strong></div>' +
+        '<div>Boyut<strong>' + esc(kb) + ' KB</strong></div>' +
+        '</div>' +
+        '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<a href="' + esc(dlUrl) + '" download="fabrika-ses-' + esc(jid) + '.wav" ' +
+        'style="background:#059669; color:#fff; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:600; text-decoration:none; display:inline-block;">' +
+        '⬇️ Sesi İndir (.WAV)' +
+        '</a>' +
+        '<a class="site-btn site-btn-ghost" href="' + esc(aUrl) + '" target="_blank" rel="noopener" style="padding:8px 12px; font-size:0.78rem;">' +
+        '🔗 Yeni Sekmede Aç' +
+        '</a>' +
+        '</div>' +
         '</article>';
     }).join('');
   }
@@ -648,9 +834,11 @@
 
 var currentAudioAction = 'generate_music';
 
-window.switchStudioView = function(viewKey) {
+window.switchStudioView = function (viewKey) {
   var viewMap = {
     'video': 'viewVideoStudio',
+    'channels': 'viewChannelsStudio',
+    'burc': 'viewBurcStudio',
     'audio': 'viewAudioStudio',
     'omni': 'viewOmniRoute',
     'humanizer': 'viewHumanizer',
@@ -660,6 +848,8 @@ window.switchStudioView = function(viewKey) {
 
   var tabMap = {
     'video': 'tabNavVideo',
+    'channels': 'tabNavChannels',
+    'burc': 'tabNavBurc',
     'audio': 'tabNavAudio',
     'omni': 'tabNavOmni',
     'humanizer': 'tabNavHumanizer',
@@ -667,7 +857,7 @@ window.switchStudioView = function(viewKey) {
     'wan': 'tabNavWan'
   };
 
-  Object.keys(viewMap).forEach(function(k) {
+  Object.keys(viewMap).forEach(function (k) {
     var vEl = document.getElementById(viewMap[k]);
     var tEl = document.getElementById(tabMap[k]);
     if (vEl) vEl.hidden = (k !== viewKey);
@@ -680,15 +870,26 @@ window.switchStudioView = function(viewKey) {
   if (viewKey === 'gpu') {
     window.refreshGpuStatus();
   }
-  if ((viewKey === 'video' || viewKey === 'audio' || viewKey === 'wan') && window.refreshStudioMediaLists) {
+  if (viewKey === 'burc' && window.loadBurcCatalog) {
+    window.loadBurcCatalog();
+  }
+  if ((viewKey === 'video' || viewKey === 'channels' || viewKey === 'burc') && window.loadChannelsCatalog) {
+    window.loadChannelsCatalog(viewKey === 'channels');
+  }
+  if ((viewKey === 'video' || viewKey === 'burc') && window.refreshStudioWorkerWarn) {
+    window.refreshStudioWorkerWarn();
+  }
+  if ((viewKey === 'video' || viewKey === 'audio' || viewKey === 'wan' || viewKey === 'burc') && window.refreshStudioMediaLists) {
     window.refreshStudioMediaLists();
   }
 };
 
-// URL Hash Kontrolü (#videoStudio, #audioStudio vb.)
+// URL Hash Kontrolü (#videoStudio, #channelsStudio, #burcStudio, #audioStudio vb.)
 (function initHashView() {
   var h = (window.location.hash || '').toLowerCase();
-  if (h.includes('audio')) window.switchStudioView('audio');
+  if (h.includes('channel') || h.includes('kanal')) window.switchStudioView('channels');
+  else if (h.includes('burc')) window.switchStudioView('burc');
+  else if (h.includes('audio')) window.switchStudioView('audio');
   else if (h.includes('omni')) window.switchStudioView('omni');
   else if (h.includes('human')) window.switchStudioView('humanizer');
   else if (h.includes('gpu')) window.switchStudioView('gpu');
@@ -696,7 +897,7 @@ window.switchStudioView = function(viewKey) {
   else window.switchStudioView('video');
 })();
 
-window.setStudioPrompt = function(promptText) {
+window.setStudioPrompt = function (promptText) {
   var pInput = document.getElementById('videoPromptInput');
   if (pInput) {
     pInput.value = promptText;
@@ -704,211 +905,236 @@ window.setStudioPrompt = function(promptText) {
   }
 };
 
-window.handleStudioVideoSubmit = function(e) {
-  e.preventDefault();
-  var channel = document.getElementById('videoChannelSelect').value;
-  var method = document.getElementById('videoMethodSelect').value;
-  var renderTarget = document.getElementById('videoRenderTarget').value;
-  var aspect = document.getElementById('videoAspectSelect').value;
-  var voiceEl = document.getElementById('videoVoiceSelect');
-  var voiceVal = voiceEl ? voiceEl.value : 'Aoede';
-  var promptVal = document.getElementById('videoPromptInput').value.trim();
+var _studioVideoUploadedB64 = null;
+var _studioVidImgInput = document.getElementById('studioVideoImageInput');
+if (_studioVidImgInput) {
+  _studioVidImgInput.addEventListener('change', function () {
+    var f = _studioVidImgInput.files && _studioVidImgInput.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function (ev) {
+      _studioVideoUploadedB64 = ev.target.result;
+      var w = document.getElementById('studioVideoUploadedWrap');
+      var img = document.getElementById('studioVideoUploadedImg');
+      if (img) img.src = _studioVideoUploadedB64;
+      if (w) w.hidden = false;
+    };
+    r.readAsDataURL(f);
+  });
+}
+var _studioVidClearBtn = document.getElementById('studioVideoClearImgBtn');
+if (_studioVidClearBtn) {
+  _studioVidClearBtn.addEventListener('click', function () {
+    _studioVideoUploadedB64 = null;
+    if (_studioVidImgInput) _studioVidImgInput.value = '';
+    var w = document.getElementById('studioVideoUploadedWrap');
+    if (w) w.hidden = true;
+  });
+}
+
+function _renderStudioVideoPlayer(task, tok) {
+  var stageArea = document.getElementById('studioStageArea');
+  var taskBadge = document.getElementById('studioTaskBadge');
+  var hudLog = document.getElementById('studioHudLog');
+  var outUrl = task.output_url || '';
+  var boyut = (task.artifacts && task.artifacts.file_size_bytes) || task.file_size_bytes || 0;
+  var boyutKb = boyut ? (Number(boyut) / 1024).toFixed(1) : (task.size_kb ? String(task.size_kb) : '');
+  var cozunurluk = (task.artifacts && task.artifacts.resolution) || task.resolution || '';
+  var tamUrl = outUrl ? (outUrl + (outUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok)) : '';
+  var indirUrl = tamUrl ? (tamUrl + '&download=1') : '';
+  var thumbUrl = task.preview_image_url ? (task.preview_image_url + '&token=' + encodeURIComponent(tok)) : '';
+
+  ['step1', 'step2', 'step3', 'step4'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.className = 'site-pipeline-step done';
+  });
+  var step5 = document.getElementById('step5');
+  if (step5) step5.className = 'site-pipeline-step active';
+
+  if (taskBadge) {
+    taskBadge.textContent = task.simulasyon ? '⚠️ Önizleme (simülasyon)' : '✅ Üretildi (İndirilebilir)';
+    taskBadge.className = 'site-badge site-badge-free';
+  }
+  if (hudLog) {
+    hudLog.innerHTML += '<br>• ✅ <strong>VİDEO ÜRETİLDİ!</strong> <code>' + esc(task.job_id) + '</code>' +
+      ' | Görsel: <strong>' + esc(task.image_model || '-') + '</strong> → I2V: <strong>' + esc(task.i2v_model || task.method || '-') + '</strong>';
+  }
+  if (stageArea) {
+    stageArea.innerHTML =
+      '<div style="padding:12px; width:100%;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">' +
+      '<span style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.45); padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700;">✅ VİDEO ÜRETİLDİ (' + esc(boyutKb ? boyutKb + ' KB' : 'MP4') + ')</span>' +
+      '<span style="font-size:0.76rem; color:var(--site-text-dim);">' + esc(cozunurluk || task.aspect_ratio || 'MP4') + ' &bull; <code>' + esc(task.job_id) + '</code></span>' +
+      '</div>' +
+      '<video controls autoplay playsinline preload="metadata" src="' + esc(tamUrl) + '" style="width:100%; max-height:340px; border-radius:10px; background:#000; display:block; margin-bottom:12px;"></video>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">' +
+      '<a href="' + esc(indirUrl) + '" download="fabrika-video-' + esc(task.job_id) + '.mp4" style="background:#059669; color:#fff; padding:9px 15px; border-radius:8px; font-weight:700; text-decoration:none;">⬇️ MP4 İndir</a>' +
+      (thumbUrl ? '<a href="' + esc(thumbUrl) + '" download="kapak-' + esc(task.job_id) + '.png" class="site-btn site-btn-ghost" style="padding:9px 14px;">🖼️ Kapak PNG</a>' : '') +
+      '<button type="button" class="site-btn site-btn-primary" style="padding:9px 15px;" onclick="publishJobToYoutube(\'' + esc(task.job_id) + '\', \'studioHudLog\')">📤 YouTube Paketi / Yayınla</button>' +
+      '</div>' +
+      '</div>';
+  }
+  if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
+}
+
+window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) {
+  if (e && e.preventDefault) e.preventDefault();
+  var channel = (document.getElementById('videoChannelSelect') || {}).value || 'Tech_AI_Fabrika';
+  var wfEl = document.getElementById('videoMethodSelect');
+  var workflow = forcedWorkflow || (wfEl ? wfEl.value : 'image_first_preview');
+  if (!approvedImageUrl && _studioVideoUploadedB64 && workflow === 'image_first_preview') {
+    workflow = 'wan_i2v';
+  }
+  var stylePreset = (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism';
+  var imageModel = (document.getElementById('videoImageModelSelect') || {}).value || 'flux2-klein';
+  var i2vModel = (document.getElementById('videoI2vModelSelect') || {}).value || 'wan2.1-i2v-14b';
+  var renderTarget = (document.getElementById('videoRenderTarget') || {}).value || 'kaggle_32gb';
+  var aspect = (document.getElementById('videoAspectSelect') || {}).value || '16:9';
+  var duration = Number((document.getElementById('videoDurationSelect') || {}).value || 5);
+  var cameraMotion = (document.getElementById('videoCameraSelect') || {}).value || 'otomatik';
+  var voiceVal = (document.getElementById('videoVoiceSelect') || {}).value || 'Aoede';
+  var promptVal = ((document.getElementById('videoPromptInput') || {}).value || '').trim();
+  var negPromptVal = ((document.getElementById('videoNegPromptInput') || {}).value || '').trim();
   var hudLog = document.getElementById('studioHudLog');
   var taskBadge = document.getElementById('studioTaskBadge');
   var stageArea = document.getElementById('studioStageArea');
 
-  if (!promptVal) {
-    alert('Lütfen bir video konusu veya prompt girin.');
+  if (!promptVal && !approvedImageUrl && !_studioVideoUploadedB64) {
+    alert('Lütfen sahne konusunu / promptu girin veya görsel yükleyin.');
     return;
   }
 
-  taskBadge.textContent = '⏳ Video Üretiliyor...';
-  taskBadge.className = 'site-badge site-badge-free';
-
-  hudLog.innerHTML = `[PRODÜKSİYON BAŞLATILDI]<br>` +
-    `• Hedef Kanal: <strong>${esc(channel)}</strong><br>` +
-    `• Metot: <strong>${esc(method)}</strong><br>` +
-    `• Donanım: <strong>${esc(renderTarget)}</strong><br>` +
-    `• Seslendirmen: <strong>Google Gemini 2.5 (${esc(voiceVal)})</strong><br>` +
-    `• Konu: "${esc(promptVal)}"<br>` +
-    `• Durum: Aşama 1/5 Senaryo ve MP4 Video hazırlanıyor...`;
+  if (taskBadge) {
+    taskBadge.textContent = '⏳ Kuyruğa Gönderiliyor...';
+    taskBadge.className = 'site-badge site-badge-free';
+  }
+  if (hudLog) {
+    hudLog.innerHTML = '[TUTARLI ÜRETİM BAŞLATILDI]<br>' +
+      '• Kanal: <strong>' + esc(channel) + '</strong> | Tarz: <strong>' + esc(stylePreset) + '</strong><br>' +
+      '• Akış: <strong>' + esc(workflow) + '</strong> | Görsel: <strong>' + esc(imageModel) + '</strong> → I2V: <strong>' + esc(i2vModel) + '</strong><br>' +
+      '• Konu: "' + esc(promptVal) + '"';
+  }
 
   var step1 = document.getElementById('step1');
   var step2 = document.getElementById('step2');
   var step3 = document.getElementById('step3');
   var step4 = document.getElementById('step4');
   var step5 = document.getElementById('step5');
-
-  step1.className = 'site-pipeline-step done';
-  step2.className = 'site-pipeline-step active';
+  if (step1) step1.className = 'site-pipeline-step done';
+  if (step2) step2.className = 'site-pipeline-step active';
+  if (step3) step3.className = 'site-pipeline-step';
+  if (step4) step4.className = 'site-pipeline-step';
+  if (step5) step5.className = 'site-pipeline-step';
 
   var tok = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
-
   if (!tok) {
-    var girilenPin = prompt("🔐 Oturum Doğrulaması Gerekli:\nLütfen 6 haneli yönetici PIN kodunuzu girin (Örn: 849261):");
+    var girilenPin = prompt('🔐 Oturum Doğrulaması Gerekli:\nLütfen yönetici PIN kodunuzu girin:');
     if (girilenPin) {
       fetch('/api/auth/verify_pin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: girilenPin.trim() })
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(resPin) {
+      }).then(function (r) { return r.json(); }).then(function (resPin) {
         if (resPin.success && resPin.token) {
           localStorage.setItem('fabrika_token', resPin.token);
           localStorage.setItem('cockpit_token', resPin.token);
-          window.handleStudioVideoSubmit(e);
+          window.handleStudioVideoSubmit(e, forcedWorkflow, approvedImageUrl);
         } else {
           alert('Hatalı PIN: ' + (resPin.message || 'Yetkilendirme başarısız.'));
         }
       });
-      return;
     }
+    return;
   }
 
   fetch('/api/studio/video/generate', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + tok
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok },
     body: JSON.stringify({
       channel: channel,
-      method: method,
+      workflow: workflow,
+      method: workflow,
+      style_preset: stylePreset,
+      image_model: imageModel,
+      i2v_model: i2vModel,
       render_target: renderTarget,
       aspect_ratio: aspect,
-      prompt: promptVal,
-      voice: voiceVal
+      duration: duration,
+      camera_motion: cameraMotion,
+      prompt: promptVal || 'organic coherent scene motion from reference image',
+      negative_prompt: negPromptVal,
+      voice: voiceVal,
+      image_base64: approvedImageUrl ? null : _studioVideoUploadedB64,
+      input_image_url: approvedImageUrl || null
     })
   })
-  .then(function(res) {
-    if (res.status === 401) {
-      localStorage.removeItem('fabrika_token');
-      localStorage.removeItem('cockpit_token');
-      var girilenPin = prompt("🔐 Oturum Süreniz Dolmuş (Sunucu Güncellendi):\nLütfen PIN kodunuzu girin (Örn: 849261):");
-      if (girilenPin) {
-        return fetch('/api/auth/verify_pin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin: girilenPin.trim() })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(resPin) {
-          if (resPin.success && resPin.token) {
-            localStorage.setItem('fabrika_token', resPin.token);
-            localStorage.setItem('cockpit_token', resPin.token);
-            window.handleStudioVideoSubmit(e);
-          } else {
-            alert('Hatalı PIN: ' + (resPin.message || 'Yetkilendirme başarısız.'));
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      if (!data.success || !data.task) {
+        if (hudLog) hudLog.innerHTML += '<br><span style="color:var(--site-danger);">❌ Başlatılamadı: ' + esc(data.detail || data.message || 'Hata') + '</span>';
+        if (taskBadge) taskBadge.textContent = '❌ Başarısız';
+        return;
+      }
+      var task = data.task;
+      if (task.output_url) {
+        _renderStudioVideoPlayer(task, tok);
+        return;
+      }
+      if (taskBadge) taskBadge.textContent = '⏳ GPU Kuyruğunda';
+      if (hudLog) {
+        hudLog.innerHTML += '<br>• Bilet: <code>' + esc(task.job_id) + '</code> — <em>' + esc(task.message || 'GPU işçisi bekleniyor') + '</em>' +
+          (task.image_prompt ? '<br>• 🎨 <strong>İngilizce Görsel Sahne (' + esc(task.planner_source || 'yerel') + '):</strong> <code>' + esc(task.image_prompt.slice(0, 180)) + '</code>' : '') +
+          (task.motion_prompt ? '<br>• 🎥 <strong>Hareket:</strong> <code>' + esc(task.motion_prompt.slice(0, 140)) + '</code>' : '');
+      }
+      if (stageArea) {
+        stageArea.innerHTML = '<div style="text-align:center; padding:18px;">' +
+          '<div style="font-size:2.2rem; margin-bottom:8px;">🖼️ ⏳</div>' +
+          '<strong>GPU İşçisi Bekleniyor / Üretiliyor</strong>' +
+          '<p style="margin:6px 0; font-size:0.82rem; color:var(--site-text-dim);">Bilet: <code>' + esc(task.job_id) + '</code> · Model: <strong>' + esc(task.method === 'flux2_resim' ? imageModel : i2vModel) + '</strong></p>' +
+          '</div>';
+      }
+
+      if (window.pollLabJob) {
+        window.pollLabJob(task.job_id, function (guncel) {
+          if (guncel.output_url) {
+            _renderStudioVideoPlayer(guncel, tok);
+          } else if (guncel.preview_image_url) {
+            var pUrl = guncel.preview_image_url + '&token=' + encodeURIComponent(tok);
+            var bekliyorOnay = (guncel.status === 'onizleme_hazir' || guncel.mode === 'flux2_resim' || guncel.method === 'flux2_resim');
+            if (step2) step2.className = 'site-pipeline-step done';
+            if (step3) step3.className = bekliyorOnay ? 'site-pipeline-step active' : 'site-pipeline-step done';
+            if (step4 && !bekliyorOnay) step4.className = 'site-pipeline-step active';
+            if (taskBadge) taskBadge.textContent = bekliyorOnay ? '🖼️ Görsel Hazır (Onay Bekliyor)' : '⏳ Görsel Hazır → I2V Üretiliyor';
+            if (stageArea) {
+              var onayBtnler = bekliyorOnay
+                ? '<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:10px;">' +
+                '<button type="button" id="studioApproveI2vBtn" class="site-btn site-btn-primary">✅ Görseli Beğendim → ' + esc(i2vModel) + ' ile Videoya Çevir</button>' +
+                '<button type="button" id="studioRegenImgBtn" class="site-btn site-btn-ghost">🔄 Görseli Yeniden Üret</button>' +
+                '</div>'
+                : '<p style="margin:8px 0 0; font-size:0.8rem; color:var(--site-accent);">✨ Bu anahtar kare seçili <strong>' + esc(i2vModel) + '</strong> modeline beslendi, MP4 hazırlanıyor…</p>';
+              stageArea.innerHTML =
+                '<div style="padding:12px; width:100%; text-align:center;">' +
+                '<img src="' + esc(pUrl) + '" alt="Anahtar kare önizleme" style="max-width:100%; max-height:340px; border-radius:10px; display:block; margin:0 auto; border:1px solid #334155;">' +
+                onayBtnler +
+                '</div>';
+              var aBtn = document.getElementById('studioApproveI2vBtn');
+              if (aBtn) aBtn.onclick = function () { window.handleStudioVideoSubmit(null, 'wan_i2v', guncel.preview_image_url); };
+              var rBtn = document.getElementById('studioRegenImgBtn');
+              if (rBtn) rBtn.onclick = function () { window.handleStudioVideoSubmit(null, 'image_first_preview'); };
+            }
+          } else if (hudLog) {
+            if (taskBadge) taskBadge.textContent = '⏳ ' + (guncel.progress_pct || 0) + '%';
           }
-          return { success: false, detail: 'Oturum yenileniyor...' };
+        }, function (errMsg) {
+          if (taskBadge) taskBadge.textContent = '❌ Başarısız';
+          if (hudLog) hudLog.innerHTML += '<br><span style="color:var(--site-danger);">❌ GPU Hatası: ' + esc(errMsg) + '</span>';
         });
       }
-    }
-    if (!res.ok) {
-      return res.text().then(function(t) {
-        try {
-          return JSON.parse(t);
-        } catch (e) {
-          return { success: false, detail: 'Sunucu yanıtı (HTTP ' + res.status + '): ' + (t.slice(0, 120) || 'Bulut zaman aşımı / yeniden deneniyor...') };
-        }
-      });
-    }
-    return res.text().then(function(t) {
-      try {
-        return JSON.parse(t);
-      } catch (e) {
-        return { success: false, detail: 'Geçersiz sunucu verisi: ' + t.slice(0, 100) };
-      }
+    })
+    .catch(function (err) {
+      if (hudLog) hudLog.innerHTML += '<br><span style="color:var(--site-danger);">❌ Ağ Hatası: ' + esc(err.message) + '</span>';
+      if (taskBadge) taskBadge.textContent = '❌ Hata';
     });
-  })
-  .then(function(data) {
-    if (data.success && data.task) {
-      var task = data.task;
-      var outUrl = task.output_url || '';
-      var boyut = (task.artifacts && task.artifacts.file_size_bytes) ? task.artifacts.file_size_bytes : 0;
-      var boyutKb = boyut ? (boyut / 1024).toFixed(1) : '';
-      var cozunurluk = (task.artifacts && task.artifacts.resolution) ? task.artifacts.resolution : '';
-      var tamUrl = outUrl ? (outUrl + (outUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok)) : '';
-      var indirUrl = tamUrl ? (tamUrl + '&download=1') : '';
-
-      if (outUrl) {
-        step1.className = 'site-pipeline-step done';
-        step2.className = 'site-pipeline-step done';
-        step3.className = 'site-pipeline-step done';
-        step4.className = 'site-pipeline-step done';
-        step5.className = 'site-pipeline-step';
-
-        taskBadge.textContent = '✅ Üretildi (İndirilebilir)';
-        taskBadge.className = 'site-badge site-badge-free';
-
-        hudLog.innerHTML += `<br>• ✅ <strong>VİDEO ÜRETİLDİ!</strong> <code>${esc(task.job_id)}</code><br>` +
-          `• Boyut: <strong>${esc(boyutKb ? boyutKb + ' KB' : String(boyut) + ' bayt')}</strong> | Çözünürlük: <strong>${esc(cozunurluk)}</strong><br>` +
-          `• Durum: <strong>${esc(task.status)}</strong><br>` +
-          `• <em>${esc(task.message || '')}</em>`;
-
-        stageArea.innerHTML = `
-          <div style="padding:12px; width:100%;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.45); padding:4px 10px; border-radius:6px; font-size:0.78rem; font-weight:700;">
-                ✅ VİDEO ÜRETİLDİ (${esc(boyutKb ? boyutKb + ' KB' : 'MP4')})
-              </span>
-              <span style="font-size:0.76rem; color:var(--site-text-dim);">
-                Çözünürlük: <strong>${esc(cozunurluk || 'MP4')}</strong> &bull; <code>${esc(task.job_id)}</code>
-              </span>
-            </div>
-            <video controls autoplay playsinline preload="metadata" src="${esc(tamUrl)}"
-                   style="width:100%; max-height:340px; border-radius:10px; background:#000; display:block; margin-bottom:12px;">
-              Tarayıcınız video etiketini desteklemiyor.
-            </video>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-              <a href="${esc(indirUrl)}" download="fabrika-video-${esc(task.job_id)}.mp4"
-                 style="background:#059669; color:#fff; padding:10px 18px; border-radius:8px; font-weight:700; text-decoration:none; display:inline-block;">
-                ⬇️ Videoyu İndir (MP4)
-              </a>
-              <a href="${esc(tamUrl)}" target="_blank" rel="noopener"
-                 style="background:#1e293b; color:#e2e8f0; padding:10px 18px; border-radius:8px; font-weight:600; text-decoration:none; display:inline-block; border:1px solid #334155;">
-                🔗 Yeni Sekmede Aç
-              </a>
-            </div>
-            <p style="margin:10px 0 0; font-size:0.74rem; color:var(--site-text-muted); text-align:center;">
-              Bilet: <code>${esc(task.job_id)}</code> &bull; Motor: <strong>${esc(task.method)}</strong> &bull;
-              Durum: <strong>${esc(task.status)}</strong>
-            </p>
-          </div>
-        `;
-        if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
-      } else {
-        step1.className = 'site-pipeline-step done';
-        step2.className = 'site-pipeline-step active';
-
-        taskBadge.textContent = '⏳ Kuyrukta (Dosya Henüz Yok)';
-        taskBadge.className = 'site-badge site-badge-free';
-
-        hudLog.innerHTML += `<br>• ⚠️ <strong>MP4 Dosyası Henüz Üretilmedi — Kuyrukta:</strong> <code>${esc(task.job_id)}</code><br>` +
-          `• Hedef Donanım: <strong>${esc(renderTarget).toUpperCase()}</strong> | Oran: <strong>${esc(aspect)}</strong><br>` +
-          `• 📡 <em>${esc(task.message || 'GPU İşçisi sıradaki işi aldığında render başlayacaktır.')}</em>`;
-
-        stageArea.innerHTML = `
-          <div style="text-align:center; padding:16px;">
-            <div style="font-size:2.4rem; margin-bottom:8px;">⏳</div>
-            <strong style="color:#f59e0b;">MP4 Dosyası Henüz Üretilmedi (Kuyrukta)</strong>
-            <p style="margin:4px 0 8px; font-size:0.84rem; color:var(--site-text-dim);">
-              Bilet ID: <code>${esc(task.job_id)}</code> | Kanal: <strong>${esc(task.channel)}</strong>
-            </p>
-            <span class="site-badge site-badge-free">Durum: ${esc(task.status || 'queued')}</span>
-          </div>
-        `;
-      }
-    } else {
-      hudLog.innerHTML += `<br><span style="color:var(--site-danger);">❌ Üretilemedi: ${esc(data.detail || data.error || 'Prodüksiyon başlatılamadı.')}</span>`;
-      taskBadge.textContent = '❌ Üretilemedi';
-    }
-  })
-  .catch(function(err) {
-    hudLog.innerHTML += `<br><span style="color:var(--site-danger);">❌ Ağ Hatası: ${esc(err.message)}</span>`;
-    taskBadge.textContent = '❌ Hata';
-  });
 };
 
 /**
@@ -943,21 +1169,21 @@ window.loadVideoHistory = function () {
         var tarih = (it.created_at || '').toString().slice(0, 16);
         html += '<div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:10px;">' +
           '<div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:8px;">' +
-            '<code style="font-size:0.72rem; color:#94a3b8;">' + esc(it.job_id) + '</code>' +
-            '<span style="font-size:0.7rem; color:#64748b;">' + esc(tarih) + '</span>' +
+          '<code style="font-size:0.72rem; color:#94a3b8;">' + esc(it.job_id) + '</code>' +
+          '<span style="font-size:0.7rem; color:#64748b;">' + esc(tarih) + '</span>' +
           '</div>' +
           (it.prompt ? '<p style="margin:0 0 8px; font-size:0.78rem; color:#cbd5e1;">' + esc(it.prompt) + '</p>' : '') +
           '<video controls playsinline preload="none" src="' + esc(tam) + '" ' +
-                 'style="width:100%; max-height:200px; border-radius:6px; background:#000; display:block; margin-bottom:8px;"></video>' +
+          'style="width:100%; max-height:200px; border-radius:6px; background:#000; display:block; margin-bottom:8px;"></video>' +
           '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
-            '<a href="' + esc(tam) + '" download="fabrika-' + esc(it.job_id) + '.mp4" ' +
-               'style="background:#059669; color:#fff; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">⬇️ İndir</a>' +
-            '<a href="' + esc(tam) + '" target="_blank" rel="noopener" ' +
-               'style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">🔗 Aç</a>' +
-            '<span style="font-size:0.7rem; color:#64748b; align-self:center;">' +
-              esc(it.resolution || '') + (boyutKb ? ' · ' + boyutKb + ' KB' : '') + '</span>' +
+          '<a href="' + esc(tam) + '" download="fabrika-' + esc(it.job_id) + '.mp4" ' +
+          'style="background:#059669; color:#fff; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">⬇️ İndir</a>' +
+          '<a href="' + esc(tam) + '" target="_blank" rel="noopener" ' +
+          'style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:7px 12px; border-radius:6px; font-size:0.74rem; font-weight:600; text-decoration:none;">🔗 Aç</a>' +
+          '<span style="font-size:0.7rem; color:#64748b; align-self:center;">' +
+          esc(it.resolution || '') + (boyutKb ? ' · ' + boyutKb + ' KB' : '') + '</span>' +
           '</div>' +
-        '</div>';
+          '</div>';
       });
       kutu.innerHTML = html;
     })
@@ -975,7 +1201,7 @@ if (document.readyState === 'loading') {
 }
 
 
-window.switchAudioAction = function(action) {
+window.switchAudioAction = function (action) {
   currentAudioAction = action;
   var btnMap = {
     'generate_music': 'audioTabMusic',
@@ -984,7 +1210,7 @@ window.switchAudioAction = function(action) {
     'identify_music': 'audioTabIdentify'
   };
 
-  Object.keys(btnMap).forEach(function(k) {
+  Object.keys(btnMap).forEach(function (k) {
     var b = document.getElementById(btnMap[k]);
     if (b) {
       if (k === action) b.classList.add('active');
@@ -1020,7 +1246,7 @@ window.switchAudioAction = function(action) {
   }
 };
 
-window.handleAudioSubmit = function(e) {
+window.handleAudioSubmit = function (e) {
   e.preventDefault();
   var inputVal = document.getElementById('audioPromptInput').value.trim();
   var hud = document.getElementById('audioOutputHud');
@@ -1064,41 +1290,41 @@ window.handleAudioSubmit = function(e) {
     headers: authHeader,
     body: JSON.stringify({ action: currentAudioAction, params: params })
   })
-  .then(function(res) { return res.json(); })
-  .then(function(resp) {
-    if (resp.success && resp.data) {
-      var d = resp.data;
-      if (currentAudioAction === 'identify_music') {
-        if (audioBadge) audioBadge.textContent = d.matched ? '✅ Şarkı Bulundu' : '🔍 Sonuç Yok';
-        if (d.matched) {
-          hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
-            `• Başlık: <strong>${esc(d.title || 'Bilinmeyen')}</strong><br>` +
-            `• Tür: <strong>${esc(d.genre || '-')}</strong><br>` +
-            `• Güven Skoru: <strong>%${Math.round((d.confidence || 0) * 100)}</strong><br>` +
-            `• İcracılar: ${d.performers ? esc(d.performers.join(', ')) : 'Belirtilmedi'}`;
-        } else {
-          hud.innerHTML = `🔍 <strong>Şarkı Tespiti:</strong><br>` +
-            `• Durum: ${esc(d.status || 'Tamamlandı')}<br>` +
-            `• Sonuç: ${esc(d.message || 'Eşleşen parça bulunamadı.')}`;
-        }
-      } else if (d.output_url) {
-        var tamSesUrl = d.output_url + (d.output_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok);
-        var indirSesUrl = (d.download_url || (d.output_url + '&download=1')) + '&token=' + encodeURIComponent(tok);
-        var sesBoyutKb = d.size_kb || (d.file_size_bytes ? (d.file_size_bytes / 1024).toFixed(1) : '');
+    .then(function (res) { return res.json(); })
+    .then(function (resp) {
+      if (resp.success && resp.data) {
+        var d = resp.data;
+        if (currentAudioAction === 'identify_music') {
+          if (audioBadge) audioBadge.textContent = d.matched ? '✅ Şarkı Bulundu' : '🔍 Sonuç Yok';
+          if (d.matched) {
+            hud.innerHTML = `🎵 <strong>Şarkı Tespiti Sonucu:</strong><br>` +
+              `• Başlık: <strong>${esc(d.title || 'Bilinmeyen')}</strong><br>` +
+              `• Tür: <strong>${esc(d.genre || '-')}</strong><br>` +
+              `• Güven Skoru: <strong>%${Math.round((d.confidence || 0) * 100)}</strong><br>` +
+              `• İcracılar: ${d.performers ? esc(d.performers.join(', ')) : 'Belirtilmedi'}`;
+          } else {
+            hud.innerHTML = `🔍 <strong>Şarkı Tespiti:</strong><br>` +
+              `• Durum: ${esc(d.status || 'Tamamlandı')}<br>` +
+              `• Sonuç: ${esc(d.message || 'Eşleşen parça bulunamadı.')}`;
+          }
+        } else if (d.output_url) {
+          var tamSesUrl = d.output_url + (d.output_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tok);
+          var indirSesUrl = (d.download_url || (d.output_url + '&download=1')) + '&token=' + encodeURIComponent(tok);
+          var sesBoyutKb = d.size_kb || (d.file_size_bytes ? (d.file_size_bytes / 1024).toFixed(1) : '');
 
-        if (audioBadge) {
-          audioBadge.textContent = '✅ Ses Üretildi (İndirilebilir)';
-          audioBadge.className = 'site-badge site-badge-free';
-        }
+          if (audioBadge) {
+            audioBadge.textContent = '✅ Ses Üretildi (İndirilebilir)';
+            audioBadge.className = 'site-badge site-badge-free';
+          }
 
-        hud.innerHTML = `✅ <strong>SES DOSYASI ÜRETİLDİ!</strong> <code>${esc(d.job_id || '')}</code><br>` +
-          `• Motor: <strong>${esc(d.engine || '')}</strong><br>` +
-          `• Boyut: <strong>${esc(sesBoyutKb ? sesBoyutKb + ' KB' : '')}</strong> | Süre: <strong>${esc(d.duration_sec || '')} sn</strong><br>` +
-          `• Durum: <strong>${esc(d.status || '')}</strong><br>` +
-          `• Mesaj: <em>${esc(d.message || '')}</em>`;
+          hud.innerHTML = `✅ <strong>SES DOSYASI ÜRETİLDİ!</strong> <code>${esc(d.job_id || '')}</code><br>` +
+            `• Motor: <strong>${esc(d.engine || '')}</strong><br>` +
+            `• Boyut: <strong>${esc(sesBoyutKb ? sesBoyutKb + ' KB' : '')}</strong> | Süre: <strong>${esc(d.duration_sec || '')} sn</strong><br>` +
+            `• Durum: <strong>${esc(d.status || '')}</strong><br>` +
+            `• Mesaj: <em>${esc(d.message || '')}</em>`;
 
-        if (audioStage) {
-          audioStage.innerHTML = `
+          if (audioStage) {
+            audioStage.innerHTML = `
             <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.35); border-radius:10px; padding:14px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
                 <span style="background:rgba(16,185,129,0.2); color:#34d399; padding:3px 10px; border-radius:6px; font-size:0.78rem; font-weight:700;">
@@ -1121,26 +1347,26 @@ window.handleAudioSubmit = function(e) {
               </div>
             </div>
           `;
+          }
+          if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
+        } else {
+          if (audioBadge) audioBadge.textContent = '❌ Ses Üretilemedi';
+          hud.innerHTML = `⚠️ <strong>Ses Dosyası Üretilemedi:</strong><br>` +
+            `• Motor: <strong>${esc(d.engine || '-')}</strong><br>` +
+            `• Durum: <em>${esc(d.message || d.status || 'Dosya oluşturulamadı')}</em>`;
         }
-        if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
       } else {
-        if (audioBadge) audioBadge.textContent = '❌ Ses Üretilemedi';
-        hud.innerHTML = `⚠️ <strong>Ses Dosyası Üretilemedi:</strong><br>` +
-          `• Motor: <strong>${esc(d.engine || '-')}</strong><br>` +
-          `• Durum: <em>${esc(d.message || d.status || 'Dosya oluşturulamadı')}</em>`;
+        if (audioBadge) audioBadge.textContent = '❌ Hata';
+        hud.innerHTML = `<span style="color:var(--site-danger);">❌ Hata: ${esc(resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz')}</span>`;
       }
-    } else {
-      if (audioBadge) audioBadge.textContent = '❌ Hata';
-      hud.innerHTML = `<span style="color:var(--site-danger);">❌ Hata: ${esc(resp.detail || resp.error || 'İşlem başarısız veya oturum geçersiz')}</span>`;
-    }
-  })
-  .catch(function(err) {
-    if (audioBadge) audioBadge.textContent = '❌ Ağ Hatası';
-    hud.innerHTML = `<span style="color:var(--site-danger);">❌ Ağ Hatası: ${esc(err.message)}</span>`;
-  });
+    })
+    .catch(function (err) {
+      if (audioBadge) audioBadge.textContent = '❌ Ağ Hatası';
+      hud.innerHTML = `<span style="color:var(--site-danger);">❌ Ağ Hatası: ${esc(err.message)}</span>`;
+    });
 };
 
-window.handleOmniRouteSubmit = function(e) {
+window.handleOmniRouteSubmit = function (e) {
   e.preventDefault();
   var promptVal = document.getElementById('omniPromptInput').value.trim();
   var hud = document.getElementById('omniOutputHud');
@@ -1158,27 +1384,27 @@ window.handleOmniRouteSubmit = function(e) {
     headers: authHeader,
     body: JSON.stringify({ prompt: promptVal })
   })
-  .then(function(res) { return res.json(); })
-  .then(function(resp) {
-    if (resp.success && resp.result) {
-      var r = resp.result;
-      var simBadge = r.simulasyon ? '<span class="site-badge" style="background:#f59e0b;color:#000;">Kılavuz Simülasyon</span>' : '<span class="site-badge" style="background:#10b981;color:#fff;">Canlı Çıkarım</span>';
-      hud.innerHTML = `⚡ <strong>OmniRoute Yanıtı ($0.00):</strong> ${simBadge}<br>` +
-        `• Model: <strong>${esc(r.display_name)}</strong> (Tier ${esc(r.tier)})<br>` +
-        `• Sağlayıcı: ${esc(r.provider)}<br>` +
-        `• Gecikme: <strong>${esc(r.latency_ms)} ms</strong><br>` +
-        `• Maliyet: <strong>$0.00 (Tamamen Ücretsiz)</strong><br><br>` +
-        `<div style="color:var(--site-text); white-space:pre-wrap;">${esc(r.content)}</div>`;
-    } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'Çıkarım başarısız')}</span>`;
-    }
-  })
-  .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
-  });
+    .then(function (res) { return res.json(); })
+    .then(function (resp) {
+      if (resp.success && resp.result) {
+        var r = resp.result;
+        var simBadge = r.simulasyon ? '<span class="site-badge" style="background:#f59e0b;color:#000;">Kılavuz Simülasyon</span>' : '<span class="site-badge" style="background:#10b981;color:#fff;">Canlı Çıkarım</span>';
+        hud.innerHTML = `⚡ <strong>OmniRoute Yanıtı ($0.00):</strong> ${simBadge}<br>` +
+          `• Model: <strong>${esc(r.display_name)}</strong> (Tier ${esc(r.tier)})<br>` +
+          `• Sağlayıcı: ${esc(r.provider)}<br>` +
+          `• Gecikme: <strong>${esc(r.latency_ms)} ms</strong><br>` +
+          `• Maliyet: <strong>$0.00 (Tamamen Ücretsiz)</strong><br><br>` +
+          `<div style="color:var(--site-text); white-space:pre-wrap;">${esc(r.content)}</div>`;
+      } else {
+        hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'Çıkarım başarısız')}</span>`;
+      }
+    })
+    .catch(function (err) {
+      hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
+    });
 };
 
-window.handleHumanizerSubmit = function(e) {
+window.handleHumanizerSubmit = function (e) {
   e.preventDefault();
   var textVal = document.getElementById('humanizerInput').value.trim();
   var hud = document.getElementById('humanizerOutputHud');
@@ -1196,58 +1422,262 @@ window.handleHumanizerSubmit = function(e) {
     headers: authHeader,
     body: JSON.stringify({ text: textVal })
   })
-  .then(function(res) { return res.json(); })
-  .then(function(resp) {
-    if (resp.success) {
-      var a = resp.analysis;
-      var skorText = a.human_score !== null ? `%${a.human_score}` : 'Metin Yok';
-      hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> ${esc(skorText)} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
-        `• Temizlenen AI Kalıp Sayısı: <strong>${esc(a.slop_count)} adet</strong><br><br>` +
-        `<strong>Arındırılmış İnsan Metni:</strong><br><br>` +
-        `<span style="color:var(--site-text); font-family:var(--site-font); font-size:0.92rem; white-space:pre-wrap;">${esc(resp.cleaned_text)}</span>`;
-    } else {
-      hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'İşlem başarısız')}</span>`;
-    }
-  })
-  .catch(function(err) {
-    hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
-  });
+    .then(function (res) { return res.json(); })
+    .then(function (resp) {
+      if (resp.success) {
+        var a = resp.analysis;
+        var skorText = a.human_score !== null ? `%${a.human_score}` : 'Metin Yok';
+        hud.innerHTML = `🌿 <strong>İnsanilik Analizi:</strong> ${esc(skorText)} (${a.is_organic ? '✅ Organik' : '⚠️ Robotik kalıplar temizlendi'})<br>` +
+          `• Temizlenen AI Kalıp Sayısı: <strong>${esc(a.slop_count)} adet</strong><br><br>` +
+          `<strong>Arındırılmış İnsan Metni:</strong><br><br>` +
+          `<span style="color:var(--site-text); font-family:var(--site-font); font-size:0.92rem; white-space:pre-wrap;">${esc(resp.cleaned_text)}</span>`;
+      } else {
+        hud.innerHTML = `<span style="color:var(--site-danger);">Hata: ${esc(resp.detail || 'İşlem başarısız')}</span>`;
+      }
+    })
+    .catch(function (err) {
+      hud.innerHTML = `<span style="color:var(--site-danger);">Ağ Hatası: ${esc(err.message)}</span>`;
+    });
 };
 
-window.refreshGpuStatus = function() {
+window.refreshGpuStatus = function () {
   var hud = document.getElementById('gpuOutputHud');
+  if (!hud) return;
   hud.innerHTML = `[GPU KÜMESİ TELEMETRİSİ SORGULANIYOR...]`;
 
   fetch('/api/gpu/cluster/status')
-  .then(function(res) { return res.json(); })
-  .then(function(resp) {
-    if (resp.success && resp.status) {
-      var s = resp.status;
-      var workerHtml = '';
-      if (s.workers && s.workers.length > 0) {
-        workerHtml = '<br><strong>Bağlı Canlı İşçiler:</strong><ul style="margin:4px 0 0; padding-left:18px;">';
-        s.workers.forEach(function(w) {
-          workerHtml += `<li><code>${esc(w.worker_id)}</code>: <strong>${esc(w.gpu_name)}</strong> (${esc(w.vram_gb)} GB) - Durum: <span style="color:#10b981;">● ${esc(w.status)}</span></li>`;
-        });
-        workerHtml += '</ul>';
+    .then(function (res) { return res.json(); })
+    .then(function (resp) {
+      if (resp.success && resp.status) {
+        var s = resp.status;
+        var workerHtml = '';
+        if (s.workers && s.workers.length > 0) {
+          workerHtml = '<br><strong>Bağlı Canlı İşçiler:</strong><ul style="margin:4px 0 0; padding-left:18px;">';
+          s.workers.forEach(function (w) {
+            workerHtml += `<li><code>${esc(w.worker_id)}</code>: <strong>${esc(w.gpu_name)}</strong> (${esc(w.vram_gb)} GB) - Durum: <span style="color:#10b981;">● ${esc(w.status)}</span></li>`;
+          });
+          workerHtml += '</ul>';
+        }
+        var isLive = s.kaggle_connected || s.colab_connected;
+        var badge = isLive
+          ? '<span class="site-badge site-badge-free" style="background:#10b981; color:#fff;">🟢 Canlı GPU Bağlı</span>'
+          : '<span class="site-badge">⚪ Standby (İşçi Bekleniyor — Sıraya Alınır)</span>';
+
+        hud.innerHTML = `🖥️ <strong>GPU Küme Telemetrisi:</strong> ${badge}<br>` +
+          `• Durum: <strong>${esc(s.cluster_status || 'standby')}</strong><br>` +
+          `• Bağlı vRAM: <strong>${esc(s.allocated_vram_gb !== undefined ? s.allocated_vram_gb : 0)} GB</strong><br>` +
+          `• Aktif İşçi Sayısı: <strong>${esc(s.active_workers_count || 0)}</strong><br>` +
+          `• Aktif Dağıtım Modu: <code>${esc(s.mode)}</code><br>` +
+          `• Not: <em>${esc(s.message || 'Bağlı uzak GPU işçisi yoksa işler güvenli kuyrukta bekler.')}</em>` +
+          workerHtml;
       }
-      var isLive = s.kaggle_connected || s.colab_connected;
-      var badge = isLive ? '<span class="site-badge site-badge-free" style="background:#10b981; color:#fff;">🟢 Canlı GPU Bağlı</span>' : '<span class="site-badge">⚪ Standby (GPU Bekleniyor)</span>';
-      
-      hud.innerHTML = `🖥️ <strong>GPU Küme Telemetrisi:</strong> ${badge}<br>` +
-        `• Durum: <strong>${esc(s.cluster_status || 'standby')}</strong><br>` +
-        `• Toplam GPU vRAM: <strong>${esc(s.allocated_vram_gb !== undefined ? s.allocated_vram_gb : s.total_gpu_vram_gb)} GB</strong><br>` +
-        `• Aktif Dağıtım Modu: <code>${esc(s.mode)}</code><br>` +
-        `• Bilgi: <em>${esc(s.message || 'Bulut GPU kuyruğu hazır.')}</em>` +
-        workerHtml;
-    }
-  })
-  .catch(function(err) {
-    hud.innerHTML = `Ağ hatası: ${esc(err.message)}`;
-  });
+    })
+    .catch(function (err) {
+      hud.innerHTML = `Ağ hatası: ${esc(err.message)}`;
+    });
 };
 
-window.handleGpuModeChange = function(newMode) {
+window.loadGpuWorkerSetup = function () {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var codeEl = document.getElementById('gpuWorkerCmdCode');
+  var hud = document.getElementById('gpuOutputHud');
+  if (!tk) {
+    alert('İşçi anahtarını (X-Worker-Key) almak için önce oturum açın.');
+    return;
+  }
+  fetch('/api/gpu/worker-setup', { headers: { 'Authorization': 'Bearer ' + tk } })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.d || !res.d.success) {
+        if (hud) hud.innerHTML += '<br><span style="color:var(--site-danger);">❌ İşçi komutu alınamadı.</span>';
+        return;
+      }
+      var cmd = 'curl -sS ' + res.d.worker_script_url + ' -o gpu_worker.py && FABRIKA_WORKER_KEY=' +
+        res.d.worker_key + ' python3 gpu_worker.py --server ' + res.d.server + ' --token ' + res.d.worker_key;
+      if (codeEl) codeEl.textContent = cmd;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cmd).catch(function () { });
+      }
+      if (hud) hud.innerHTML += '<br>• ✅ <strong>Anahtarlı Kaggle/Colab komutu güncellendi ve panoya kopyalandı.</strong>';
+    });
+};
+
+window.pollLabJob = function (jobId, onUpdate, onFail, maxAttempts) {
+  var attempts = 0;
+  var limit = maxAttempts || 120;
+  var timer = setInterval(function () {
+    attempts += 1;
+    var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+    if (!tk || attempts > limit) {
+      clearInterval(timer);
+      return;
+    }
+    fetch('/api/lab/job/' + encodeURIComponent(jobId), {
+      headers: { 'Authorization': 'Bearer ' + tk }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !data.success || !data.job) return;
+        var j = data.job;
+        if (onUpdate) onUpdate(j);
+        if (j.gpu_durum === 'basarisiz' || j.status === 'basarisiz') {
+          clearInterval(timer);
+          if (onFail) onFail(j.error || 'GPU işi başarısız oldu.');
+          return;
+        }
+        if (j.output_url || ((j.mode === 'flux2_resim' || j.mode === 'image_first_preview') && j.preview_image_url)) {
+          clearInterval(timer);
+        }
+      })
+      .catch(function () { });
+  }, 4000);
+};
+
+var _burcUploadedB64 = null;
+var _burcInputEl = document.getElementById('burcImageInput');
+if (_burcInputEl) {
+  _burcInputEl.addEventListener('change', function () {
+    var f = _burcInputEl.files && _burcInputEl.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function (ev) {
+      _burcUploadedB64 = ev.target.result;
+      var w = document.getElementById('burcUploadedWrap');
+      var img = document.getElementById('burcUploadedImg');
+      if (img) img.src = _burcUploadedB64;
+      if (w) w.hidden = false;
+    };
+    r.readAsDataURL(f);
+  });
+}
+var _burcClearBtn = document.getElementById('burcClearImageBtn');
+if (_burcClearBtn) {
+  _burcClearBtn.addEventListener('click', function () {
+    _burcUploadedB64 = null;
+    if (_burcInputEl) _burcInputEl.value = '';
+    var w = document.getElementById('burcUploadedWrap');
+    if (w) w.hidden = true;
+  });
+}
+
+window.loadBurcCatalog = function () {
+  var sel = document.getElementById('burcSignSelect');
+  if (!sel || sel.getAttribute('data-loaded') === '1') return;
+  fetch('/api/burc/list')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.success || !Array.isArray(d.items)) return;
+      sel.innerHTML = d.items.map(function (b) {
+        var kod = b.kod || b.slug || '';
+        var s = kod === 'kova' ? ' selected' : '';
+        return '<option value="' + esc(kod) + '"' + s + '>' + esc(b.ad) + ' (' + esc(b.tarih || '') + ' · ' + esc(b.element || '') + ')</option>';
+      }).join('');
+      sel.setAttribute('data-loaded', '1');
+    })
+    .catch(function () { });
+};
+
+window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var msgEl = document.getElementById('burcStatusMsg');
+  var hudEl = document.getElementById('burcHudLog');
+  var badgeEl = document.getElementById('burcOutputBadge');
+  var stageEl = document.getElementById('burcStageArea');
+  var approveBox = document.getElementById('burcApproveActions');
+  var approveBtn = document.getElementById('burcAnimatePreviewBtn');
+
+  if (!tk) {
+    if (msgEl) msgEl.textContent = 'Lütfen önce oturum açın.';
+    return;
+  }
+
+  var burcKodu = (document.getElementById('burcSignSelect') || {}).value || 'kova';
+  var target = (document.getElementById('burcRenderTarget') || {}).value || 'kaggle_32gb';
+  var aspect = (document.getElementById('burcAspectSelect') || {}).value || '9:16';
+  var sureSn = Number((document.getElementById('burcDurationSelect') || {}).value || 5);
+  var konu = ((document.getElementById('burcTopicInput') || {}).value || '').trim();
+  var bImgModel = (document.getElementById('burcImageModelSelect') || {}).value || 'flux2-klein';
+  var bI2vModel = (document.getElementById('burcI2vModelSelect') || {}).value || 'wan2.1-i2v-14b';
+
+  var yontem = forcedMethod || 'flux2_resim';
+  if (!approvedImageUrl && _burcUploadedB64 && yontem !== 'flux2_resim') {
+    yontem = 'wan_i2v';
+  }
+
+  var payload = {
+    burc_kodu: burcKodu,
+    konu: konu,
+    sure_sn: sureSn,
+    aspect_ratio: aspect,
+    render_target: target,
+    method: yontem,
+    image_model: bImgModel,
+    i2v_model: bI2vModel,
+    image_base64: approvedImageUrl ? null : _burcUploadedB64,
+    input_image_url: approvedImageUrl || null
+  };
+
+  if (badgeEl) badgeEl.textContent = '⏳ Kuyruğa Gönderiliyor...';
+  if (msgEl) msgEl.textContent = 'Senaryo, seslendirme ve GPU görevi hazırlanıyor...';
+  if (approveBox) approveBox.hidden = true;
+
+  fetch('/api/burc/video/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+    body: JSON.stringify(payload)
+  })
+    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.d || !res.d.success) {
+        throw new Error((res.d && (res.d.detail || res.d.message)) || 'Burç işi başlatılamadı.');
+      }
+      var job = res.d.task;
+      var simBadge = job.metin_simulasyon ? ' <span class="site-badge" style="background:#f59e0b;color:#000;">(simülasyon metin)</span>' : '';
+      if (badgeEl) badgeEl.textContent = '⏳ GPU Kuyruğunda';
+      if (msgEl) msgEl.textContent = res.d.message || 'Burç işi GPU kuyruğuna eklendi.';
+      if (hudEl) {
+        hudEl.innerHTML = '♈ <strong>' + esc((res.d.burc && res.d.burc.ad) || burcKodu) + '</strong> · Bilet: <code>' + esc(res.d.job_id) + '</code>' + simBadge + '<br>' +
+          '• Yöntem: <strong>' + esc(job.method) + '</strong> | Hedef: <strong>' + esc(job.render_target) + '</strong><br>' +
+          '• Anlatım: <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>';
+      }
+
+      window.pollLabJob(res.d.job_id, function (guncel) {
+        if (guncel.output_url) {
+          var u = guncel.output_url + '&token=' + encodeURIComponent(tk);
+          if (badgeEl) badgeEl.textContent = guncel.simulasyon ? '⚠️ Tamamlandı (simülasyon)' : '✅ Burç Videosu Hazır';
+          if (stageEl) {
+            stageEl.innerHTML = '<video controls autoplay playsinline src="' + esc(u) + '" style="width:100%;max-height:360px;border-radius:10px;background:#000;"></video>' +
+              '<div style="margin-top:8px;text-align:center;"><a href="' + esc(u + '&download=1') + '" download="' + esc(guncel.job_id) + '.mp4" class="site-btn site-btn-primary">⬇️ Burç Videosunu İndir</a></div>';
+          }
+          if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
+        } else if (guncel.preview_image_url) {
+          var pUrl = guncel.preview_image_url + '&token=' + encodeURIComponent(tk);
+          if (badgeEl) badgeEl.textContent = '🖼️ Önizleme Görseli Hazır (Onay Bekliyor)';
+          if (stageEl) {
+            stageEl.innerHTML = '<img src="' + esc(pUrl) + '" alt="Burç önizleme görseli" style="max-width:100%;max-height:340px;border-radius:10px;display:block;margin:0 auto;">';
+          }
+          if (approveBox && approveBtn) {
+            approveBtn.textContent = '✅ Görseli Beğendim → ' + bI2vModel + ' ile Videoya Çevir';
+            approveBox.hidden = false;
+            approveBtn.onclick = function () {
+              window.handleBurcSubmit('wan_i2v', guncel.preview_image_url);
+            };
+          }
+        } else if (hudEl) {
+          hudEl.innerHTML += '<br>• İlerleme: ' + esc(guncel.status || 'bekliyor') + ' (' + esc(guncel.progress_pct || 0) + '%)';
+        }
+      }, function (errTxt) {
+        if (badgeEl) badgeEl.textContent = '❌ Başarısız';
+        if (msgEl) msgEl.textContent = 'GPU hatası: ' + errTxt;
+      });
+    })
+    .catch(function (err) {
+      if (badgeEl) badgeEl.textContent = '❌ Hata';
+      if (msgEl) msgEl.textContent = err.message;
+    });
+};
+
+window.handleGpuModeChange = function (newMode) {
   fetch('/api/gpu/cluster/mode', {
     method: 'POST',
     headers: {
@@ -1256,5 +1686,420 @@ window.handleGpuModeChange = function(newMode) {
     },
     body: JSON.stringify({ mode: newMode })
   })
-  .then(function() { window.refreshGpuStatus(); });
+    .then(function () { window.refreshGpuStatus(); });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KAYDIRMALI MODEL/STİL TEPSİLERİ + ÇOKLU YOUTUBE KANALI & YAYIN OTOMASYONU
+// ═══════════════════════════════════════════════════════════════════════════
+var _studioCatalogCache = null;
+
+function _syncPickerTray(trayId, selectId, items, labelKey, subKey) {
+  var tray = document.getElementById(trayId);
+  var sel = document.getElementById(selectId);
+  if (!tray || !sel || !Array.isArray(items)) return;
+
+  var activeVal = sel.value;
+  tray.innerHTML = items.map(function (it) {
+    var val = String(it.id || '');
+    var text = String(it[labelKey] || it.name || it.ad || val);
+    var badge = (subKey && it[subKey]) ? ' · ' + String(it[subKey]) : '';
+    var cls = val === activeVal ? 'site-picker-pill active' : 'site-picker-pill';
+    return '<button type="button" class="' + cls + '" data-picker-val="' + esc(val) + '">' + esc(text + badge) + '</button>';
+  }).join('');
+
+  tray.querySelectorAll('.site-picker-pill').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      sel.value = btn.getAttribute('data-picker-val') || '';
+      sel.dispatchEvent(new Event('change'));
+    });
+  });
+
+  if (!sel.getAttribute('data-tray-bound')) {
+    sel.addEventListener('change', function () {
+      var cur = sel.value;
+      tray.querySelectorAll('.site-picker-pill').forEach(function (b) {
+        if (b.getAttribute('data-picker-val') === cur) b.classList.add('active');
+        else b.classList.remove('active');
+      });
+    });
+    sel.setAttribute('data-tray-bound', '1');
+  }
+}
+
+function _fillSelectOptions(selectId, items, labelKey) {
+  var sel = document.getElementById(selectId);
+  if (!sel || !Array.isArray(items)) return;
+  var prev = sel.value;
+  sel.innerHTML = items.map(function (it) {
+    var v = String(it.id || '');
+    var txt = String(it[labelKey] || it.name || it.ad || v);
+    return '<option value="' + esc(v) + '">' + esc(txt) + '</option>';
+  }).join('');
+  if (prev && items.some(function (it) { return it.id === prev; })) sel.value = prev;
+}
+
+window.applyChannelToStudio = function (channelId, fillDefaultPrompt) {
+  if (!_studioCatalogCache || !Array.isArray(_studioCatalogCache.channels)) return;
+  var ch = _studioCatalogCache.channels.find(function (c) { return c.id === channelId; });
+  if (!ch) return;
+
+  var map = {
+    videoStyleSelect: ch.style_preset,
+    videoImageModelSelect: ch.image_model,
+    videoI2vModelSelect: ch.i2v_model,
+    videoMethodSelect: ch.workflow || 'image_first_preview',
+    videoAspectSelect: ch.aspect_ratio,
+    videoVoiceSelect: ch.voice,
+    videoDurationSelect: String(ch.duration || 5),
+    videoCameraSelect: ch.camera_motion || 'otomatik'
+  };
+  Object.keys(map).forEach(function (elId) {
+    var el = document.getElementById(elId);
+    if (el && map[elId]) {
+      el.value = map[elId];
+      el.dispatchEvent(new Event('change'));
+    }
+  });
+  var promptEl = document.getElementById('videoPromptInput');
+  if (promptEl && ch.default_prompt && (fillDefaultPrompt || !promptEl.value.trim())) {
+    promptEl.value = ch.default_prompt;
+  }
+};
+
+window.loadChannelsCatalog = function (force) {
+  if (_studioCatalogCache && !force) return Promise.resolve(_studioCatalogCache);
+  return fetch('/api/studio/catalog')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || !d.success) return d;
+      _studioCatalogCache = d;
+      _fillSelectOptions('videoChannelSelect', d.channels, 'name');
+      _fillSelectOptions('videoStyleSelect', d.styles, 'ad');
+      _fillSelectOptions('videoImageModelSelect', d.image_models, 'ad');
+      _fillSelectOptions('videoI2vModelSelect', d.i2v_models, 'ad');
+      _fillSelectOptions('chImageModelSelect', d.image_models, 'ad');
+      _fillSelectOptions('chI2vModelSelect', d.i2v_models, 'ad');
+      _fillSelectOptions('burcImageModelSelect', d.image_models, 'ad');
+      _fillSelectOptions('burcI2vModelSelect', d.i2v_models, 'ad');
+      _fillSelectOptions('studioImageModelSelect', d.image_models, 'ad');
+
+      _syncPickerTray('videoChannelTray', 'videoChannelSelect', d.channels, 'name', 'handle');
+      _syncPickerTray('videoStyleTray', 'videoStyleSelect', d.styles, 'ad');
+      _syncPickerTray('videoImageModelTray', 'videoImageModelSelect', d.image_models, 'id');
+      _syncPickerTray('videoI2vModelTray', 'videoI2vModelSelect', d.i2v_models, 'id');
+
+      var chSel = document.getElementById('videoChannelSelect');
+      if (chSel && !chSel.getAttribute('data-channel-bound')) {
+        chSel.addEventListener('change', function () {
+          window.applyChannelToStudio(chSel.value, false);
+        });
+        chSel.setAttribute('data-channel-bound', '1');
+        window.applyChannelToStudio(chSel.value, false);
+      }
+
+      window.renderChannelsManager(d);
+      return d;
+    })
+    .catch(function () { });
+};
+
+window.renderChannelsManager = function (d) {
+  var grid = document.getElementById('channelsListGrid');
+  var ytBox = document.getElementById('youtubeAuthBox');
+  var ytBadge = document.getElementById('ytAuthBadge');
+  var yt = (d && d.youtube_auth) || {};
+  if (ytBadge) {
+    ytBadge.textContent = yt.ready_for_live_upload ? '🟢 YouTube API Bağlı' : '🟡 OAuth Bekliyor (Yerel Paket)';
+  }
+  if (ytBox) {
+    ytBox.innerHTML = '• Durum: <strong>' + esc(yt.ready_for_live_upload ? 'Canlı YouTube API Aktif' : 'Bağlı Değil (Simülasyon Paketi Modu)') + '</strong><br>' +
+      '• <code>client_secret.json</code>: <strong>' + (yt.client_secret_present ? 'Mevcut' : 'Yok') + '</strong> | OAuth Token: <strong>' + (yt.oauth_token_present ? 'Mevcut' : 'Yok') + '</strong><br>' +
+      '• ' + esc(yt.message || '');
+  }
+  if (!grid || !d || !Array.isArray(d.channels)) return;
+  grid.innerHTML = d.channels.map(function (ch) {
+    return '<div class="site-channel-card">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px;">' +
+      '<div><strong>' + esc(ch.name) + '</strong><div style="font-size:0.74rem; color:var(--site-text-dim);">' + esc(ch.handle || ch.id) + ' · ' + esc(ch.aspect_ratio) + '</div></div>' +
+      '<span class="site-badge">' + (ch.youtube_connected ? '🟢 YT Bağlı' : '⚪ Taslak') + '</span>' +
+      '</div>' +
+      '<div style="font-size:0.75rem; color:var(--site-text-dim); line-height:1.45;">' +
+      'Tarz: <strong>' + esc(ch.style_preset) + '</strong><br>' +
+      'Görsel: <code>' + esc(ch.image_model) + '</code> → I2V: <code>' + esc(ch.i2v_model) + '</code><br>' +
+      'Ses: <strong>' + esc(ch.voice) + '</strong> · Gizlilik: <strong>' + esc(ch.privacy || 'private') + '</strong>' +
+      '</div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:auto;">' +
+      '<button type="button" class="site-btn site-btn-primary" style="padding:6px 10px; font-size:0.75rem; flex:1;" onclick="useChannelInStudio(\'' + esc(ch.id) + '\')">🎬 Stüdyoda Kullan</button>' +
+      '<button type="button" class="site-btn site-btn-ghost" style="padding:6px 10px; font-size:0.75rem;" onclick="editChannel(\'' + esc(ch.id) + '\')">✏️</button>' +
+      '<button type="button" class="site-btn site-btn-ghost" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteChannel(\'' + esc(ch.id) + '\')">🗑️</button>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+};
+
+window.useChannelInStudio = function (chId) {
+  var sel = document.getElementById('videoChannelSelect');
+  if (sel) {
+    sel.value = chId;
+    window.applyChannelToStudio(chId, true);
+  }
+  window.switchStudioView('video');
+};
+
+window.editChannel = function (chId) {
+  if (!_studioCatalogCache || !Array.isArray(_studioCatalogCache.channels)) return;
+  var ch = _studioCatalogCache.channels.find(function (c) { return c.id === chId; });
+  if (!ch) return;
+  document.getElementById('chEditIdInput').value = ch.id || '';
+  document.getElementById('chNameInput').value = ch.name || '';
+  document.getElementById('chHandleInput').value = ch.handle || '';
+  document.getElementById('chStyleSelect').value = ch.style_preset || 'cinematic_realism';
+  document.getElementById('chWorkflowSelect').value = ch.workflow || 'image_first_preview';
+  document.getElementById('chImageModelSelect').value = ch.image_model || 'flux2-klein';
+  document.getElementById('chI2vModelSelect').value = ch.i2v_model || 'wan2.1-i2v-14b';
+  document.getElementById('chAspectSelect').value = ch.aspect_ratio || '16:9';
+  document.getElementById('chVoiceSelect').value = ch.voice || 'Aoede';
+  document.getElementById('chPrivacySelect').value = ch.privacy || 'private';
+  document.getElementById('chYoutubeIdInput').value = ch.youtube_channel_id || '';
+  document.getElementById('chTagsInput').value = Array.isArray(ch.tags) ? ch.tags.join(', ') : '';
+  document.getElementById('chDefaultPromptInput').value = ch.default_prompt || '';
+};
+
+window.resetChannelForm = function () {
+  var form = document.getElementById('channelManagerForm');
+  if (form) form.reset();
+  document.getElementById('chEditIdInput').value = '';
+};
+
+window.handleSaveChannel = function (ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var msgEl = document.getElementById('channelFormMsg');
+  if (!tk) { if (msgEl) msgEl.textContent = 'Lütfen önce giriş yapın.'; return; }
+
+  var payload = {
+    id: (document.getElementById('chEditIdInput') || {}).value || undefined,
+    name: (document.getElementById('chNameInput') || {}).value,
+    handle: (document.getElementById('chHandleInput') || {}).value,
+    style_preset: (document.getElementById('chStyleSelect') || {}).value,
+    workflow: (document.getElementById('chWorkflowSelect') || {}).value,
+    image_model: (document.getElementById('chImageModelSelect') || {}).value,
+    i2v_model: (document.getElementById('chI2vModelSelect') || {}).value,
+    aspect_ratio: (document.getElementById('chAspectSelect') || {}).value,
+    voice: (document.getElementById('chVoiceSelect') || {}).value,
+    privacy: (document.getElementById('chPrivacySelect') || {}).value,
+    youtube_channel_id: (document.getElementById('chYoutubeIdInput') || {}).value,
+    tags: (document.getElementById('chTagsInput') || {}).value,
+    default_prompt: (document.getElementById('chDefaultPromptInput') || {}).value
+  };
+  fetch('/api/channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+    body: JSON.stringify(payload)
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.success) {
+      if (msgEl) msgEl.textContent = '✅ Kanal kaydedildi: ' + (d.channel && d.channel.name);
+      window.resetChannelForm();
+      window.loadChannelsCatalog(true);
+    } else {
+      if (msgEl) msgEl.textContent = '❌ ' + ((d && d.detail) || 'Kaydedilemedi');
+    }
+  }).catch(function (e) { if (msgEl) msgEl.textContent = '❌ ' + e.message; });
+};
+
+window.deleteChannel = function (chId) {
+  if (!confirm(chId + ' kanal profilini silmek istiyor musunuz?')) return;
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  fetch('/api/channels/' + encodeURIComponent(chId), {
+    method: 'DELETE',
+    headers: { 'Authorization': 'Bearer ' + tk }
+  }).then(function (r) { return r.json(); }).then(function () {
+    window.loadChannelsCatalog(true);
+  });
+};
+
+window.handleSaveYtSecret = function () {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var raw = ((document.getElementById('ytSecretJsonInput') || {}).value || '').trim();
+  if (!tk || !raw) { alert('Oturum ve client_secret.json içeriği gerekli.'); return; }
+  fetch('/api/youtube/oauth-secret', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+    body: JSON.stringify({ client_secret_json: raw })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    alert(d.success ? ('✅ ' + d.message) : ('❌ ' + (d.detail || d.message)));
+    window.loadChannelsCatalog(true);
+  });
+};
+
+window.publishJobToYoutube = function (jobId, hudId) {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var hud = document.getElementById(hudId || 'studioHudLog');
+  fetch('/api/youtube/publish/' + encodeURIComponent(jobId), {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + tk }
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (hud) {
+      var b = d.bundle || {};
+      hud.innerHTML += '<br>• 📺 <strong>YouTube Paketi:</strong> Başlık: <em>' + esc(b.title || '') + '</em> | Etiketler: <code>' + esc((b.tags || []).join(', ')) + '</code><br>' +
+        '• 📡 <strong>Durum:</strong> ' + esc(d.message || d.status || '');
+    }
+  }).catch(function (e) {
+    if (hud) hud.innerHTML += '<br>❌ YouTube paket hatası: ' + esc(e.message);
+  });
+};
+
+window.refreshStudioWorkerWarn = function() {
+  var badge = document.getElementById('studioGpuWorkerWarn');
+  if (!badge) return;
+  fetch('/api/gpu/cluster/status')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var n = (d && Array.isArray(d.active_workers)) ? d.active_workers.length : 0;
+      if (n > 0) {
+        var g = (d.active_workers[0] && d.active_workers[0].gpu_name) || 'GPU';
+        badge.textContent = '🟢 Canlı GPU İşçisi: ' + n + ' (' + g + ')';
+        badge.className = 'site-badge site-badge-free';
+      } else {
+        badge.textContent = '⚠️ GPU İşçisi: 0 (Hızlı Önizleme ile görsel üretebilirsiniz)';
+        badge.className = 'site-badge site-badge-auto';
+      }
+    }).catch(function() {});
+};
+
+window.handleInstantCloudPreview = function(customPrompt) {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var promptVal = (typeof customPrompt === 'string' && customPrompt.trim()) ? customPrompt.trim() : (((document.getElementById('videoPromptInput') || {}).value || '').trim());
+  if (!tk || !promptVal) {
+    alert('Hızlı önizleme için oturum ve sahne konusu/promptu gereklidir.');
+    return;
+  }
+  var channel = (document.getElementById('videoChannelSelect') || {}).value || 'Astroloji_Kova';
+  var stylePreset = (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism';
+  var cameraMotion = (document.getElementById('videoCameraSelect') || {}).value || 'otomatik';
+  var aspect = (document.getElementById('videoAspectSelect') || {}).value || '16:9';
+  var i2vModel = (document.getElementById('videoI2vModelSelect') || {}).value || 'wan2.1-i2v-14b';
+  var hudLog = document.getElementById('studioHudLog');
+  var taskBadge = document.getElementById('studioTaskBadge');
+  var stageArea = document.getElementById('studioStageArea');
+
+  if (taskBadge) taskBadge.textContent = '⚡ Bulut Görseli Üretiliyor...';
+  if (hudLog) hudLog.innerHTML = '[HIZLI BULUT ÖNİZLEME]<br>• Konu: "' + esc(promptVal) + '"<br>• Sahne İngilizce görsel dile çevriliyor ve anahtar kare üretiliyor…';
+
+  fetch('/api/studio/preview-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+    body: JSON.stringify({
+      channel: channel,
+      prompt: promptVal,
+      style_preset: stylePreset,
+      camera_motion: cameraMotion,
+      aspect_ratio: aspect
+    })
+  }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.d || !res.d.success) {
+        if (taskBadge) taskBadge.textContent = '❌ Önizleme Üretilemedi';
+        if (hudLog) hudLog.innerHTML += '<br><span style="color:var(--site-danger);">❌ ' + esc((res.d && res.d.detail) || 'Bulut görsel hatası') + '</span>';
+        return;
+      }
+      var d = res.d;
+      var pUrl = d.preview_image_url + '&token=' + encodeURIComponent(tk);
+      if (taskBadge) taskBadge.textContent = '🖼️ Görsel Hazır (Onay Bekliyor)';
+      if (hudLog) {
+        hudLog.innerHTML += '<br>• ✅ Kaynak: <strong>' + esc(d.provider || 'cloud') + '</strong> (' + esc(d.planner_source || 'yerel') + ')<br>' +
+          '• 🎨 <strong>İngilizce Görsel Sahne:</strong> <code>' + esc(d.image_prompt || '') + '</code><br>' +
+          '• 🎥 <strong>Önerilen Hareket:</strong> <code>' + esc(d.motion_prompt || '') + '</code>';
+      }
+      if (stageArea) {
+        stageArea.innerHTML =
+          '<div style="padding:12px; width:100%; text-align:center;">' +
+            '<img src="' + esc(pUrl) + '" alt="Bulut önizleme" style="max-width:100%; max-height:340px; border-radius:10px; display:block; margin:0 auto; border:1px solid #334155;">' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:10px;">' +
+              '<button type="button" id="cloudApproveI2vBtn" class="site-btn site-btn-primary">✅ Görseli Beğendim → ' + esc(i2vModel) + ' ile Videoya Çevir</button>' +
+              '<button type="button" class="site-btn site-btn-ghost" onclick="handleInstantCloudPreview()">🔄 Yeniden Üret</button>' +
+            '</div>' +
+          '</div>';
+        var btn = document.getElementById('cloudApproveI2vBtn');
+        if (btn) btn.onclick = function() { window.handleStudioVideoSubmit(null, 'wan_i2v', d.preview_image_url); };
+      }
+    }).catch(function(e) {
+      if (taskBadge) taskBadge.textContent = '❌ Hata';
+      if (hudLog) hudLog.innerHTML += '<br>❌ ' + esc(e.message);
+    });
+};
+
+window.handlePlanStoryboard = function() {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var promptVal = ((document.getElementById('videoPromptInput') || {}).value || '').trim();
+  var box = document.getElementById('studioStoryboardBox');
+  if (!tk || !promptVal || !box) {
+    alert('Storyboard için oturum ve konu gerekli.');
+    return;
+  }
+  var stylePreset = (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism';
+  var cameraMotion = (document.getElementById('videoCameraSelect') || {}).value || 'otomatik';
+  var duration = Number((document.getElementById('videoDurationSelect') || {}).value || 15);
+  box.hidden = false;
+  box.innerHTML = '<span style="font-size:0.8rem;color:var(--site-accent);">⏳ 3 sahneli görsel senaryo planlanıyor…</span>';
+
+  fetch('/api/studio/storyboard', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+    body: JSON.stringify({ prompt: promptVal, style_preset: stylePreset, camera_motion: cameraMotion, scene_count: 3, duration: duration })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (!d || !d.success || !Array.isArray(d.scenes)) {
+      box.innerHTML = '<span style="color:var(--site-danger);">Storyboard oluşturulamadı.</span>';
+      return;
+    }
+    var html = '<div style="font-size:0.78rem; margin-bottom:8px;"><strong>🎙️ Türkçe Anlatım (' + esc(d.planner_source || 'yerel') + '):</strong> <em>' + esc(d.narration_text || '') + '</em></div>';
+    html += d.scenes.map(function(s, i) {
+      return '<div style="border-top:1px solid #1e293b; padding-top:6px; margin-top:6px; font-size:0.74rem;">' +
+        '<div><strong>Sahne ' + (i + 1) + ':</strong> <code>' + esc(s.image_prompt) + '</code></div>' +
+        '<div style="display:flex; gap:6px; margin-top:4px;">' +
+          '<button type="button" class="site-chip-btn" data-sb-idx="' + i + '" data-sb-act="cloud">⚡ Hızlı Önizle</button>' +
+          '<button type="button" class="site-chip-btn" data-sb-idx="' + i + '" data-sb-act="gpu">🖼️ GPU\'da Üret</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    box.innerHTML = html;
+    box.querySelectorAll('[data-sb-idx]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var idx = Number(b.getAttribute('data-sb-idx') || 0);
+        var sc = d.scenes[idx];
+        if (!sc) return;
+        if (b.getAttribute('data-sb-act') === 'cloud') {
+          window.handleInstantCloudPreview(sc.image_prompt);
+        } else {
+          var pEl = document.getElementById('videoPromptInput');
+          if (pEl) pEl.value = sc.image_prompt;
+          window.handleStudioVideoSubmit(null, 'image_first_preview');
+        }
+      });
+    });
+  }).catch(function(e) { box.innerHTML = '<span style="color:var(--site-danger);">' + esc(e.message) + '</span>'; });
+};
+
+window.handleStartYoutubeOAuth = function() {
+  var tk = (window.token ? window.token() : '') || localStorage.getItem('fabrika_token') || localStorage.getItem('cockpit_token') || '';
+  var cid = (document.getElementById('chEditIdInput') || {}).value || '';
+  fetch('/api/youtube/oauth/start?channel_id=' + encodeURIComponent(cid), {
+    headers: { 'Authorization': 'Bearer ' + tk }
+  }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(res) {
+      if (res.ok && res.d && res.d.auth_url) {
+        window.open(res.d.auth_url, '_blank', 'noopener');
+      } else {
+        alert((res.d && res.d.detail) || 'Önce Google Cloud client_secret.json anahtarını kaydedin.\nRedirect URI: ' + ((res.d && res.d.redirect_uri) || ''));
+      }
+    }).catch(function(e) { alert('OAuth başlatılamadı: ' + e.message); });
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() { window.loadChannelsCatalog(false); window.refreshStudioWorkerWarn(); }, 250);
+  });
+} else {
+  setTimeout(function() { window.loadChannelsCatalog(false); window.refreshStudioWorkerWarn(); }, 250);
+}

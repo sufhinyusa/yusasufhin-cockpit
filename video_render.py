@@ -350,17 +350,26 @@ def video_render_et(
         gecici.unlink(missing_ok=True)
         return {
             "basarili": False, "yol": None, "boyut": 0,
+            "simulasyon": True, "kaynak": "baslik_karti",
+            "engine": "PIL baslik karti + ffmpeg zoompan (onizleme)",
             "hata": f"ffmpeg {RENDER_ZAMAN_ASIMI_SN} sn içinde bitmedi (zaman aşımı)",
         }
     except Exception as e:
         gecici.unlink(missing_ok=True)
-        return {"basarili": False, "yol": None, "boyut": 0, "hata": f"ffmpeg çalıştırılamadı: {e}"}
+        return {
+            "basarili": False, "yol": None, "boyut": 0,
+            "simulasyon": True, "kaynak": "baslik_karti",
+            "engine": "PIL baslik karti + ffmpeg zoompan (onizleme)",
+            "hata": f"ffmpeg çalıştırılamadı: {e}",
+        }
 
     if proc.returncode != 0:
         gecici.unlink(missing_ok=True)
         kuyruk = (proc.stderr or "").strip().splitlines()[-3:]
         return {
             "basarili": False, "yol": None, "boyut": 0,
+            "simulasyon": True, "kaynak": "baslik_karti",
+            "engine": "PIL baslik karti + ffmpeg zoompan (onizleme)",
             "hata": "ffmpeg hata kodu %s: %s" % (
                 proc.returncode, " | ".join(kuyruk) or "çıktı yok"
             ),
@@ -369,7 +378,12 @@ def video_render_et(
     gecerli, neden = mp4_gecerli_mi(gecici)
     if not gecerli:
         gecici.unlink(missing_ok=True)
-        return {"basarili": False, "yol": None, "boyut": 0, "hata": f"doğrulama başarısız: {neden}"}
+        return {
+            "basarili": False, "yol": None, "boyut": 0,
+            "simulasyon": True, "kaynak": "baslik_karti",
+            "engine": "PIL baslik karti + ffmpeg zoompan (onizleme)",
+            "hata": f"doğrulama başarısız: {neden}",
+        }
 
     os.replace(gecici, hedef_mp4)  # atomik: yarım dosya asla hedefte görünmez
     kart.unlink(missing_ok=True)
@@ -381,6 +395,14 @@ def video_render_et(
         "sure_sn": sure,
         "cozunurluk": f"{genislik}x{yukseklik}",
         "baslik_karti": kart_yolu is not None,
+        # Kural 1: bu çıktı gerçek video difüzyonu değil, açıkça etiketli önizleme.
+        "simulasyon": True,
+        "kaynak": "baslik_karti",
+        "engine": (
+            "PIL baslik karti + ffmpeg zoompan (onizleme)"
+            if kart_yolu is not None
+            else "ffmpeg hareketli geometri (onizleme, Pillow yok)"
+        ),
         "hata": None,
     }
 

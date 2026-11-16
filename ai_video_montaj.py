@@ -113,17 +113,87 @@ def tesis_durumu() -> Dict[str, Any]:
     return durum
 
 
-def _sahne_promptlari(prompt: str, adet: int) -> List[str]:
-    """Tek prompt'u sinematik sahne dizisine böler (geniş → detay → geniş)."""
+def _sahne_promptlari(prompt: str, adet: int, style_preset: str = "cinematic_realism") -> List[str]:
+    """Türkçe/soyut konuyu somut İngilizce sinematik sahnelere dönüştürür."""
+    try:
+        from prompt_director import plan_visual_scenes
+
+        plan = plan_visual_scenes(
+            prompt=prompt, style_preset=style_preset, scene_count=adet, use_llm=True
+        )
+        sahneler = [s["image_prompt"] for s in plan.get("scenes", []) if s.get("image_prompt")]
+        if sahneler:
+            return [sahneler[i % len(sahneler)] for i in range(adet)]
+    except Exception as e:
+        logger.debug("[AIVideoMontaj] prompt_director yedeğine düşüldü: %s", e)
+
     temel = prompt.strip().rstrip(".")
     kalip = [
         "cinematic wide establishing shot of {p}, dramatic lighting, ultra detailed, 8k, film still",
         "close up detail shot of {p}, shallow depth of field, macro texture, cinematic color grading",
         "epic aerial view of {p}, atmospheric haze, golden hour, cinematic composition",
-        "medium shot of {p}, dynamic angle, professional cinematography, vivid colors",
-        "atmospheric detail of {p}, soft light rays, moody cinematic tone, high detail",
     ]
     return [kalip[i % len(kalip)].format(p=temel) for i in range(adet)]
+
+
+def preview_single_image(
+    prompt: str,
+    hedef: Path,
+    genislik: int = 1280,
+    yukseklik: int = 720,
+    style_preset: str = "cinematic_realism",
+    camera_motion: str = "otomatik",
+) -> Dict[str, Any]:
+    """Hızlı bulut önizleme PNG üretir (Cloudflare FLUX.1-schnell birincil, Pollinations yedek)."""
+    try:
+        from prompt_director import plan_visual_scenes
+
+        plan = plan_visual_scenes(
+            prompt=prompt, style_preset=style_preset, camera_motion=camera_motion, scene_count=1, use_llm=True
+        )
+        img_prompt = plan["image_prompt"]
+        mot_prompt = plan["motion_prompt"]
+        narration = plan["narration_text"]
+        planner = plan["planner_source"]
+    except Exception:
+        img_prompt = prompt
+        mot_prompt = prompt
+        narration = prompt
+        planner = "ham_fallback"
+
+    hedef = Path(hedef)
+    hedef.parent.mkdir(parents=True, exist_ok=True)
+    cf_tok, cf_acc = _cf_kimlik()
+    if cf_tok and cf_acc and _cloudflare_sahne(img_prompt, hedef, genislik, yukseklik, 42):
+        return {
+            "ok": True,
+            "path": hedef,
+            "provider": "cloudflare-flux1-schnell",
+            "image_prompt": img_prompt,
+            "motion_prompt": mot_prompt,
+            "narration_text": narration,
+            "planner_source": planner,
+        }
+    if _pollinations_sahne_tekrar(img_prompt, hedef, genislik, yukseklik, 42, deneme=2):
+        return {
+            "ok": True,
+            "path": hedef,
+            "provider": "pollinations",
+            "image_prompt": img_prompt,
+            "motion_prompt": mot_prompt,
+            "narration_text": narration,
+            "planner_source": planner,
+        }
+    return {
+        "ok": False,
+        "path": None,
+        "provider": None,
+        "image_prompt": img_prompt,
+        "motion_prompt": mot_prompt,
+        "narration_text": narration,
+        "planner_source": planner,
+        "error": "Cloudflare kimliği veya bulut görsel sağlayıcısı yanıt vermedi.",
+    }
 
 
 def _ffmpeg() -> str:
@@ -537,7 +607,8 @@ def ai_video_uret(
         neden = "; ".join(tesis.get("eksikler") or ["FLUX Space erişilemedi (kota/ağ)"])
         return {
             "basarili": False, "yol": None, "boyut": 0, "sahne": 0,
-            "kaynak": "flux_montaj",
+            "kaynak": "flux_montaj", "simulasyon": False,
+            "video_difuzyonu": False, "yontem": "flux_goruntu_montaji",
             "hata": f"YZ sahne üretilemedi → {neden}",
             "tesis": tesis,
         }
@@ -555,14 +626,18 @@ def ai_video_uret(
     if not parcalar:
         return {
             "basarili": False, "yol": None, "boyut": 0, "sahne": 0,
-            "kaynak": "flux_montaj", "hata": "Sahne render edilemedi",
+            "kaynak": "flux_montaj", "simulasyon": False,
+            "video_difuzyonu": False, "yontem": "flux_goruntu_montaji",
+            "hata": "Sahne render edilemedi",
         }
 
     sessiz = gecici / "sessiz.mp4"
     if not montaj_birlestir(parcalar, sessiz, gecis_sn=GECIS_SN, sure_sn=sahne_sure_sn):
         return {
             "basarili": False, "yol": None, "boyut": 0, "sahne": len(parcalar),
-            "kaynak": "flux_montaj", "hata": "Montaj birleştirme başarısız",
+            "kaynak": "flux_montaj", "simulasyon": False,
+            "video_difuzyonu": False, "yontem": "flux_goruntu_montaji",
+            "hata": "Montaj birleştirme başarısız",
         }
 
     son = hedef_mp4
@@ -592,7 +667,9 @@ def ai_video_uret(
     if not gecerli:
         return {
             "basarili": False, "yol": None, "boyut": 0, "sahne": len(parcalar),
-            "kaynak": "flux_montaj", "hata": f"doğrulama başarısız: {neden}",
+            "kaynak": "flux_montaj", "simulasyon": False,
+            "video_difuzyonu": False, "yontem": "flux_goruntu_montaji",
+            "hata": f"doğrulama başarısız: {neden}",
         }
 
     shutil.rmtree(gecici, ignore_errors=True)
@@ -605,6 +682,12 @@ def ai_video_uret(
         "basarili": True, "yol": son, "boyut": boyut, "sahne": len(parcalar),
         "kaynak": f"yz_montaj_{saglayici}" if saglayici != "bilinmiyor" else "flux_montaj",
         "saglayici": saglayici, "hata": None,
+        # Kural 1: görseller gerçek difüzyon çıktısı; video ise kare bazlı
+        # Ken Burns montajıdır — video difüzyonu DEĞİLDİR, açıkça söylenir.
+        "simulasyon": False,
+        "video_difuzyonu": False,
+        "yontem": "flux_goruntu_montaji (Ken Burns + xfade)",
+        "ses": "var" if (ses_yolu is not None and Path(ses_yolu).is_file()) else "yok",
     }
 
 

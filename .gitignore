@@ -7,10 +7,10 @@ venv/
 
 video_factory/
 
-# Üretilen medya (depo şişmesin)
-static/media/*.mp4
-static/media/*.webm
-static/media/*.wav
+# Üretilen medya ve çalışma sırrı (depo şişmesin / sır sızmasın)
+static/media/*
+data/.session_secret
+data/.worker_key
 graft/
 temp/
 *.db

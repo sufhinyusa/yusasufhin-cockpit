@@ -354,6 +354,7 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
     """Kaggle/Colab GPU işçisi bağlandığında telemetrinin active olduğunu, iş claim ve upload sürecini doğrular."""
     from main import ACTIVE_GPU_WORKERS
     ACTIVE_GPU_WORKERS.clear()
+    worker_headers = {"X-Worker-Key": main.get_worker_key()}
 
     # 1. Başlangıçta standby
     st1 = client.get("/api/gpu/cluster/status").json()["status"]
@@ -364,13 +365,13 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
     assert w_res.status_code == 200
     assert "FABRİKA BULUT GPU İŞÇİSİ" in w_res.text
 
-    # 3. Heartbeat gönder
+    # 3. Heartbeat gönder (X-Worker-Key zorunlu)
     hb = client.post("/api/worker/heartbeat", json={
         "worker_id": "test_kaggle_01",
         "worker_type": "kaggle",
         "gpu_name": "2x Tesla T4",
         "vram_gb": 32.0
-    })
+    }, headers=worker_headers)
     assert hb.status_code == 200
     assert hb.json()["registered"] is True
 
@@ -389,15 +390,26 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
     assert v_res.status_code == 200
     job_id = v_res.json()["task"]["job_id"]
 
-    claim = client.get("/api/worker/claim?worker_id=test_kaggle_01").json()
+    claim = client.get("/api/worker/claim?worker_id=test_kaggle_01",
+                       headers=worker_headers).json()
     assert claim["success"] is True
 
-    # 6. Upload
-    up = client.post(
-        "/api/worker/upload",
-        data={"job_id": job_id},
-        files={"file": (f"{job_id}.mp4", b"\x00\x00\x00\x20ftypisom" + b"\x00" * 2000, "video/mp4")}
-    )
+    # 6. Upload — gerçek geçerli MP4 kutuları (ftyp+moov+mdat) zorunludur
+    import video_render
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        mp4_yol = Path(td) / f"{job_id}.mp4"
+        r = video_render.video_render_et(
+            hedef_mp4=mp4_yol, baslik="GPU Test", prompt="Test",
+            genislik=320, yukseklik=180, sure_sn=1.0,
+        )
+        assert r["basarili"] is True
+        up = client.post(
+            "/api/worker/upload",
+            data={"job_id": job_id},
+            files={"file": (f"{job_id}.mp4", mp4_yol.read_bytes(), "video/mp4")},
+            headers=worker_headers,
+        )
     assert up.status_code == 200
     assert up.json()["success"] is True
     assert up.json()["download_url"].endswith("&download=1")
@@ -653,8 +665,9 @@ def test_worker_claim_gpu_kuyrugunu_oncelikler(client, monkeypatch, tmp_path):
         "gpu_durum": "bekliyor",
     }]}, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    w_headers = {"X-Worker-Key": main_mod.get_worker_key()}
 
-    res = client.get("/api/worker/claim?worker_id=test_worker")
+    res = client.get("/api/worker/claim?worker_id=test_worker", headers=w_headers)
     assert res.status_code == 200
     veri = res.json()
     assert veri["job"] is not None
@@ -663,7 +676,7 @@ def test_worker_claim_gpu_kuyrugunu_oncelikler(client, monkeypatch, tmp_path):
     assert veri["job"]["gpu_durum"] == "isleniyor"
 
     # İkinci çağrıda aynı iş tekrar verilmemeli
-    res2 = client.get("/api/worker/claim?worker_id=test_worker2")
+    res2 = client.get("/api/worker/claim?worker_id=test_worker2", headers=w_headers)
     assert res2.json()["job"] is None
 
 
@@ -698,6 +711,476 @@ def test_galeri_bozuk_mp4_listelemez(client, auth_headers):
     assert res.status_code == 200
     for item in res.json()["items"]:
         assert item.get("video_url")
+
+
+def test_worker_endpoints_require_worker_key(client):
+    """X-Worker-Key olmadan hiçbir /api/worker/* ucu kabul edilmez (403)."""
+    assert client.post("/api/worker/heartbeat", json={"worker_id": "x"}).status_code == 403
+    assert client.get("/api/worker/claim?worker_id=x").status_code == 403
+    assert client.post("/api/worker/progress", json={"job_id": "J1", "progress_pct": 50}).status_code == 403
+    assert client.post("/api/worker/upload", data={"job_id": "J1"}).status_code == 403
+    assert client.get("/api/worker/input/J1").status_code == 403
+    assert client.get("/api/worker/audio/J1").status_code == 403
+    assert client.get("/api/worker/subtitle/J1").status_code == 403
+
+
+def test_worker_upload_rejects_path_traversal_and_invalid_mp4(client, auth_headers):
+    """Dizin atlama job_id reddedilir; sahte/yarım MP4 422 alır."""
+    import main as main_mod
+    wh = {"X-Worker-Key": main_mod.get_worker_key()}
+
+    bad_id = client.post(
+        "/api/worker/upload",
+        data={"job_id": "../evil"},
+        files={"file": ("evil.mp4", b"\x00\x00\x00\x20ftypisom" + b"\x00" * 500, "video/mp4")},
+        headers=wh,
+    )
+    assert bad_id.status_code in (400, 422)
+
+    bad_mp4 = client.post(
+        "/api/worker/upload",
+        data={"job_id": "JOB-BAD-1"},
+        files={"file": ("bad.mp4", b"NOT_AN_MP4", "video/mp4")},
+        headers=wh,
+    )
+    assert bad_mp4.status_code == 422
+
+
+def test_worker_preview_image_upload_then_i2v_flow(client, auth_headers):
+    """FLUX.2 önizleme PNG yüklenir, /api/lab/job/{id} döner ve ardından Wan2.1 I2V kuyruğa girer."""
+    import main as main_mod
+    wh = {"X-Worker-Key": main_mod.get_worker_key()}
+
+    # 1) FLUX.2 önizleme işi kuyruğa al
+    q1 = client.post("/api/lab/generate", json={
+        "model_id": "flux2",
+        "mode": "flux2_resim",
+        "method": "flux2_resim",
+        "render_target": "kaggle_32gb",
+        "prompt": "cosmos pouring water bucket",
+    }, headers=auth_headers)
+    assert q1.status_code == 200
+    j1 = q1.json()["job"]["job_id"]
+
+    c1 = client.get("/api/worker/claim?worker_id=w1", headers=wh)
+    assert c1.status_code == 200
+    assert c1.json()["job"]["job_id"] == j1
+
+    # 2) İşçi PNG önizleme yüklesin (media_type=image)
+    png_1x1 = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc`\x00\x00"
+        b"\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    up_png = client.post(
+        "/api/worker/upload",
+        data={"job_id": j1, "media_type": "image"},
+        files={"file": (f"{j1}.png", png_1x1, "image/png")},
+        headers=wh,
+    )
+    assert up_png.status_code == 200
+    preview_url = up_png.json()["preview_image_url"]
+    assert "path=" in preview_url
+
+    polled = client.get(f"/api/lab/job/{j1}", headers=auth_headers).json()
+    assert polled["job"]["status"] == "onizleme_hazir"
+    assert polled["job"]["preview_image_url"] == preview_url
+
+    # 3) Beğenilen görseli Wan2.1 I2V'ye gönder
+    q2 = client.post("/api/lab/generate", json={
+        "model_id": "wan2.1_i2v",
+        "mode": "video",
+        "method": "wan_i2v",
+        "render_target": "kaggle_32gb",
+        "prompt": "flowing cosmic water motion",
+        "input_image_url": preview_url,
+    }, headers=auth_headers)
+    assert q2.status_code == 200
+    j2 = q2.json()["job"]["job_id"]
+    assert q2.json()["job"]["gpu_kuyruk"] is True
+
+    c2 = client.get("/api/worker/claim?worker_id=w1", headers=wh).json()
+    assert c2["job"]["job_id"] == j2
+    assert c2["job"]["input_image_url"] == f"/api/worker/input/{j2}"
+
+    img_dl = client.get(c2["job"]["input_image_url"], headers=wh)
+    assert img_dl.status_code == 200
+    assert img_dl.content.startswith(b"\x89PNG")
+
+
+def test_burc_list_and_burc_video_generate_flow(client, auth_headers, monkeypatch):
+    """12 burç kataloğu ve burç videosu + SRT/ASS altyazı GPU kuyruğu çalışır."""
+    import main as main_mod
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    wh = {"X-Worker-Key": main_mod.get_worker_key()}
+
+    lst = client.get("/api/burc/list")
+    assert lst.status_code == 200
+    assert lst.json()["count"] == 12
+    assert any(b["kod"] == "kova" for b in lst.json()["items"])
+
+    gen = client.post("/api/burc/video/generate", json={
+        "burc_kodu": "kova",
+        "konu": "Kariyer ve dönüşüm",
+        "sure_sn": 10,
+        "method": "burc_video",
+        "render_target": "kaggle_32gb",
+    }, headers=auth_headers)
+    assert gen.status_code == 200
+    body = gen.json()
+    assert body["success"] is True
+    assert body["task"]["gpu_kuyruk"] is True
+    assert body["task"]["mode"] == "burc_video"
+    assert body["task"]["metin_simulasyon"] is True
+
+    claim = client.get("/api/worker/claim?worker_id=w_burc", headers=wh).json()
+    assert claim["job"]["job_id"] == body["job_id"]
+    sub_url = claim["job"]["subtitle_url"]
+    assert sub_url
+
+    sub_dl = client.get(sub_url, headers=wh)
+    assert sub_dl.status_code == 200
+    assert len(sub_dl.text.strip()) > 0
+
+
+def test_static_worker_is_not_fake_drawbox_stub(client):
+    """static/worker.py sahte drawbox stub içermez; /worker.py gerçek gpu_worker'ı sunar."""
+    static_txt = (Path(__file__).resolve().parent.parent / "static" / "worker.py").read_text(encoding="utf-8")
+    assert "drawbox=" not in static_txt
+    assert "color=c=" not in static_txt
+    assert "gpu_worker" in static_txt
+
+    srv = client.get("/worker.py")
+    assert srv.status_code == 200
+    assert "FABRİKA BULUT GPU İŞÇİSİ" in srv.text
+    assert "wan21_i2v_uret" in srv.text
+
+
+def test_studio_catalog_and_channels_crud(client, auth_headers, monkeypatch, tmp_path):
+    """Katalog gerçek doğrulanmış modelleri listeler; kanal ekleme/silme kalıcıdır."""
+    import main as main_mod
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+
+    cat = client.get("/api/studio/catalog")
+    assert cat.status_code == 200
+    body = cat.json()
+    assert body["success"] is True
+    img_ids = {m["id"] for m in body["image_models"]}
+    i2v_ids = {m["id"] for m in body["i2v_models"]}
+    style_ids = {s["id"] for s in body["styles"]}
+    wf_ids = {w["id"] for w in body["workflows"]}
+    assert {"flux2-klein", "z-image-turbo", "sdxl-turbo", "realvis-xl", "animagine-xl"} <= img_ids
+    assert {"wan2.1-i2v-14b", "wan2.2-ti2v-5b", "ltx-video", "cogvideox-5b-i2v", "svd-xt"} <= i2v_ids
+    assert {"cinematic_realism", "pixar_3d_animation", "anime_2d", "astrology_mystic"} <= style_ids
+    assert {"image_first_preview", "image_then_i2v", "wan_i2v"} <= wf_ids
+
+    created = client.post("/api/channels", json={
+        "name": "Masal 3D Atölye",
+        "handle": "@masal3d",
+        "style_preset": "pixar_3d_animation",
+        "image_model": "z-image-turbo",
+        "i2v_model": "cogvideox-5b-i2v",
+        "workflow": "image_first_preview",
+        "aspect_ratio": "16:9",
+        "voice": "Puck",
+        "tags": "3d, animasyon, hikaye",
+    }, headers=auth_headers)
+    assert created.status_code == 200
+    cid = created.json()["channel"]["id"]
+
+    listed = client.get("/api/channels").json()
+    assert any(c["id"] == cid and c["style_preset"] == "pixar_3d_animation" for c in listed["channels"])
+
+    deleted = client.delete(f"/api/channels/{cid}", headers=auth_headers)
+    assert deleted.status_code == 200
+    assert not any(c["id"] == cid for c in client.get("/api/channels").json()["channels"])
+
+
+def test_studio_image_first_then_i2v_and_youtube_bundle(client, auth_headers, monkeypatch, tmp_path):
+    """Önce Görsel -> Onay -> I2V ve 2 aşamalı I2V + dürüst YouTube OAuth durumu doğrulanır."""
+    import shutil
+    import subprocess
+    import main as main_mod
+
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    wh = {"X-Worker-Key": main_mod.get_worker_key()}
+
+    try:
+        # 1) Kanal varsayılanlarıyla image_first_preview işi
+        q1 = client.post("/api/studio/video/generate", json={
+            "channel": "Animasyon_3D",
+            "workflow": "image_first_preview",
+            "prompt": "Kütüphanede kitap okuyan minik robot",
+            "render_target": "kaggle_32gb",
+        }, headers=auth_headers)
+        assert q1.status_code == 200
+        t1 = q1.json()["task"]
+        assert t1["method"] == "flux2_resim"
+        assert t1["image_model"] == "z-image-turbo"
+        assert t1["style_preset"] == "pixar_3d_animation"
+        assert "3D CGI" in t1["image_prompt"]
+
+        # Worker Stage 1 PNG önizleme yüklesin
+        c1 = client.get("/api/worker/claim?worker_id=w_anim", headers=wh).json()
+        assert c1["job"]["image_model"] == "z-image-turbo"
+        png_1x1 = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc`\x00\x00"
+            b"\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        up_png = client.post(
+            "/api/worker/upload",
+            data={"job_id": t1["job_id"], "media_type": "image"},
+            files={"file": (f"{t1['job_id']}.png", png_1x1, "image/png")},
+            headers=wh,
+        )
+        assert up_png.status_code == 200
+        preview_url = up_png.json()["preview_image_url"]
+
+        # 2) Onaylı görseli özel I2V modeliyle (ltx-video) canlandır + dürüst YouTube paketi
+        q2 = client.post("/api/studio/video/generate", json={
+            "channel": "Animasyon_3D",
+            "workflow": "image_then_i2v",
+            "i2v_model": "ltx-video",
+            "prompt": "Kütüphanede kitap okuyan minik robot",
+            "input_image_url": preview_url,
+        }, headers=auth_headers)
+        assert q2.status_code == 200
+        t2 = q2.json()["task"]
+        assert t2["method"] == "wan_i2v"
+        assert t2["i2v_model"] == "ltx-video"
+
+        c2 = client.get("/api/worker/claim?worker_id=w_anim", headers=wh).json()
+        assert c2["job"]["i2v_model"] == "ltx-video"
+        assert c2["job"]["input_image_url"] == f"/api/worker/input/{t2['job_id']}"
+
+        if shutil.which("ffmpeg"):
+            mp4_p = tmp_path / "tiny_valid.mp4"
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "testsrc2=size=640x480:rate=24:duration=2",
+                 "-c:v", "libx264", "-crf", "12", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4_p)],
+                check=True,
+            )
+            up_vid = client.post(
+                "/api/worker/upload",
+                data={"job_id": t2["job_id"], "media_type": "video"},
+                files={"file": (f"{t2['job_id']}.mp4", mp4_p.read_bytes(), "video/mp4")},
+                headers=wh,
+            )
+            assert up_vid.status_code == 200
+
+            pub = client.post(f"/api/youtube/publish/{t2['job_id']}", headers=auth_headers)
+            assert pub.status_code == 200
+            pj = pub.json()
+            assert pj["success"] is False
+            assert pj["simulasyon"] is True
+            assert pj["status"] == "oauth_gerekli"
+            assert pj["bundle"]["title"]
+            assert "3danimasyon" in pj["bundle"]["tags"]
+    finally:
+        for tid in (locals().get("t1", {}).get("job_id"), locals().get("t2", {}).get("job_id")):
+            if tid:
+                for p in main_mod.MEDIA_DIR.glob(f"{tid}*"):
+                    p.unlink(missing_ok=True)
+
+
+def test_gpu_worker_image_then_i2v_dispatch(tmp_path, monkeypatch):
+    """gpu_worker image_first_preview ve image_then_i2v modları seçili modelleri çağırır."""
+    import gpu_worker as gw
+
+    kayitlar = []
+    fake_png = tmp_path / "keyframe.png"
+    fake_png.write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+    fake_mp4 = tmp_path / "anim.mp4"
+    fake_mp4.write_bytes(b"FAKE_MP4")
+
+    def fake_img(prompt, model_key, w, h, neg_prompt="", adim=None, tohum=42, log=print):
+        kayitlar.append(("img", model_key, w, h))
+        p = tmp_path / f"img_{len(kayitlar)}.png"
+        p.write_bytes(fake_png.read_bytes())
+        return p
+
+    def fake_vid(gorsel_yolu, prompt, model_key, w, h, neg_prompt="", sure_sn=4.0, adim=24, tohum=42, log=print):
+        assert gorsel_yolu.is_file()
+        kayitlar.append(("i2v", model_key, gorsel_yolu.name))
+        return fake_mp4
+
+    monkeypatch.setattr(gw, "secimli_gorsel_uret", fake_img)
+    monkeypatch.setattr(gw, "secimli_i2v_uret", fake_vid)
+
+    out1 = gw.gorev_isle({
+        "prompt": "anime kılıç ustası",
+        "workflow": "image_first_preview",
+        "image_model": "animagine-xl",
+        "aspect_ratio": "9:16",
+    }, {"kalite": "480p"})
+    assert out1.is_file()
+    assert kayitlar[0] == ("img", "animagine-xl", 320, 480)
+
+    out2 = gw.gorev_isle({
+        "prompt": "3D robot kütüphanesi",
+        "method": "image_then_i2v",
+        "image_model": "z-image-turbo",
+        "i2v_model": "cogvideox-5b-i2v",
+        "aspect_ratio": "16:9",
+    }, {"kalite": "480p"})
+    assert out2 == fake_mp4
+    assert kayitlar[1][:2] == ("img", "z-image-turbo")
+    assert kayitlar[2][:2] == ("i2v", "cogvideox-5b-i2v")
+
+
+def test_prompt_director_grounds_turkish_astroloji_to_english_visuals(monkeypatch):
+    """Türkçe soyut istem (ör. Kova burcu analizi) ham halde difüzyona gitmez, İngilizce sahneye çevrilir."""
+    import prompt_director as pd
+    import ai_video_montaj as avm
+
+    for key in list(os.environ):
+        if "GEMINI_API_KEY" in key.upper():
+            monkeypatch.delenv(key, raising=False)
+
+    tr_prompt = "♒ Kova Burcu Haftalık Analizi: Gezegen kavuşumları ve sezgisel uyanış dönemi"
+    plan = pd.plan_visual_scenes(
+        prompt=tr_prompt,
+        style_preset="astrology_mystic",
+        camera_motion="orbital",
+        scene_count=3,
+        use_llm=False,
+    )
+    img_low = plan["image_prompt"].lower()
+    assert "aquarius" in img_low
+    assert "planet" in img_low or "conjunction" in img_low
+    assert "♒" not in img_low
+    assert "analizi" not in img_low
+    assert "sezgisel" not in img_low
+
+    sahneler = avm._sahne_promptlari(tr_prompt, 3, style_preset="astrology_mystic")
+    assert len(sahneler) == 3
+    assert all("aquarius" in s.lower() for s in sahneler)
+
+
+def test_studio_storyboard_preview_stitch_and_oauth(client, auth_headers, monkeypatch, tmp_path):
+    """Storyboard, anında önizleme görseli, çoklu klip birleştirme ve OAuth akışı çalışır."""
+    import json as _json
+    import shutil
+    import subprocess
+    import ai_video_montaj as avm
+    import main as main_mod
+
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    created_ids = []
+    try:
+        sb = client.post("/api/studio/storyboard", json={
+            "prompt": "İstanbul Yerebatan Sarnıcı ve mermer sütunlarda meşale ışığı",
+            "style_preset": "history_documentary",
+            "scene_count": 3,
+            "duration": 15,
+        }, headers=auth_headers)
+        assert sb.status_code == 200
+        sb_data = sb.json()
+        assert len(sb_data["scenes"]) == 3
+        assert any("cistern" in s["image_prompt"].lower() or "istanbul" in s["image_prompt"].lower() for s in sb_data["scenes"])
+
+        png_1x1 = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc`\x00\x00"
+            b"\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+
+        def fake_prev(prompt, hedef, genislik=1280, yukseklik=720, style_preset="cinematic_realism", camera_motion="otomatik"):
+            Path(hedef).write_bytes(png_1x1)
+            return {
+                "ok": True,
+                "path": Path(hedef),
+                "provider": "cloudflare-flux1-schnell",
+                "image_prompt": "Istanbul Basilica Cistern marble columns",
+                "motion_prompt": "slow torchlit dolly push",
+                "narration_text": prompt,
+                "planner_source": "test_mock",
+            }
+
+        monkeypatch.setattr(avm, "preview_single_image", fake_prev)
+        pv = client.post("/api/studio/preview-image", json={
+            "channel": "Belgesel_Sinematik",
+            "prompt": "İstanbul Yerebatan Sarnıcı meşale ışıkları",
+        }, headers=auth_headers)
+        assert pv.status_code == 200
+        pv_j = pv.json()
+        assert pv_j["success"] is True
+        assert pv_j["provider"] == "cloudflare-flux1-schnell"
+        created_ids.append(pv_j["job_id"])
+
+        # OAuth client_secret + start link testi
+        sec_res = client.post("/api/youtube/oauth-secret", json={
+            "client_secret_json": _json.dumps({
+                "web": {"client_id": "test-cid.apps.googleusercontent.com", "client_secret": "test-sec"}
+            })
+        }, headers=auth_headers)
+        assert sec_res.status_code == 200
+        oa = client.get("/api/youtube/oauth/start?channel_id=Belgesel_Sinematik", headers=auth_headers)
+        assert oa.status_code == 200
+        assert "accounts.google.com/o/oauth2/auth" in oa.json()["auth_url"]
+        assert "test-cid.apps.googleusercontent.com" in oa.json()["auth_url"]
+
+        if shutil.which("ffmpeg"):
+            cids = ["ST1_clip", "ST2_clip"]
+            created_ids.extend(cids)
+            main_mod.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            for cid in cids:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                     "-i", "testsrc2=size=640x480:rate=24:duration=1",
+                     "-c:v", "libx264", "-crf", "14", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                     str(main_mod.MEDIA_DIR / f"{cid}.mp4")],
+                    check=True,
+                )
+            st = client.post("/api/studio/stitch-clips", json={
+                "job_ids": cids,
+                "channel": "Belgesel_Sinematik",
+                "prompt": "Çok sahneli belgesel birleşimi",
+                "voice": "none",
+            }, headers=auth_headers)
+            assert st.status_code == 200
+            sj = st.json()["job"]
+            created_ids.append(sj["job_id"])
+            assert sj["output_url"].startswith("/api/media/file?path=")
+            assert (main_mod.MEDIA_DIR / f"{sj['job_id']}.mp4").stat().st_size > 20000
+    finally:
+        for cid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{cid}*"):
+                p.unlink(missing_ok=True)
+
+
+def test_gpu_worker_medya_birlestir_preserves_audio_duration(tmp_path):
+    """Ses video klipten uzunsa video pürüzsüz uzatılır, ses yarıda kesilmez."""
+    import shutil
+    import subprocess
+    import gpu_worker as gw
+
+    if not (shutil.which("ffmpeg") and shutil.which("ffprobe")):
+        return
+
+    vid = tmp_path / "short.mp4"
+    aud = tmp_path / "long.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=12:duration=1",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", str(vid)],
+        check=True,
+    )
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+         str(aud)],
+        check=True,
+    )
+    out = gw._medya_birlestir(vid, aud, None)
+    try:
+        dur = gw._medya_suresi(out)
+        assert dur is not None and dur >= 2.6, f"Ses kesildi: {dur}"
+    finally:
+        out.unlink(missing_ok=True)
+
+
+
 
 
 

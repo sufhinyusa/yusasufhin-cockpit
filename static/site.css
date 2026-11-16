@@ -976,3 +976,58 @@ html[data-site-theme="saas"] .site-nav-pill.active {
     font-size: 0.8rem;
   }
 }
+
+/* Kaydırmalı Model / Stil / Kanal Seçim Tepsisi */
+.site-picker-tray {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 6px;
+  margin-top: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--site-accent) transparent;
+}
+.site-picker-tray::-webkit-scrollbar {
+  height: 5px;
+}
+.site-picker-tray::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--site-accent) 45%, transparent);
+  border-radius: 999px;
+}
+.site-picker-pill {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 85%, transparent);
+  color: var(--site-text-dim);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.site-picker-pill:hover {
+  border-color: var(--site-accent);
+  color: var(--site-text);
+}
+.site-picker-pill.active {
+  background: color-mix(in srgb, var(--site-accent) 20%, transparent);
+  border-color: var(--site-accent);
+  color: var(--site-accent);
+}
+.site-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.site-channel-card {
+  border: 1px solid var(--site-border-strong);
+  border-radius: var(--site-radius-md);
+  background: color-mix(in srgb, var(--site-bg-soft) 72%, transparent);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

@@ -1,204 +1,145 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Fabrika Kaggle Dual-T4 & Google Colab Otonom GPU İşçisi (Link #226)
-------------------------------------------------------------------
-Kaggle'ın 30 saat/hafta ücretsiz sunduğu 32 GB Dual Tesla T4 GPU'larını
-ve Google Colab GPU'larını yusasufhin.com video fabrikasına bağlar.
+"""Fabrika GPU işçisi bootstrap'i — FABRİKA BULUT GPU İŞÇİSİ (Kaggle / Colab).
+
+Bu dosya SAHTE ffmpeg drawbox/color kutusu ÜRETMEZ. Tek işi vardır:
+gpu_worker.py'yi (yerelde varsa doğrudan, yoksa sunucudan/GitHub'dan indirip)
+gerçek FLUX.2 görsel + Wan2.1 video döngüsüyle çalıştırmak.
 
 Kullanım:
-  Kaggle veya Colab'da tek satırda çalıştırın:
-    !curl -sS https://yusasufhin.com/worker.py | python3
-"""
-import os
-import sys
-import time
-import json
-import shutil
-import subprocess
-import argparse
+  Kaggle/Colab:  !curl -sS https://yusasufhin.com/static/worker.py | python3 - --server https://yusasufhin.com
+  Repo içinde:   python3 static/worker.py --server https://yusasufhin.com --token "$FABRIKA_WORKER_KEY"
 
-# 1. Gerekli paketleri otomatik yükle
-def ensure_packages():
-    pkgs = []
+Anahtar `--token` / `--worker-key` / `FABRIKA_WORKER_KEY` / `FABRIKA_TOKEN`
+kaynaklarından birinden gelir ve gpu_worker.py'ye `--token` olarak geçirilir.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Optional
+
+BANNER = "FABRİKA BULUT GPU İŞÇİSİ"
+VARSAYILAN_SUNUCU = "https://yusasufhin.com"
+GITHUB_RAW = (
+    "https://raw.githubusercontent.com/sufhinyusa/"
+    "yusasufhin-cockpit/main/gpu_worker.py"
+)
+
+
+def _requests():
+    """requests yoksa kurar; gerçek işçi zaten requests'e bağımlı değildir."""
     try:
         import requests
+        return requests
     except ImportError:
-        pkgs.append("requests")
-    if pkgs:
-        print(f"[GPU Worker] Gerekli kütüphaneler kuruluyor: {pkgs}...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + pkgs, check=False)
+        print("[GPU Worker] requests kuruluyor...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "requests"],
+            check=False,
+        )
+        import requests
+        return requests
 
-ensure_packages()
-import requests
 
-# 2. Donanım Tespiti (Tesla T4 / Dual GPU)
-def detect_hardware():
-    info = {"gpu_name": "CPU Yalnızca", "vram_gb": 0.0, "device_count": 0, "has_nvenc": False}
+def _kok_dizin() -> Path:
     try:
-        import torch
-        if torch.cuda.is_available():
-            count = torch.cuda.device_count()
-            total_vram = sum(torch.cuda.get_device_properties(i).total_memory / (1024**3) for i in range(count))
-            gpu_names = [torch.cuda.get_device_name(i) for i in range(count)]
-            info["gpu_name"] = " + ".join(gpu_names)
-            info["vram_gb"] = round(total_vram, 1)
-            info["device_count"] = count
-    except Exception:
-        pass
+        return Path(__file__).resolve().parent
+    except NameError:  # `curl | python3` durumunda __file__ yoktur
+        return Path.cwd()
 
-    # NVENC kontrolü
-    try:
-        r = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True)
-        if "h264_nvenc" in r.stdout:
-            info["has_nvenc"] = True
-    except Exception:
-        pass
 
-    return info
-
-def main():
-    parser = argparse.ArgumentParser(description="Fabrika GPU Worker")
-    parser.add_argument("--server", default=os.environ.get("FABRIKA_SERVER", "https://yusasufhin.com"), help="Fabrika Sunucu Adresi")
-    parser.add_argument("--type", default=os.environ.get("WORKER_TYPE", "kaggle" if os.path.exists("/kaggle") else "colab"), help="İşçi Tipi (kaggle/colab)")
-    args, _ = parser.parse_known_args()
-
-    server_url = args.server.rstrip("/")
-    worker_type = args.type
-    worker_id = f"{worker_type}_{int(time.time())}_{os.urandom(2).hex()}"
-    hw = detect_hardware()
-
-    print("=" * 65)
-    print("  🚀 FABRİKA BULUT GPU İŞÇİSİ (KAGGLE / COLAB)")
-    print("=" * 65)
-    print(f"  🌐 Hedef Sunucu  : {server_url}")
-    print(f"  🆔 İşçi Kimliği  : {worker_id}")
-    print(f"  ⚡ Tespit Edilen : {hw['gpu_name']} ({hw['vram_gb']} GB vRAM)")
-    print(f"  🎞️ NVENC Donanım : {'✅ Aktif' if hw['has_nvenc'] else '⚪ Yazılımsal (libx264)'}")
-    print("=" * 65)
-
-    last_hb = 0
-    work_dir = os.path.expanduser("~/fabrika_gpu_work")
-    os.makedirs(work_dir, exist_ok=True)
-
-    while True:
-        now = time.time()
-        # 1. Heartbeat gönder (her 15 saniyede bir)
-        if now - last_hb >= 15:
+def _yerel_gpu_worker() -> Optional[Path]:
+    kok = _kok_dizin()
+    adaylar = (kok / "gpu_worker.py", kok.parent / "gpu_worker.py",
+               Path.cwd() / "gpu_worker.py")
+    for aday in adaylar:
+        if aday.is_file():
             try:
-                requests.post(
-                    f"{server_url}/api/worker/heartbeat",
-                    json={
-                        "worker_id": worker_id,
-                        "worker_type": worker_type,
-                        "gpu_name": hw["gpu_name"],
-                        "vram_gb": hw["vram_gb"],
-                        "status": "ready"
-                    },
-                    timeout=8
-                )
-                last_hb = now
-            except Exception as e:
-                print(f"[Worker] Heartbeat gönderilemedi ({e}), 5sn sonra tekrar denenecek...")
-                time.sleep(5)
+                metin = aday.read_text(encoding="utf-8", errors="replace")
+            except OSError:
                 continue
+            if "def main(" in metin and "gpu_worker.py" in metin:
+                return aday
+    return None
 
-        # 2. Kuyruktan iş talep et
+
+def _indir_gpu_worker(requests, sunucu: str) -> Optional[Path]:
+    """Sunucudan, olmazsa GitHub raw'dan gerçek gpu_worker.py'yi indirir."""
+    adaylar = [sunucu.rstrip("/") + "/gpu_worker.py", GITHUB_RAW]
+    for url in adaylar:
         try:
-            r = requests.get(f"{server_url}/api/worker/claim?worker_id={worker_id}", timeout=10)
-            res = r.json()
-            job = res.get("job")
-            if not job:
-                time.sleep(5)
-                continue
+            yanit = requests.get(url, timeout=20)
+            metin = yanit.text or ""
+            if (yanit.status_code == 200 and "def main(" in metin
+                    and "gpu_worker.py" in metin
+                    and "<!DOCTYPE html" not in metin[:300]):
+                hedef = Path(tempfile.gettempdir()) / "fabrika_gpu_worker.py"
+                hedef.write_text(metin, encoding="utf-8")
+                print(f"[GPU Worker] gpu_worker.py indirildi: {url}")
+                return hedef
+            print(f"[GPU Worker] {url} geçerli gpu_worker.py döndürmedi "
+                  f"(HTTP {yanit.status_code})")
+        except Exception as e:
+            print(f"[GPU Worker] {url} alınamadı ({type(e).__name__}: {e})")
+    return None
 
-            jid = job.get("job_id") or job.get("id")
-            prompt = job.get("prompt") or job.get("topic") or "Fabrika Video"
-            channel = job.get("channel") or "Tech_AI_Fabrika"
-            aspect = job.get("aspect_ratio") or "16:9"
-            print(f"\n🎬 [YENİ GÖREV ALINDI] {jid} | Kanal: {channel} | Konu: '{prompt[:60]}'")
 
-            # Aşama 1: İlerleme bildir (%20 Seslendirme)
-            requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 20, "stage": "Google Gemini Nöral Seslendirme"}, timeout=5)
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Fabrika GPU işçisi bootstrap")
+    ap.add_argument("--server",
+                    default=os.environ.get("FABRIKA_SUNUCU", VARSAYILAN_SUNUCU))
+    ap.add_argument("--token", "--worker-key", dest="token",
+                    default=os.environ.get("FABRIKA_WORKER_KEY")
+                    or os.environ.get("FABRIKA_TOKEN"))
+    ap.add_argument("--tek-seferlik", action="store_true")
+    ap.add_argument("--gpu-kontrol", action="store_true")
+    args, _ = ap.parse_known_args()
 
-            # Seslendirme üret (Google Gemini 2.5 Nöral TTS - Microsoft Edge Kesinlikle Yasaktır)
-            voice = "Aoede" if "Astroloji" in channel else "Puck"
-            speech_file = os.path.join(work_dir, f"{jid}_narration.wav")
-            out_mp4 = os.path.join(work_dir, f"{jid}.mp4")
+    print("=" * 65)
+    print(f"  🚀 {BANNER} (KAGGLE / COLAB)")
+    print("=" * 65)
+    print(f"  🌐 Sunucu : {args.server}")
+    print(f"  🔑 Anahtar: {'ayarlı (Bearer + X-Worker-Key)' if args.token else 'YOK'}")
+    print("=" * 65)
 
-            try:
-                r_aud = requests.post(
-                    f"{server_url}/api/audio/process",
-                    json={"action": "voice_clone_tts", "params": {"prompt": prompt, "voice": voice}},
-                    timeout=25
-                )
-                if r_aud.status_code == 200:
-                    aud_data = r_aud.json().get("data", {})
-                    out_aud_url = aud_data.get("output_url")
-                    if out_aud_url:
-                        if not out_aud_url.startswith("http"):
-                            out_aud_url = f"{server_url}{out_aud_url}"
-                        r_down = requests.get(out_aud_url, timeout=30)
-                        if r_down.status_code == 200 and len(r_down.content) > 1000:
-                            with open(speech_file, "wb") as f_sp:
-                                f_sp.write(r_down.content)
-            except Exception as e_aud:
-                print(f"[Worker] Google Gemini seslendirme isteği hatası: {e_aud}")
+    token = (args.token or "").strip() or None
+    if token:
+        os.environ["FABRIKA_WORKER_KEY"] = token
+    os.environ.setdefault("FABRIKA_SUNUCU", args.server)
 
-            # Ses süresini ölç
-            dur = 6.0
-            has_speech = os.path.exists(speech_file) and os.path.getsize(speech_file) > 1000
-            if has_speech:
-                try:
-                    out = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", speech_file], text=True).strip()
-                    dur = max(3.0, round(float(out), 2))
-                except Exception:
-                    pass
+    requests = _requests()
+    gpu_yolu = _yerel_gpu_worker() or _indir_gpu_worker(requests, args.server)
+    if gpu_yolu is None:
+        print("❌ gpu_worker.py bulunamadı. Repoyu klonlayıp tekrar deneyin:")
+        print("   git clone https://github.com/sufhinyusa/yusasufhin-cockpit.git")
+        return 2
 
-            # Aşama 2: İlerleme bildir (%50 GPU Render)
-            requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 50, "stage": "Dual-T4 GPU Render & Kurgu"}, timeout=5)
+    argv = [str(gpu_yolu), "--server", args.server]
+    if token:
+        argv += ["--token", token]
+    if args.tek_seferlik:
+        argv.append("--tek-seferlik")
+    if args.gpu_kontrol:
+        argv.append("--gpu-kontrol")
 
-            is_vertical = (aspect == "9:16")
-            res_str = "1080x1920" if is_vertical else "1920x1080"
-            color_bg = "#080c14"
-            accent_col = "0x38bdf8"
-            w_val = 1080 if is_vertical else 1920
+    print(f"[GPU Worker] Gerçek FLUX.2/Wan2.1 döngüsü başlıyor: {gpu_yolu}")
+    import runpy
 
-            vcodec = ["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20"] if hw["has_nvenc"] else ["-c:v", "libx264", "-preset", "fast", "-crf", "22"]
-            vf = f"color=c={color_bg}:s={res_str}:d={dur}:r=30,drawbox=x=60:y=180:w={w_val-120}:h=90:color={accent_col}@0.3:t=fill,drawbox=x=60:y=280:w={w_val-120}:h=6:color={accent_col}:t=fill"
+    eski_argv = sys.argv
+    sys.argv = argv
+    try:
+        runpy.run_path(str(gpu_yolu), run_name="__main__")
+    except SystemExit as e:
+        return int(e.code or 0)
+    finally:
+        sys.argv = eski_argv
+    return 0
 
-            audio_args = ["-i", speech_file] if has_speech else ["-f", "lavfi", "-i", f"sine=frequency=440:duration={dur}:sample_rate=44100"]
-
-            cmd = [
-                "ffmpeg", "-y",
-                "-f", "lavfi", "-i", vf,
-                *audio_args,
-                *vcodec,
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "192k",
-                "-shortest",
-                out_mp4
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-            # Aşama 3: Sunucuya yükle (%90)
-            requests.post(f"{server_url}/api/worker/progress", json={"job_id": jid, "progress_pct": 90, "stage": "Sunucuya Yükleniyor"}, timeout=5)
-            with open(out_mp4, "rb") as f_up:
-                r_up = requests.post(f"{server_url}/api/worker/upload", data={"job_id": jid}, files={"file": (f"{jid}.mp4", f_up, "video/mp4")}, timeout=120)
-                if r_up.status_code == 200:
-                    print(f"✅ [GÖREV TAMAMLANDI VE YÜKLENDİ] {jid} (Boyut: {os.path.getsize(out_mp4)/1024:.1f} KB)")
-                else:
-                    print(f"⚠️ [Yükleme Hatası] HTTP {r_up.status_code}: {r_up.text}")
-
-            # Temizlik
-            for f_clean in (speech_file, out_mp4):
-                if os.path.exists(f_clean):
-                    os.remove(f_clean)
-
-        except Exception as err:
-            print(f"[Worker Döngü Hatası]: {err}")
-            time.sleep(5)
 
 if __name__ == "__main__":
-    main()
-
+    sys.exit(main())

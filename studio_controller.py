@@ -17,12 +17,16 @@ import json
 import logging
 import os
 import shlex
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("Fabrika.VideoStudioController")
+
+# studio_jobs.json okuma-değiştirme-yazma yarışını önler (threadpool + eşzamanlı istek).
+_JOBS_LOCK = threading.Lock()
 
 
 @dataclass
@@ -41,6 +45,10 @@ class VideoJobSpec:
     output_url: Optional[str] = None
     artifacts: Dict[str, str] = field(default_factory=dict)
     aspect_ratio: str = "16:9"
+    # True ise teslim edilen çıktı gerçek YZ/video difüzyonu değil, açıkça
+    # etiketlenmiş bir önizleme/yankıdır (başlık kartı, Blender/Canvas iskeleti,
+    # prosedürel ses). Asla "tamamlandı" diye sunulmaz.
+    simulasyon: bool = False
 
 
 class RemotionCinemaMontage:
@@ -463,11 +471,11 @@ class VideoStudioController:
         job_dir.mkdir(parents=True, exist_ok=True)
 
         stages = [
-            {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
-            {"ad": "2. Ses Tasarımı & Dublaj", "durum": "tamamlandi"},
-            {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "tamamlandi"},
-            {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "tamamlandi"},
-            {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "tamamlandi"},
+            {"ad": "1. Prompt & Senaryo Analizi", "durum": "devam ediyor"},
+            {"ad": "2. Ses Tasarımı & Dublaj", "durum": "beklemede"},
+            {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": "beklemede"},
+            {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": "beklemede"},
+            {"ad": "5. YouTube & Yayın Dağıtımı", "durum": "beklemede"},
         ]
 
         artifacts: Dict[str, str] = {}
@@ -481,23 +489,28 @@ class VideoStudioController:
         if method == "remotion_cinema":
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio=aspect_ratio)
             engine_title = "REMOTION CINEMA MONTAGE"
+            motor_uygulama = "remotion_projesi_uretildi (render edilmedi)"
             accent_col = "0x38bdf8"
             sine_freq = 440
         elif method == "blender_wan":
             artifacts = BlenderWanConsistency.build_project(job_dir, prompt=prompt)
             engine_title = "BLENDER WAN 3D CONSISTENCY"
+            motor_uygulama = "blender_iskeleti_uretildi (blender çalıştırılmadı)"
             accent_col = "0x10b981"
             sine_freq = 550
         elif method == "opus_canvas":
             artifacts = OpusCanvasCodeMotion.build_project(job_dir, topic=prompt)
             engine_title = "OPUS CANVAS CODE MOTION"
+            motor_uygulama = "canvas_html_uretildi (tarayıcıda render edilmedi)"
             accent_col = "0xa855f7"
             sine_freq = 330
         else:
             artifacts = RemotionCinemaMontage.build_project(job_dir, topic=prompt, aspect_ratio="9:16")
             engine_title = "VIRAL SHORTS MOTORU"
+            motor_uygulama = "remotion_9x16_projesi_uretildi (render edilmedi)"
             accent_col = "0xf59e0b"
             sine_freq = 440
+        artifacts["motor_uygulama"] = motor_uygulama
 
         # Gerçek Google Gemini 2.5 Nöral Seslendirme (Microsoft Edge KESİNLİKLE YASAKTIR)
         speech_wav = job_dir / "narration.wav"
@@ -619,6 +632,29 @@ class VideoStudioController:
                 if spoken_dur else f"Procedural {sine_freq}Hz pilot tone (simülasyon)"
             )
 
+        # Dürüstlük: hangi katmanlar gerçek, hangileri yankı/önizleme?
+        yz_montaj = (
+            render_success
+            and (render_kaynak.startswith("yz_montaj") or render_kaynak == "flux_montaj")
+        )
+        simulasyon_katmanlari: List[str] = []
+        if render_success and not yz_montaj:
+            simulasyon_katmanlari.append("baslik_karti")
+            simulasyon_katmanlari.append("ken_burns")
+        # Pilot ton yalnız başlık kartı yedeğinde çalınır; AI montajı sessizdir.
+        if render_success and not yz_montaj and not spoken_dur:
+            simulasyon_katmanlari.append("prosedurel_ses")
+        if render_success and method in ("blender_wan", "opus_canvas"):
+            simulasyon_katmanlari.append("motor_yanki")
+        # Blender/Canvas yalnız proje iskeleti üretir; teslim edilen video bu
+        # motorun çıktısı değildir → iş dürüstçe simülasyon sayılır.
+        simulasyon = bool(simulasyon_katmanlari)
+        artifacts["simulasyon"] = "true" if simulasyon else "false"
+        artifacts["simulasyon_katmanlari"] = ",".join(simulasyon_katmanlari)
+        artifacts["video_difuzyonu"] = (
+            "false" if render_success else "bekliyor (GPU kuyruğu)"
+        )
+
 
 
         if render_success:
@@ -628,6 +664,8 @@ class VideoStudioController:
                     f"difüzyonu, {artifacts.get('sahne_sayisi', '?')} sahne, "
                     f"Ken Burns + xfade)"
                 )
+                if method in ("blender_wan", "opus_canvas"):
+                    gorsel_durum += " — motor iskeleti yankı (render edilmedi)"
                 render_durum = "tamamlandi (YZ görsel montajı — video difüzyonu değil)"
                 yayin_durum = "kuyrukta (Wan/LTX video difüzyonu için GPU kotası bekleniyor)"
 
@@ -648,7 +686,7 @@ class VideoStudioController:
             ]
             job_status = (
                 "yz_montaj_hazir"
-                if (render_kaynak.startswith("yz_montaj") or render_kaynak == "flux_montaj")
+                if (yz_montaj and method not in ("blender_wan", "opus_canvas"))
                 else "onizleme_hazir (simülasyon)"
             )
 
@@ -707,21 +745,32 @@ class VideoStudioController:
             artifacts=artifacts,
             aspect_ratio=aspect_ratio,
             output_url=out_url,
+            simulasyon=simulasyon,
         )
 
-        try:
-            data = json.loads(self.jobs_file.read_text(encoding="utf-8"))
-        except Exception:
-            data = {"jobs": []}
-            
-        data.setdefault("jobs", []).append(asdict(spec))
-        self.jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        with _JOBS_LOCK:
+            try:
+                data = json.loads(self.jobs_file.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    data = {"jobs": []}
+            except (OSError, json.JSONDecodeError):
+                data = {"jobs": []}
+
+            data.setdefault("jobs", []).append(asdict(spec))
+            gecici = self.jobs_file.with_name(
+                f".{self.jobs_file.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            gecici.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(gecici, self.jobs_file)
         return spec
 
     def list_jobs(self) -> List[Dict[str, Any]]:
         """Mevcut ve tamamlanan video işlerini listeler."""
-        try:
-            data = json.loads(self.jobs_file.read_text(encoding="utf-8"))
-            return data.get("jobs", [])
-        except Exception:
-            return []
+        with _JOBS_LOCK:
+            try:
+                data = json.loads(self.jobs_file.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    return []
+                jobs = data.get("jobs", [])
+                return jobs if isinstance(jobs, list) else []
+            except (OSError, json.JSONDecodeError):
+                return []

@@ -35,11 +35,11 @@ GEMINI_VOICES = {
     "Fenrir": "Fenrir (Güçlü, Dramatik Erkek — Sinematik ve Fragman)",
 }
 
-# Bulut ortamı (Render) için güvenli yedek anahtar (otomatik tarayıcı engeli için base64 korumalı)
-_CLOUD_FALLBACK_B64 = "QVEuQWI4Uk42SnBMek1vVkJjdjd3Wml4MHdVcWtDZFl5WkhYWGdwUy1Xa3N2U2FhZF9sdHc="
+# Gemini API anahtarları ortam değişkenlerinden ve yerel .env adaylarından okunur.
+# Repoya gömülü yedek anahtar yoktur — sızıntı ve faturalama riski taşır.
 
 def collect_gemini_keys() -> List[str]:
-    """Sistem ortamından, Persona/.env dosyasından ve bulut yedek havuzundan tüm Gemini API anahtarlarını toplar."""
+    """Sistem ortamından ve Persona/.env adaylarından tüm Gemini API anahtarlarını toplar."""
     keys: List[str] = []
     # 1. Ortam değişkenleri
     for k, v in os.environ.items():
@@ -66,14 +66,6 @@ def collect_gemini_keys() -> List[str]:
                             keys.append(val)
             except Exception:
                 pass
-
-    # 3. Bulut sunucusu (Render Cloud) için güvenli yedek anahtar
-    try:
-        fb_key = base64.b64decode(_CLOUD_FALLBACK_B64).decode("utf-8").strip()
-        if fb_key and fb_key not in keys:
-            keys.append(fb_key)
-    except Exception:
-        pass
 
     return keys
 
