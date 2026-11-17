@@ -1555,15 +1555,16 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=19" in sw_txt
-        assert "/lab.js?v=19" in lab_txt
-        assert "/site.css?v=14" in idx_txt and "/site.css?v=14" in lab_txt
+        assert "/lab.js?v=20" in sw_txt
+        assert "/lab.js?v=20" in lab_txt
+        assert "/site.css?v=15" in idx_txt and "/site.css?v=15" in lab_txt
         assert "/styles.css?v=8" in fab_txt
-        assert "fabrika-pwa-v19-studio" in sw_txt
-        assert "fabrika-pwa-v19-studio" in lab_txt
-        assert "fabrika-pwa-v19-studio" in fab_txt
+        assert "fabrika-pwa-v20-studio" in sw_txt
+        assert "fabrika-pwa-v20-studio" in lab_txt
+        assert "fabrika-pwa-v20-studio" in fab_txt
         assert "[hidden] { display: none !important; }" in site_css
         assert "overflow-x: clip;" in site_css
+        assert "flex-direction: column;" in site_css
         assert ".site-picker-tray" in site_css and "min-width: 0" in site_css
         assert "overflow-y: auto" in styles_css and "touch-action: pan-x" in styles_css
     finally:
@@ -1571,6 +1572,77 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         for jid in created_ids:
             for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
                 p.unlink(missing_ok=True)
+
+
+def test_burc_prompt_parity_cloudflare_dict_and_video_stage_layout(monkeypatch):
+    """Burç senaryosu kullanıcı konusunu image_prompt'a taşır, CF dict/Türkçe LLM hatasını reddeder."""
+    import json as _json
+    import burc_pipeline as bp
+    import prompt_director as pd
+
+    for k in list(os.environ):
+        if "GEMINI_API_KEY" in k.upper():
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    monkeypatch.delenv("CF_API_TOKEN", raising=False)
+
+    konu = "elinde kova olan bir adam gökyüzünden yeryüzüne su boşaltıyor"
+
+    # 1. Çevrimdışı şablon bile özel konuyu fütüristik şehir şablonuyla ezmemeli ve oranı korumalıdır.
+    off = bp.burc_senaryo_olustur("kova", konu=konu, sure_sn=15, dil="tr", aspect_ratio="16:9")
+    assert off["ok"] is True
+    assert off["simulasyon"] is True
+    img_low = off["image_prompt"].lower()
+    assert "futuristic city" not in img_low
+    assert "16:9" in img_low
+    assert ("water" in img_low or "pitcher" in img_low or "pouring" in img_low)
+    assert len(off.get("scenes") or []) >= 2
+
+    # 2. Cloudflare dict yanıtı .strip() ile çökmez; 70B İngilizce sahneyi döner.
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-tok")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "cf-acc")
+
+    class FakeResp:
+        def __init__(self, payload):
+            self._p = payload
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return _json.dumps(self._p).encode("utf-8")
+
+    def fake_urlopen(req, timeout=10):
+        return FakeResp({
+            "success": True,
+            "result": {
+                "response": {
+                    "narration_text": "Gökyüzünden yeryüzüne bereketli sular boşalıyor.",
+                    "image_prompt": "mythic robed man in starry night heavens pouring water from an ornate glowing bucket down to planet Earth",
+                    "motion_prompt": "slow cosmic orbit around the pouring water stream",
+                    "scenes": [
+                        {"image_prompt": "wide celestial view of a man in the heavens holding an ornate glowing bucket pouring water down toward Earth", "motion_prompt": "slow orbit"},
+                        {"image_prompt": "close-up of luminous water cascading from an ornate golden bucket in starry space", "motion_prompt": "gentle push-in"},
+                    ],
+                }
+            },
+        })
+
+    monkeypatch.setattr(bp.urllib.request, "urlopen", fake_urlopen)
+    cf_res = bp.burc_senaryo_olustur("kova", konu=konu, sure_sn=15, dil="tr", aspect_ratio="16:9")
+    assert cf_res["simulasyon"] is False
+    assert cf_res["kaynak"].startswith("cloudflare:")
+    assert "bucket" in cf_res["image_prompt"].lower() and "earth" in cf_res["image_prompt"].lower()
+    assert len(cf_res["scenes"]) == 2
+
+    # 3. prompt_director küçük LLM'in Türkçe image_prompt döndürmesini reddeder ve 'sun' kelimesini 'su' sanmaz.
+    assert pd._looks_like_untranslated_turkish("Bir adam gökyüzünde kova ile su boşaltıyor") is True
+    assert pd._looks_like_untranslated_turkish("A celestial man pouring water from an ornate bucket above planet Earth") is False
+    assert pd._is_turkish_text("sunset over surface") is False
+    assert pd._normalize_plan_dict({
+        "narration_text": "Türkçe anlatım",
+        "scenes": [{"image_prompt": "Bir adam gökyüzünde duruyor"}],
+    }, 2, "orbit", "cloudflare:llama-3.1-8b") is None
 
 
 

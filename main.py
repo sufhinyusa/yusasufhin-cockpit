@@ -2681,6 +2681,7 @@ async def burc_video_generate(req: Request):
 
     konu = str(body.get("konu") or "").strip()[:300]
     dil = str(body.get("dil") or "tr").strip().lower()[:8]
+    aspect_ratio = str(body.get("aspect_ratio") or "9:16").strip()
     try:
         sure_sn = max(3.0, min(120.0, float(body.get("sure_sn") or 15)))
     except (TypeError, ValueError):
@@ -2689,12 +2690,23 @@ async def burc_video_generate(req: Request):
     try:
         senaryo = await run_in_threadpool(
             lambda: mod.burc_senaryo_olustur(
-                burc_kodu=burc_kodu, konu=konu, sure_sn=int(round(sure_sn)), dil=dil))
+                burc_kodu=burc_kodu, konu=konu, sure_sn=int(round(sure_sn)), dil=dil,
+                aspect_ratio=aspect_ratio))
     except TypeError:
-        # Farklı imza (konumsal) ihtimaline karşı tek savunma denemesi.
+        # Farklı imza (eski 4 parametre veya konumsal) ihtimaline karşı savunma.
         try:
             senaryo = await run_in_threadpool(
-                lambda: mod.burc_senaryo_olustur(burc_kodu, konu, int(round(sure_sn)), dil))
+                lambda: mod.burc_senaryo_olustur(
+                    burc_kodu=burc_kodu, konu=konu, sure_sn=int(round(sure_sn)), dil=dil))
+        except TypeError:
+            try:
+                senaryo = await run_in_threadpool(
+                    lambda: mod.burc_senaryo_olustur(burc_kodu, konu, int(round(sure_sn)), dil))
+            except Exception as e:
+                logger.error("[Burç] Senaryo üretimi başarısız: %s", e)
+                return JSONResponse(
+                    status_code=500,
+                    content={"success": False, "detail": f"Senaryo üretilemedi: {type(e).__name__}"})
         except Exception as e:
             logger.error("[Burç] Senaryo üretimi başarısız: %s", e)
             return JSONResponse(
@@ -2782,6 +2794,12 @@ async def burc_video_generate(req: Request):
     if render_target not in GPU_HEDEFLERI:
         render_target = "kaggle_32gb"
 
+    scene_prompts = [
+        str(s.get("image_prompt") or "").strip()
+        for s in (senaryo.get("scenes") or [])
+        if isinstance(s, dict) and str(s.get("image_prompt") or "").strip()
+    ] or [str(senaryo.get("image_prompt") or metin)[:1200]]
+
     job = {
         "id": job_id,
         "job_id": job_id,
@@ -2793,7 +2811,9 @@ async def burc_video_generate(req: Request):
         "video_model": i2v_model,
         "style_preset": "astrology_mystic",
         "prompt": str(senaryo.get("image_prompt") or metin)[:1200],
+        "image_prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "motion_prompt": str(senaryo.get("motion_prompt") or "")[:400],
+        "planner_source": str(senaryo.get("kaynak") or ""),
         "narration_text": metin,
         "burc_kodu": senaryo.get("burc_kodu") or burc_kodu,
         "burc_adi": senaryo.get("burc_adi") or burc.get("ad", ""),
@@ -2801,7 +2821,7 @@ async def burc_video_generate(req: Request):
         "mode": ("burc_video" if yontem in ("burc_video", "image_then_i2v")
                  else "flux2_resim" if yontem == "flux2_resim" else "video"),
         "render_target": render_target,
-        "aspect_ratio": str(body.get("aspect_ratio") or "9:16"),
+        "aspect_ratio": aspect_ratio,
         "sure_sn": round(sure_sn, 1),
         "voice": ses,
         "status": "kuyrukta (GPU işçisi bekleniyor)",
@@ -2837,7 +2857,7 @@ async def burc_video_generate(req: Request):
                 job_id=job_id,
                 method=yontem if yontem != "burc_video" else "hyperframes_motion",
                 prompt=metin,
-                image_prompts=[job["prompt"]],
+                image_prompts=scene_prompts,
                 motion_prompt=job["motion_prompt"],
                 aspect_ratio=job["aspect_ratio"],
                 style_preset="astrology_mystic",

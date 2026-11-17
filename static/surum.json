@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.17-render-v20",
-  "ozellik": "hyperframes_low_mem_cloudflare_dict_fix",
+  "surum": "2026.11.17-render-v21",
+  "ozellik": "burc_prompt_paritesi_ve_video_stage_sutun",
   "kontrol": "gpu_worker_or_cloud"
 }

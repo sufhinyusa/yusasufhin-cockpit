@@ -1,11 +1,11 @@
-const CACHE_NAME = 'fabrika-pwa-v19-studio';
+const CACHE_NAME = 'fabrika-pwa-v20-studio';
 const ASSETS_TO_CACHE = [
   '/',
-  '/site.css?v=14',
+  '/site.css?v=15',
   '/site.js?v=14',
   '/fabrika.html',
   '/lab.html',
-  '/lab.js?v=19',
+  '/lab.js?v=20',
   '/styles.css?v=8',
   '/app.js?v=8',
   '/manifest.json',

@@ -154,6 +154,13 @@ def _gemini_keys() -> List[str]:
     return keys
 
 
+_EXACT_SHORT_WATER_STEMS = {"su", "suyu", "suyun", "suya", "suda", "sular", "sulari", "suları"}
+_UNTRANSLATED_TR_RE = re.compile(
+    r"(?:\b(?:bir|ile|veya|icin|gibi|olarak|uzerinde|elinde|burcu|gokyuzu|yeryuzu|bosalt|dokuyor|adam|kadin|sahnede|goster|gosteren|yansiyan|tasiyan)\b|\b[a-z]+(?:iyor|ıyor|uyor|üyor)\b)",
+    re.IGNORECASE,
+)
+
+
 def _tr_lower(text: str) -> str:
     return (text or "").replace("İ", "i").replace("I", "ı").replace("\u0307", "").lower()
 
@@ -162,11 +169,36 @@ def _tr_ascii_fold(text: str) -> str:
     return _tr_lower(text).translate(str.maketrans("çğıöşü", "cgiosu"))
 
 
+def _looks_like_untranslated_turkish(text: str) -> bool:
+    """LLM çıktısındaki image_prompt'un İngilizceye çevrilmeden Türkçe kalıp kalmadığını tespit eder."""
+    s = (text or "").strip()
+    if not s:
+        return True
+    if _TR_CHARS_RE.search(s):
+        return True
+    return bool(_UNTRANSLATED_TR_RE.search(_tr_ascii_fold(s)))
+
+
+def _word_matches_stem(word: str, fold_word: str, stem: str, fstem: str) -> bool:
+    if fstem == "su":
+        return word in _EXACT_SHORT_WATER_STEMS or fold_word in _EXACT_SHORT_WATER_STEMS
+    if len(fstem) <= 3:
+        return word == stem or fold_word == fstem or word.startswith(stem)
+    return word.startswith(stem) or fold_word.startswith(fstem)
+
+
 def _is_turkish_text(text: str) -> bool:
     if _TR_CHARS_RE.search(text or ""):
         return True
+    low_words = re.sub(r"[^\w\s]+", " ", _tr_lower(text)).split()
     fold_words = re.sub(r"[^\w\s]+", " ", _tr_ascii_fold(text)).split()
-    return any(w.startswith(_tr_ascii_fold(stem)) for stem, _ in _VISUAL_STEM_MAP for w in fold_words)
+    for lw, fw in zip(low_words, fold_words):
+        for stem, _ in _VISUAL_STEM_MAP:
+            if " " in stem:
+                continue
+            if _word_matches_stem(lw, fw, stem, _tr_ascii_fold(stem)):
+                return True
+    return False
 
 
 def _offline_visual_grounding(prompt: str, style_preset: str) -> Tuple[str, List[str]]:
@@ -185,8 +217,7 @@ def _offline_visual_grounding(prompt: str, style_preset: str) -> Tuple[str, List
         fstem = _tr_ascii_fold(stem)
         hit = (
             (" " in stem and (stem in low or fstem in folded))
-            or any(w.startswith(stem) for w in low_words)
-            or any(w.startswith(fstem) for w in fold_words)
+            or any(_word_matches_stem(lw, fw, stem, fstem) for lw, fw in zip(low_words, fold_words))
         )
         if hit and eng not in used_spans:
             used_spans.add(eng)
@@ -256,7 +287,11 @@ def _cf_credentials() -> Tuple[Optional[str], Optional[str]]:
 
 
 def _normalize_plan_dict(parsed: Dict[str, Any], scene_count: int, cam_hint: str, source_tag: str) -> Optional[Dict[str, Any]]:
-    scenes = [s for s in (parsed.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")]
+    raw_scenes = [s for s in (parsed.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")]
+    scenes = [
+        s for s in raw_scenes
+        if not _looks_like_untranslated_turkish(str(s.get("image_prompt") or ""))
+    ]
     if scenes and parsed.get("narration_text"):
         return {
             "narration_text": str(parsed["narration_text"]).strip(),
@@ -288,11 +323,14 @@ def _cloudflare_llm_plan(
     token, hesap = _cf_credentials()
     if not token or not hesap:
         return None
-    for model in ("@cf/meta/llama-3.3-70b-instruct-fp8-fast", "@cf/meta/llama-3.1-8b-instruct"):
+    for model, cf_timeout in (
+        ("@cf/meta/llama-3.3-70b-instruct-fp8-fast", 18),
+        ("@cf/meta/llama-3.1-8b-instruct", 10),
+    ):
         url = f"https://api.cloudflare.com/client/v4/accounts/{hesap}/ai/run/{model}"
         body = json.dumps({
             "messages": [
-                {"role": "system", "content": "Return ONLY a valid JSON object matching the requested schema. No markdown, no extra commentary."},
+                {"role": "system", "content": "Return ONLY a valid JSON object matching the requested schema. Every image_prompt MUST be vivid, literal ENGLISH. Never output non-English words in image_prompt."},
                 {"role": "user", "content": director_prompt},
             ],
             "max_tokens": 900,
@@ -304,7 +342,7 @@ def _cloudflare_llm_plan(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=cf_timeout) as resp:
                 raw = json.loads(resp.read().decode("utf-8"))
             resp_val = (raw.get("result") or {}).get("response")
             plan = _parse_plan_json(resp_val, scene_count, cam_hint, f"cloudflare:{model.split('/')[-1]}")
@@ -336,8 +374,9 @@ def _gemini_plan(
         f"Number of scenes: {scene_count}, Total duration: {duration_sec:.0f}s (~{target_words} Turkish words for narration).\n\n"
         "STRICT RULES:\n"
         "1. `narration_text` MUST be natural, engaging Turkish matching the duration.\n"
-        "2. Each scene's `image_prompt` MUST be in ENGLISH, describing EVERY concrete physical subject, pose, action, environment, "
-        "lighting, colors, and composition from the user's topic (NEVER abstract concepts like 'analysis', 'awakening', 'weekly report', and NEVER request text/watermarks).\n"
+        "2. Each scene's `image_prompt` MUST be in ENGLISH ONLY, faithfully translating EVERY concrete physical figure, "
+        "prop/object/container, action, environment, lighting, colors, and composition from the user's topic "
+        "(never drop requested objects or replace them with unrelated cities/objects, never use abstract concepts like 'analysis', and never request text/watermarks).\n"
         "3. `motion_prompt` MUST be 1 concise ENGLISH sentence describing smooth camera + physical motion.\n"
         "4. Return ONLY valid JSON: "
         '{"narration_text": "...", "motion_prompt": "...", "scenes": [{"image_prompt": "...", "motion_prompt": "..."}]}'

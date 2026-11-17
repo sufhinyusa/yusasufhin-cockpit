@@ -96,77 +96,161 @@ def _gemini_istek(api_key: str, model: str, istem: str,
     return metin
 
 
-def _json_ayikla(metin: str) -> Dict[str, Any]:
-    """Modelin ```json çitlerini ve çevresindeki metni temizleyip JSON okur."""
-    temiz = re.sub(r"^```(?:json)?\s*", "", metin.strip(), flags=re.IGNORECASE)
+def _oran_tarifi(aspect_ratio: str) -> str:
+    oran = (aspect_ratio or "9:16").replace(" ", "")
+    if oran == "16:9":
+        return "wide horizontal 16:9 widescreen composition"
+    if oran == "1:1":
+        return "balanced square 1:1 composition"
+    return "vertical 9:16 portrait composition"
+
+
+def _turkce_kaldi_mi(metin: str) -> bool:
+    try:
+        from prompt_director import _looks_like_untranslated_turkish
+        return _looks_like_untranslated_turkish(metin)
+    except Exception:
+        return bool(re.search(r"[çğıöşüÇĞİÖŞÜ]", metin or "")) or not (metin or "").strip()
+
+
+def _konuyu_gorsel_sahneye_cevir(konu: str, aspect_ratio: str) -> Tuple[str, List[str]]:
+    oran_en = _oran_tarifi(aspect_ratio)
+    try:
+        from prompt_director import _offline_visual_grounding
+        core_en, sahneler = _offline_visual_grounding(konu, "astrology_mystic")
+        if core_en:
+            temel = f"{core_en}, {oran_en}, mystical cosmic atmosphere, no text, no watermark"
+            liste = [f"{s}, {oran_en}, no text, no watermark" for s in sahneler[:3]] or [temel]
+            return temel, liste
+    except Exception:
+        pass
+    return f"dramatic celestial cosmic illustration depicting: {konu}, {oran_en}, no text, no watermark", [
+        f"wide establishing view depicting: {konu}, cosmic nebula light, {oran_en}, no text, no watermark",
+        f"dramatic medium shot focusing on: {konu}, golden zodiac starlight, {oran_en}, no text, no watermark",
+    ]
+
+
+def _json_ayikla(metin: Any) -> Dict[str, Any]:
+    """Modelin dict ya da ```json çitli string yanıtını güvenle sözlüğe çevirir."""
+    if isinstance(metin, dict):
+        return metin
+    temiz = re.sub(r"^```(?:json)?\s*", "", str(metin or "").strip(), flags=re.IGNORECASE)
     temiz = re.sub(r"\s*```$", "", temiz)
     bas, son = temiz.find("{"), temiz.rfind("}")
     if bas < 0 or son <= bas:
-        raise ValueError("Gemini yanıtında JSON nesnesi yok")
+        raise ValueError("Model yanıtında JSON nesnesi yok")
     veri = json.loads(temiz[bas:son + 1])
     if not isinstance(veri, dict):
-        raise ValueError("Gemini JSON yanıtı nesne değil")
+        raise ValueError("Model JSON yanıtı nesne değil")
     return veri
 
 
-def _gemini_istem(burc: Dict[str, str], konu: str, sure_sn: float, dil: str) -> str:
-    ek = f"\nKullanıcı konusu: {konu}" if konu else ""
+def _gemini_istem(burc: Dict[str, str], konu: str, sure_sn: float, dil: str,
+                  aspect_ratio: str = "9:16") -> str:
+    oran_en = _oran_tarifi(aspect_ratio)
+    if konu:
+        konu_kurali = (
+            f"ZORUNLU ANA SAHNE (Kullanıcı İstemi): {konu}\n"
+            "KRİTİK KURAL: Kullanıcının istediği tüm kişileri, nesneleri (ör. elindeki kova/kap), "
+            "eylemleri (ör. gökyüzünden yeryüzüne su boşaltma) ve mekanları BİREBİR İngilizce `image_prompt` "
+            f"içine koy! {burc['ad']} burcunun ({burc['element']} elementi) kozmik yıldız ışığını sadece "
+            "uyumlu atmosfer olarak ekle; kullanıcının istemediği fütüristik şehir, neon vb. alakasız sahneler UYDURMA.\n"
+        )
+    else:
+        konu_kurali = f"Tema: {burc['gorsel_tema']}. Hareket: {burc['hareket_yonu']}.\n"
     return (
-        "Sen deneyimli bir astroloji video senaristisin. Aşağıdaki burç için "
-        f"{sure_sn:.0f} saniyelik kısa video üret.\n"
+        "Sen deneyimli bir astroloji & sinema video yönetmenisin. Aşağıdaki burç ve sahne için "
+        f"{sure_sn:.0f} saniyelik kısa video planı üret.\n"
         f"Burç: {burc['ad']} ({burc['tarih']}), element: {burc['element']}.\n"
-        f"Tema: {burc['gorsel_tema']}. Hareket: {burc['hareket_yonu']}.{ek}\n"
+        f"{konu_kurali}"
+        f"Kadro: {oran_en}.\n"
         f"Yanıt dili: {dil}. narration_text bu dilde, akıcı, 2-4 cümle olsun; "
         "abartılı kehanet ve tıbbi/finansal tavsiye verme.\n"
-        "image_prompt İNGİLİZCE ve FLUX.2 için ayrıntılı tek paragraf olsun; "
-        "metin/logo/watermark isteme, sinematik ışık ve kompozisyon tarif et.\n"
-        "motion_prompt İNGİLİZCE ve Wan2.1 I2V için tek cümle kamera hareketi olsun.\n"
+        "image_prompt YALNIZCA İNGİLİZCE ve tek ayrıntılı sinematik paragraf olsun; Türkçe kelime KULLANMA, "
+        "metin/logo/watermark isteme.\n"
+        "motion_prompt YALNIZCA İNGİLİZCE tek cümle kamera ve fiziksel hareket olsun.\n"
+        "scenes alanına aynı ana konunun 2 farklı kamera açısından (geniş kurucu plan + yakın dramatik plan) "
+        "İngilizce image_prompt dizisi ekle.\n"
         'Yalnızca şu JSON şemasında yanıt ver: {"narration_text": "...", '
-        '"image_prompt": "...", "motion_prompt": "..."}'
+        '"image_prompt": "...", "motion_prompt": "...", "scenes": [{"image_prompt": "...", "motion_prompt": "..."}]}'
     )
 
 
 def _cevrimdisi_sonuc(burc: Dict[str, str], konu: str, dil: str,
-                      hata: str) -> Dict[str, Any]:
+                      hata: str, aspect_ratio: str = "9:16") -> Dict[str, Any]:
     """AI olmayan, açıkça etiketli şablon. simulasyon=True her zaman korunur."""
-    ek = f" {konu}" if konu else ""
-    anlatim = (
-        f"{burc['ad']} burcu için kısa bir astroloji molası.{ek} "
-        f"{burc['tarih']} aralığında doğanlar {burc['element']} elementinin "
-        f"etkisini taşır. Bu videoda {burc['gorsel_tema'].lower()} teması ve "
-        f"{burc['hareket_yonu'].lower()} eşliğinde sakin bir anlatım izleyeceksiniz."
-    )
-    uyari = ("GEMINI_API_KEY yok veya Gemini yanıt vermedi; bu metin AI üretimi "
+    oran_en = _oran_tarifi(aspect_ratio)
+    if konu:
+        gorsel_istem, sahne_listesi = _konuyu_gorsel_sahneye_cevir(konu, aspect_ratio)
+        anlatim = (
+            f"{burc['ad']} burcu kozmik sahnesi: {konu}. "
+            f"{burc['tarih']} aralığındaki {burc['element']} elementi atmosferi ve "
+            f"{burc['hareket_yonu'].lower()} eşliğinde sunulur."
+        )
+    else:
+        gorsel_istem = (
+            f"Cinematic astrology keyframe for {burc['ad']} ({burc['element']} sign), "
+            f"{burc['gorsel_tema_en']}, dramatic volumetric light, 35mm film grain, "
+            f"no text, no watermark, {oran_en}"
+        )
+        sahne_listesi = [gorsel_istem]
+        anlatim = (
+            f"{burc['ad']} burcu için kısa bir astroloji molası. "
+            f"{burc['tarih']} aralığında doğanlar {burc['element']} elementinin "
+            f"etkisini taşır. Bu videoda {burc['gorsel_tema'].lower()} teması ve "
+            f"{burc['hareket_yonu'].lower()} eşliğinde sakin bir anlatım izleyeceksiniz."
+        )
+    uyari = ("GEMINI_API_KEY/Cloudflare LLM yanıt vermedi; bu metin AI üretimi "
              "değildir, çevrimdışı şablondur.")
     if dil != "tr":
         uyari += f" Çevrimdışı şablon yalnızca Türkçe üretir (istenen dil: {dil})."
+    hareket = f"{burc['hareket_yonu_en']}, gentle parallax, cinematic 24fps feel"
     return {
         "ok": True, "burc_kodu": burc["slug"], "burc_adi": burc["ad"],
         "narration_text": anlatim,
-        "image_prompt": (
-            f"Cinematic astrology keyframe for {burc['ad']} ({burc['element']} sign), "
-            f"{burc['gorsel_tema_en']}, dramatic volumetric light, 35mm film grain, "
-            "no text, no watermark, vertical 9:16 composition"),
-        "motion_prompt": f"{burc['hareket_yonu_en']}, gentle parallax, cinematic 24fps feel",
+        "image_prompt": gorsel_istem,
+        "motion_prompt": hareket,
+        "scenes": [{"image_prompt": s, "motion_prompt": hareket} for s in sahne_listesi],
         "subtitle_text": anlatim, "simulasyon": True,
         "kaynak": "cevrimdisi_sablon", "uyari": uyari, "hata": hata,
     }
 
 
+def _senaryo_sahneleri_cikar(veri: Dict[str, Any], gorsel: str, hareket: str) -> List[Dict[str, str]]:
+    sahneler: List[Dict[str, str]] = []
+    for item in (veri.get("scenes") or []):
+        if isinstance(item, dict) and item.get("image_prompt"):
+            ip = str(item["image_prompt"]).strip()
+            mp = str(item.get("motion_prompt") or hareket).strip()
+            if ip and not _turkce_kaldi_mi(ip):
+                sahneler.append({"image_prompt": ip, "motion_prompt": mp})
+    if not sahneler:
+        sahneler = [
+            {"image_prompt": f"wide cinematic establishing view of {gorsel}", "motion_prompt": hareket},
+            {"image_prompt": f"dramatic medium close-up highlighting {gorsel}", "motion_prompt": hareket},
+        ]
+    elif len(sahneler) == 1:
+        sahneler.append({"image_prompt": f"dramatic medium close-up of {sahneler[0]['image_prompt']}", "motion_prompt": hareket})
+    return sahneler[:3]
+
+
 def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
-                         dil: str = "tr") -> Dict[str, Any]:
+                         dil: str = "tr", aspect_ratio: str = "9:16") -> Dict[str, Any]:
     """Burç için anlatım + FLUX.2/Wan2.1 istemleri + altyazı metni üretir.
 
-    Gemini anahtarı varsa 2.5 Flash, sonra 2.0 Flash denenir. Anahtar yoksa
-    veya tüm çağrılar başarısızsa çevrimdışı şablon `simulasyon=True` ile döner.
+    Gemini anahtarı varsa 2.5 Flash, sonra 2.0 Flash denenir; başarısızsa
+    Cloudflare Llama 3.3 70B / 3.1 8B (yalnızca İngilizce image_prompt) denenir.
+    Hiçbiri yanıt vermezse çevrimdışı şablon `konu`yu İngilizceye çevirerek döner.
     """
+    import time
+
     kod = _kod_normalize(burc_kodu)
     burc = BURC_KATALOGU.get(kod)
     if burc is None:
         return {
             "ok": False, "burc_kodu": kod or str(burc_kodu), "burc_adi": "",
             "narration_text": "", "image_prompt": "", "motion_prompt": "",
-            "subtitle_text": "", "simulasyon": True, "kaynak": "gecersiz_kod",
+            "scenes": [], "subtitle_text": "", "simulasyon": True, "kaynak": "gecersiz_kod",
             "hata": (f"Bilinmeyen burç kodu: {burc_kodu!r}. "
                      f"Geçerli kodlar: {', '.join(BURC_KATALOGU)}"),
         }
@@ -177,71 +261,86 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
     dil, konu = (dil or "tr").strip().lower(), (konu or "").strip()
     anahtarlar = _gemini_anahtarlari()
     son_hata = "GEMINI_API_KEY bulunamadı"
-    istem = _gemini_istem(burc, konu, sn, dil)
+    istem = _gemini_istem(burc, konu, sn, dil, aspect_ratio=aspect_ratio)
 
+    t_basla = time.monotonic()
     dead_keys: set[str] = set()
     for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-        for anahtar in anahtarlar:
-            if anahtar in dead_keys:
+        for anahtar in anahtarlar[:4]:
+            if anahtar in dead_keys or (time.monotonic() - t_basla) > 4.5:
                 continue
             try:
-                veri = _json_ayikla(_gemini_istek(anahtar, model, istem))
+                veri = _json_ayikla(_gemini_istek(anahtar, model, istem, zaman_asimi=4))
                 anlatim = str(veri.get("narration_text") or "").strip()
                 gorsel = str(veri.get("image_prompt") or "").strip()
                 hareket = str(veri.get("motion_prompt") or "").strip()
-                if not (anlatim and gorsel and hareket):
-                    raise ValueError("Gemini yanıtında zorunlu alanlar eksik")
+                if not (anlatim and gorsel and hareket) or _turkce_kaldi_mi(gorsel):
+                    raise ValueError("Gemini yanıtı eksik veya image_prompt Türkçe kaldı")
                 return {
                     "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
                     "narration_text": anlatim, "image_prompt": gorsel,
-                    "motion_prompt": hareket, "subtitle_text": anlatim,
-                    "simulasyon": False, "kaynak": f"gemini:{model}",
+                    "motion_prompt": hareket,
+                    "scenes": _senaryo_sahneleri_cikar(veri, gorsel, hareket),
+                    "subtitle_text": anlatim, "simulasyon": False, "kaynak": f"gemini:{model}",
                 }
-            except Exception as e:  # her anahtar/model denenir, son hata raporlanır
+            except Exception as e:
                 msg = str(e)
                 if "HTTP 400" in msg or "HTTP 403" in msg or "HTTP 404" in msg:
                     dead_keys.add(anahtar)
                 son_hata = f"{type(e).__name__}: {msg[:160]}"
+                if "HTTP 404" in msg:
+                    break
     # Cloudflare Workers AI LLM yedek denemesi
     if os.environ.get("PYTEST_CURRENT_TEST") and not (
         os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CF_API_TOKEN")
     ):
-        return _cevrimdisi_sonuc(burc, konu, dil, son_hata)
+        return _cevrimdisi_sonuc(burc, konu, dil, son_hata, aspect_ratio=aspect_ratio)
     try:
         from prompt_director import _cf_credentials
         cf_tok, cf_acc = _cf_credentials()
         if cf_tok and cf_acc:
-            url = f"https://api.cloudflare.com/client/v4/accounts/{cf_acc}/ai/run/@cf/meta/llama-3.1-8b-instruct"
-            req = urllib.request.Request(
-                url,
-                data=json.dumps({
-                    "messages": [
-                        {"role": "system", "content": "Return ONLY a valid JSON object matching the schema."},
-                        {"role": "user", "content": istem},
-                    ],
-                    "max_tokens": 700,
-                    "temperature": 0.4,
-                }).encode("utf-8"),
-                headers={"Authorization": f"Bearer {cf_tok}", "Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=12) as y:
-                ham_cf = json.loads(y.read().decode("utf-8"))
-            txt = ((ham_cf.get("result") or {}).get("response") or "").strip()
-            veri = _json_ayikla(txt)
-            anlatim = str(veri.get("narration_text") or "").strip()
-            gorsel = str(veri.get("image_prompt") or "").strip()
-            hareket = str(veri.get("motion_prompt") or "").strip()
-            if anlatim and gorsel and hareket:
-                return {
-                    "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
-                    "narration_text": anlatim, "image_prompt": gorsel,
-                    "motion_prompt": hareket, "subtitle_text": anlatim,
-                    "simulasyon": False, "kaynak": "cloudflare:llama-3.1-8b",
-                }
+            for model, cf_timeout in (
+                ("@cf/meta/llama-3.3-70b-instruct-fp8-fast", 18),
+                ("@cf/meta/llama-3.1-8b-instruct", 10),
+            ):
+                url = f"https://api.cloudflare.com/client/v4/accounts/{cf_acc}/ai/run/{model}"
+                req = urllib.request.Request(
+                    url,
+                    data=json.dumps({
+                        "messages": [
+                            {"role": "system", "content": "Return ONLY a valid JSON object matching the schema. image_prompt MUST be vivid ENGLISH only."},
+                            {"role": "user", "content": istem},
+                        ],
+                        "max_tokens": 800,
+                        "temperature": 0.3,
+                    }).encode("utf-8"),
+                    headers={"Authorization": f"Bearer {cf_tok}", "Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=cf_timeout) as y:
+                        ham_cf = json.loads(y.read().decode("utf-8"))
+                    resp_val = (ham_cf.get("result") or {}).get("response")
+                    veri = _json_ayikla(resp_val)
+                    anlatim = str(veri.get("narration_text") or "").strip()
+                    gorsel = str(veri.get("image_prompt") or "").strip()
+                    hareket = str(veri.get("motion_prompt") or "").strip()
+                    if anlatim and gorsel and hareket and not _turkce_kaldi_mi(gorsel):
+                        return {
+                            "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
+                            "narration_text": anlatim, "image_prompt": gorsel,
+                            "motion_prompt": hareket,
+                            "scenes": _senaryo_sahneleri_cikar(veri, gorsel, hareket),
+                            "subtitle_text": anlatim,
+                            "simulasyon": False,
+                            "kaynak": f"cloudflare:{model.split('/')[-1]}",
+                        }
+                except Exception as cf_err:
+                    son_hata = f"{type(cf_err).__name__}: {str(cf_err)[:140]}"
+                    continue
     except Exception:
         pass
-    return _cevrimdisi_sonuc(burc, konu, dil, son_hata)
+    return _cevrimdisi_sonuc(burc, konu, dil, son_hata, aspect_ratio=aspect_ratio)
 
 
 def _cumlelere_ayir(metin: str) -> List[str]:

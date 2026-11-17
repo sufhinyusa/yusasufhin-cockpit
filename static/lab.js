@@ -1738,9 +1738,12 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
       if (badgeEl) badgeEl.textContent = job.gpu_kuyruk ? '⏳ GPU Kuyruğunda' : '✅ Hazır';
       if (msgEl) msgEl.textContent = res.d.message || 'Burç işi başlatıldı.';
       if (hudEl) {
+        var bSahne = (res.d.senaryo && res.d.senaryo.image_prompt) || job.image_prompt || job.prompt || '';
+        var bKaynak = (res.d.senaryo && res.d.senaryo.kaynak) || job.senaryo_kaynak || '';
         hudEl.innerHTML = '♈ <strong>' + esc((res.d.burc && res.d.burc.ad) || burcKodu) + '</strong> · Bilet: <code>' + esc(res.d.job_id) + '</code>' + simBadge + '<br>' +
-          '• Yöntem: <strong>' + esc(job.method) + '</strong> | Hedef: <strong>' + esc(job.render_target) + '</strong><br>' +
-          '• Anlatım: <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>';
+          '• Yöntem: <strong>' + esc(job.method) + '</strong> | Hedef: <strong>' + esc(job.render_target) + '</strong> | Oran: <strong>' + esc(job.aspect_ratio || aspect) + '</strong><br>' +
+          '• Anlatım: <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>' +
+          (bSahne ? '<br>• 🎨 <strong>Görsel Sahne (' + esc(bKaynak || 'yerel') + '):</strong> <code>' + esc(bSahne) + '</code>' : '');
       }
 
       function _burcGuncelle(guncel) {
@@ -1748,8 +1751,12 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
           var u = guncel.output_url + (guncel.output_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk);
           if (badgeEl) badgeEl.textContent = guncel.simulasyon ? '⚠️ Tamamlandı (simülasyon)' : '✅ Burç Videosu Hazır';
           if (stageEl) {
-            stageEl.innerHTML = '<video controls autoplay playsinline src="' + esc(u) + '" style="width:100%;max-height:360px;border-radius:10px;background:#000;"></video>' +
-              '<div style="margin-top:8px;text-align:center;"><a href="' + esc(u + '&download=1') + '" download="' + esc(guncel.job_id) + '.mp4" class="site-btn site-btn-primary">⬇️ Burç Videosunu İndir</a></div>';
+            stageEl.innerHTML =
+              '<video controls autoplay playsinline preload="metadata" src="' + esc(u) + '" style="width:100%;height:auto;max-height:440px;object-fit:contain;border-radius:10px;background:#000;display:block;"></video>' +
+              '<div style="width:100%;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;">' +
+              '<a href="' + esc(u + '&download=1') + '" download="' + esc(guncel.job_id) + '.mp4" class="site-btn site-btn-primary">⬇️ Burç Videosunu İndir</a>' +
+              '<a href="' + esc(u) + '" target="_blank" rel="noopener" class="site-btn site-btn-ghost">🔗 Tam Ekran / Aç</a>' +
+              '</div>';
           }
           if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
           return true;
@@ -1758,7 +1765,7 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
           var pUrl = guncel.preview_image_url + (guncel.preview_image_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk);
           if (badgeEl) badgeEl.textContent = '🖼️ Önizleme Görseli Hazır (Onay Bekliyor)';
           if (stageEl) {
-            stageEl.innerHTML = '<img src="' + esc(pUrl) + '" alt="Burç önizleme görseli" style="max-width:100%;max-height:340px;border-radius:10px;display:block;margin:0 auto;">';
+            stageEl.innerHTML = '<img src="' + esc(pUrl) + '" alt="Burç önizleme görseli" style="width:100%;max-width:100%;max-height:420px;object-fit:contain;border-radius:10px;display:block;margin:0 auto;">';
           }
           if (approveBox && approveBtn) {
             approveBtn.textContent = '✅ Görseli Beğendim → ' + bI2vModel + ' ile Videoya Çevir';
