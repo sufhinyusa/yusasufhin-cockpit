@@ -17,7 +17,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v20-studio') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v21-studio') caches.delete(names[i]);
         }
       });
     }
@@ -890,8 +890,12 @@
             </div>
 
             <div class="site-field">
-              <label for="burcTopicInput">5. Özel Odak / Haftalık Konu (İsteğe bağlı)</label>
-              <textarea id="burcTopicInput" class="site-textarea" rows="2" placeholder="Örn: Kariyer, aşk ve Plüton transiti için mistik sinematik yorum..."></textarea>
+              <label for="burcTopicInput">5. Doğrudan Video / Görsel Promptunuz (İstediğinizi yazın — boşsa seçili burç kullanılır)</label>
+              <textarea id="burcTopicInput" class="site-textarea" rows="2" placeholder="Örn: Elinde kova olan bir adam gökyüzünden yeryüzüne su boşaltıyor"></textarea>
+              <label style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:0.82rem; color:var(--site-text-dim); cursor:pointer;">
+                <input id="burcRawPromptCheck" type="checkbox" checked style="width:auto; accent-color:var(--site-accent);" />
+                <span>Sadece kendi promptumu kullan (otomatik burç yazısı / kalıp metin ekleme)</span>
+              </label>
             </div>
 
             <div class="site-field">
@@ -1141,6 +1145,6 @@
   </div>
 
   <script src="/site.js?v=14"></script>
-  <script src="/lab.js?v=20"></script>
+  <script src="/lab.js?v=21"></script>
 </body>
 </html>

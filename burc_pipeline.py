@@ -33,7 +33,7 @@ _KATALOG_HAM = [
     ("akrep", "Akrep", "23 Ekim – 21 Kasım", "Su", "Karanlık su altı, mor ışık, gizemli sembol", "Yavaş dolly out", "Charon", "Dark underwater scene, violet light, mysterious symbol", "slow dolly out"),
     ("yay", "Yay", "22 Kasım – 21 Aralık", "Ateş", "Yıldızlı gökyüzü, ok ve yay, ufka koşu", "Hızlı ileri sürüş", "Puck", "Starry sky, bow and arrow, sprint toward the horizon", "fast forward tracking shot"),
     ("oglak", "Oğlak", "22 Aralık – 19 Ocak", "Toprak", "Karlı dağ zirvesi, taş merdiven, keçi silüeti", "Yavaş yukarı çıkış", "Charon", "Snowy mountain summit, stone staircase, goat silhouette", "slow climb upward"),
-    ("kova", "Kova", "20 Ocak – 18 Şubat", "Hava", "Neon su taşıyıcı, fütüristik şehir, elektrik mavisi", "Geniş açıdan içeri zoom", "Puck", "Neon water bearer, futuristic city, electric blue", "zoom in from a wide angle"),
+    ("kova", "Kova", "20 Ocak – 18 Şubat", "Hava", "Yıldızlı gökyüzünden su boşaltan göksel figür, safir nebula, altın takımyıldızı", "Geniş açıdan içeri zoom", "Puck", "Mythic Aquarius celestial figure pouring glowing water from starry heavens toward Earth, sapphire nebula, golden constellations", "zoom in from a wide angle"),
     ("balik", "Balık", "19 Şubat – 20 Mart", "Su", "Sualtı rüyası, iki balık, yumuşak mor-mavi", "Serbest yüzme hareketi", "Aoede", "Underwater dreamscape, two fish, soft violet-blue", "free-floating swimming motion"),
 ]
 
@@ -155,17 +155,20 @@ def _gemini_istem(burc: Dict[str, str], konu: str, sure_sn: float, dil: str,
             "eylemleri (ör. gökyüzünden yeryüzüne su boşaltma) ve mekanları BİREBİR İngilizce `image_prompt` "
             f"içine koy! {burc['ad']} burcunun ({burc['element']} elementi) kozmik yıldız ışığını sadece "
             "uyumlu atmosfer olarak ekle; kullanıcının istemediği fütüristik şehir, neon vb. alakasız sahneler UYDURMA.\n"
+            "Anlatım (`narration_text`) kullanıcının yazdığı konuyu doğrudan korusun; "
+            "'kısa bir astroloji molası', tarih aralığı ('20 Ocak - 18 Şubat') veya 'sakin bir anlatım izleyeceksiniz' "
+            "gibi kalıp/şablon cümleler ASLA ekleme!\n"
         )
     else:
         konu_kurali = f"Tema: {burc['gorsel_tema']}. Hareket: {burc['hareket_yonu']}.\n"
     return (
-        "Sen deneyimli bir astroloji & sinema video yönetmenisin. Aşağıdaki burç ve sahne için "
+        "Sen deneyimli bir sinema & görsel yönetmenisin. Aşağıdaki sahne için "
         f"{sure_sn:.0f} saniyelik kısa video planı üret.\n"
-        f"Burç: {burc['ad']} ({burc['tarih']}), element: {burc['element']}.\n"
-        f"{konu_kurali}"
+        + ("" if konu else f"Burç: {burc['ad']} ({burc['tarih']}), element: {burc['element']}.\n")
+        + f"{konu_kurali}"
         f"Kadro: {oran_en}.\n"
-        f"Yanıt dili: {dil}. narration_text bu dilde, akıcı, 2-4 cümle olsun; "
-        "abartılı kehanet ve tıbbi/finansal tavsiye verme.\n"
+        f"Yanıt dili: {dil}. narration_text bu dilde, sade ve doğrudan konuya sadık olsun; "
+        "kalıp giriş/kapanış şablonları ekleme.\n"
         "image_prompt YALNIZCA İNGİLİZCE ve tek ayrıntılı sinematik paragraf olsun; Türkçe kelime KULLANMA, "
         "metin/logo/watermark isteme.\n"
         "motion_prompt YALNIZCA İNGİLİZCE tek cümle kamera ve fiziksel hareket olsun.\n"
@@ -178,15 +181,11 @@ def _gemini_istem(burc: Dict[str, str], konu: str, sure_sn: float, dil: str,
 
 def _cevrimdisi_sonuc(burc: Dict[str, str], konu: str, dil: str,
                       hata: str, aspect_ratio: str = "9:16") -> Dict[str, Any]:
-    """AI olmayan, açıkça etiketli şablon. simulasyon=True her zaman korunur."""
+    """AI olmayan, açıkça etiketli şablon. Kullanıcının yazdığı metne ekstra kalıp eklemez."""
     oran_en = _oran_tarifi(aspect_ratio)
     if konu:
         gorsel_istem, sahne_listesi = _konuyu_gorsel_sahneye_cevir(konu, aspect_ratio)
-        anlatim = (
-            f"{burc['ad']} burcu kozmik sahnesi: {konu}. "
-            f"{burc['tarih']} aralığındaki {burc['element']} elementi atmosferi ve "
-            f"{burc['hareket_yonu'].lower()} eşliğinde sunulur."
-        )
+        anlatim = konu
     else:
         gorsel_istem = (
             f"Cinematic astrology keyframe for {burc['ad']} ({burc['element']} sign), "
@@ -194,12 +193,7 @@ def _cevrimdisi_sonuc(burc: Dict[str, str], konu: str, dil: str,
             f"no text, no watermark, {oran_en}"
         )
         sahne_listesi = [gorsel_istem]
-        anlatim = (
-            f"{burc['ad']} burcu için kısa bir astroloji molası. "
-            f"{burc['tarih']} aralığında doğanlar {burc['element']} elementinin "
-            f"etkisini taşır. Bu videoda {burc['gorsel_tema'].lower()} teması ve "
-            f"{burc['hareket_yonu'].lower()} eşliğinde sakin bir anlatım izleyeceksiniz."
-        )
+        anlatim = f"{burc['ad']} ({burc['tarih']}): {burc['gorsel_tema']}."
     uyari = ("GEMINI_API_KEY/Cloudflare LLM yanıt vermedi; bu metin AI üretimi "
              "değildir, çevrimdışı şablondur.")
     if dil != "tr":
@@ -235,12 +229,13 @@ def _senaryo_sahneleri_cikar(veri: Dict[str, Any], gorsel: str, hareket: str) ->
 
 
 def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
-                         dil: str = "tr", aspect_ratio: str = "9:16") -> Dict[str, Any]:
-    """Burç için anlatım + FLUX.2/Wan2.1 istemleri + altyazı metni üretir.
+                         dil: str = "tr", aspect_ratio: str = "9:16",
+                         raw_prompt: bool = False) -> Dict[str, Any]:
+    """Burç veya doğrudan kullanıcı promptu için sahne/altyazı istemleri üretir.
 
-    Gemini anahtarı varsa 2.5 Flash, sonra 2.0 Flash denenir; başarısızsa
-    Cloudflare Llama 3.3 70B / 3.1 8B (yalnızca İngilizce image_prompt) denenir.
-    Hiçbiri yanıt vermezse çevrimdışı şablon `konu`yu İngilizceye çevirerek döner.
+    * `raw_prompt=True` ve `konu` doluysa kullanıcı metnine burç kalıbı/metni
+      eklemez; `narration_text` kullanıcının girdiği metin olarak korunur ve
+      yalnızca sahne görselleri İngilizceye çevrilir.
     """
     import time
 
@@ -259,6 +254,50 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
     except (TypeError, ValueError):
         sn = 15.0
     dil, konu = (dil or "tr").strip().lower(), (konu or "").strip()
+
+    if raw_prompt and konu:
+        oran_en = _oran_tarifi(aspect_ratio)
+        try:
+            from prompt_director import plan_visual_scenes
+            plan = plan_visual_scenes(
+                prompt=konu,
+                style_preset="cinematic_realism",
+                camera_motion="orbital",
+                scene_count=2,
+                duration_sec=sn,
+                use_llm=True,
+            )
+            img_p = str(plan.get("image_prompt") or "").strip()
+            if img_p and oran_en not in img_p:
+                img_p = f"{img_p}, {oran_en}"
+            mot_p = str(plan.get("motion_prompt") or "smooth steady cinematic camera motion").strip()
+            sahneler = []
+            for sc in (plan.get("scenes") or []):
+                ip = str((sc or {}).get("image_prompt") or "").strip()
+                if ip:
+                    if oran_en not in ip:
+                        ip = f"{ip}, {oran_en}"
+                    sahneler.append({"image_prompt": ip, "motion_prompt": str(sc.get("motion_prompt") or mot_p).strip()})
+            if not sahneler:
+                sahneler = [{"image_prompt": img_p, "motion_prompt": mot_p}]
+            psrc = str(plan.get("planner_source") or "cevrimdisi_gorsel_harita")
+            return {
+                "ok": True,
+                "burc_kodu": kod,
+                "burc_adi": burc["ad"],
+                "narration_text": konu,
+                "image_prompt": img_p or f"{konu}, {oran_en}",
+                "motion_prompt": mot_p,
+                "scenes": sahneler,
+                "subtitle_text": konu,
+                "raw_prompt": True,
+                "simulasyon": (psrc == "cevrimdisi_gorsel_harita"),
+                "kaynak": f"dogrudan_prompt ({psrc})",
+            }
+        except Exception as direct_err:
+            off = _cevrimdisi_sonuc(burc, konu, dil, f"direct:{type(direct_err).__name__}", aspect_ratio=aspect_ratio)
+            off["raw_prompt"] = True
+            return off
     anahtarlar = _gemini_anahtarlari()
     son_hata = "GEMINI_API_KEY bulunamadı"
     istem = _gemini_istem(burc, konu, sn, dil, aspect_ratio=aspect_ratio)

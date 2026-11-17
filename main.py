@@ -2682,6 +2682,7 @@ async def burc_video_generate(req: Request):
     konu = str(body.get("konu") or "").strip()[:300]
     dil = str(body.get("dil") or "tr").strip().lower()[:8]
     aspect_ratio = str(body.get("aspect_ratio") or "9:16").strip()
+    raw_prompt = bool(body.get("raw_prompt"))
     try:
         sure_sn = max(3.0, min(120.0, float(body.get("sure_sn") or 15)))
     except (TypeError, ValueError):
@@ -2691,7 +2692,7 @@ async def burc_video_generate(req: Request):
         senaryo = await run_in_threadpool(
             lambda: mod.burc_senaryo_olustur(
                 burc_kodu=burc_kodu, konu=konu, sure_sn=int(round(sure_sn)), dil=dil,
-                aspect_ratio=aspect_ratio))
+                aspect_ratio=aspect_ratio, raw_prompt=raw_prompt))
     except TypeError:
         # Farklı imza (eski 4 parametre veya konumsal) ihtimaline karşı savunma.
         try:
@@ -2800,6 +2801,8 @@ async def burc_video_generate(req: Request):
         if isinstance(s, dict) and str(s.get("image_prompt") or "").strip()
     ] or [str(senaryo.get("image_prompt") or metin)[:1200]]
 
+    burc_stili = "cinematic_realism" if (raw_prompt and konu) else "astrology_mystic"
+
     job = {
         "id": job_id,
         "job_id": job_id,
@@ -2809,12 +2812,13 @@ async def burc_video_generate(req: Request):
         "image_model": image_model,
         "i2v_model": i2v_model,
         "video_model": i2v_model,
-        "style_preset": "astrology_mystic",
+        "style_preset": burc_stili,
         "prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "image_prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "motion_prompt": str(senaryo.get("motion_prompt") or "")[:400],
         "planner_source": str(senaryo.get("kaynak") or ""),
         "narration_text": metin,
+        "raw_prompt": bool(senaryo.get("raw_prompt") or (raw_prompt and konu)),
         "burc_kodu": senaryo.get("burc_kodu") or burc_kodu,
         "burc_adi": senaryo.get("burc_adi") or burc.get("ad", ""),
         "method": yontem,
@@ -2860,7 +2864,7 @@ async def burc_video_generate(req: Request):
                 image_prompts=scene_prompts,
                 motion_prompt=job["motion_prompt"],
                 aspect_ratio=job["aspect_ratio"],
-                style_preset="astrology_mystic",
+                style_preset=burc_stili,
                 camera_motion=str(body.get("camera_motion") or "orbital"),
                 duration_sec=sure_sn,
             )

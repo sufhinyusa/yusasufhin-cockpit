@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.17-render-v21",
-  "ozellik": "burc_prompt_paritesi_ve_video_stage_sutun",
+  "surum": "2026.11.17-render-v22",
+  "ozellik": "dogrudan_kullanici_promptu_ve_kalip_metin_temizligi",
   "kontrol": "gpu_worker_or_cloud"
 }

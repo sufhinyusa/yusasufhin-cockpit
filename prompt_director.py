@@ -213,15 +213,22 @@ def _offline_visual_grounding(prompt: str, style_preset: str) -> Tuple[str, List
     matches: List[str] = []
     used_spans: set[str] = set()
 
+    astroloji_baglami = (style_preset == "astrology_mystic") or any(
+        k in folded for k in ("burc", "astroloji", "takimyildiz", "zodiac")
+    )
+
     for stem, eng in _VISUAL_STEM_MAP:
         fstem = _tr_ascii_fold(stem)
         hit = (
             (" " in stem and (stem in low or fstem in folded))
             or any(_word_matches_stem(lw, fw, stem, fstem) for lw, fw in zip(low_words, fold_words))
         )
-        if hit and eng not in used_spans:
-            used_spans.add(eng)
-            matches.append(eng)
+        if hit:
+            if fstem == "kova" and not astroloji_baglami:
+                eng = "an ornate water bucket held firmly in hand"
+            if eng not in used_spans:
+                used_spans.add(eng)
+                matches.append(eng)
 
     stil = STYLE_MAP.get(style_preset, {})
     style_suffix = str(stil.get("prompt_suffix") or "cinematic film still, vivid coherent scene")

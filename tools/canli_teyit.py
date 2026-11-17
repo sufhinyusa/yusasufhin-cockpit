@@ -30,7 +30,7 @@ TABAN = "https://yusasufhin.com"
 # (Eski dedektör `fonts/DejaVuSans.ttf` idi; o dosya bir kez deploy edildikten
 #  sonra hep 200 döndüğü için yeni sürümleri ayırt edemiyordu.)
 SURUM_YOLU = "/static/surum.json"
-BEKLENEN_SURUM = "2026.11.17-render-v21"
+BEKLENEN_SURUM = "2026.11.17-render-v22"
 RAPOR = Path(__file__).resolve().parent.parent / "data" / "canli_teyit_rapor.txt"
 
 

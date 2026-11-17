@@ -1555,13 +1555,14 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=20" in sw_txt
-        assert "/lab.js?v=20" in lab_txt
+        assert "/lab.js?v=21" in sw_txt
+        assert "/lab.js?v=21" in lab_txt
         assert "/site.css?v=15" in idx_txt and "/site.css?v=15" in lab_txt
         assert "/styles.css?v=8" in fab_txt
-        assert "fabrika-pwa-v20-studio" in sw_txt
-        assert "fabrika-pwa-v20-studio" in lab_txt
-        assert "fabrika-pwa-v20-studio" in fab_txt
+        assert "fabrika-pwa-v21-studio" in sw_txt
+        assert "fabrika-pwa-v21-studio" in lab_txt
+        assert "fabrika-pwa-v21-studio" in fab_txt
+        assert "burcRawPromptCheck" in lab_txt
         assert "[hidden] { display: none !important; }" in site_css
         assert "overflow-x: clip;" in site_css
         assert "flex-direction: column;" in site_css
@@ -1588,15 +1589,26 @@ def test_burc_prompt_parity_cloudflare_dict_and_video_stage_layout(monkeypatch):
 
     konu = "elinde kova olan bir adam gökyüzünden yeryüzüne su boşaltıyor"
 
-    # 1. Çevrimdışı şablon bile özel konuyu fütüristik şehir şablonuyla ezmemeli ve oranı korumalıdır.
+    # 1. Çevrimdışı şablon bile özel konuyu fütüristik şehir şablonuyla ezmemeli ve kalıp metin yazmamalıdır.
     off = bp.burc_senaryo_olustur("kova", konu=konu, sure_sn=15, dil="tr", aspect_ratio="16:9")
     assert off["ok"] is True
     assert off["simulasyon"] is True
+    assert off["narration_text"] == konu
+    for yasak in ("astroloji molası", "etkisini taşır", "neon su taşıyıcı", "fütüristik şehir", "sakin bir anlatım"):
+        assert yasak not in off["narration_text"].lower()
     img_low = off["image_prompt"].lower()
     assert "futuristic city" not in img_low
     assert "16:9" in img_low
     assert ("water" in img_low or "pitcher" in img_low or "pouring" in img_low)
     assert len(off.get("scenes") or []) >= 2
+
+    # 1b. raw_prompt=True kullanıcının metnini aynen korur; 'kova' + 'burc' yoksa bucket olarak çevirir.
+    raw_res = bp.burc_senaryo_olustur("kova", konu=konu, sure_sn=15, dil="tr", aspect_ratio="16:9", raw_prompt=True)
+    assert raw_res["raw_prompt"] is True
+    assert raw_res["narration_text"] == konu
+    assert raw_res["subtitle_text"] == konu
+    assert "bucket" in raw_res["image_prompt"].lower()
+    assert "16:9" in raw_res["image_prompt"]
 
     # 2. Cloudflare dict yanıtı .strip() ile çökmez; 70B İngilizce sahneyi döner.
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf-tok")

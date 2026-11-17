@@ -1699,6 +1699,7 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
   var bImgModel = (document.getElementById('burcImageModelSelect') || {}).value || 'flux2-klein';
   var bI2vModel = (document.getElementById('burcI2vModelSelect') || {}).value || 'wan2.1-i2v-14b';
 
+  var rawPromptChecked = !!(document.getElementById('burcRawPromptCheck') || {}).checked;
   var yontem = forcedMethod || 'flux2_resim';
   if (!approvedImageUrl && _burcUploadedB64 && yontem !== 'flux2_resim') {
     yontem = 'wan_i2v';
@@ -1707,6 +1708,7 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
   var payload = {
     burc_kodu: burcKodu,
     konu: konu,
+    raw_prompt: !!(konu && rawPromptChecked),
     sure_sn: sureSn,
     aspect_ratio: aspect,
     render_target: target,
@@ -1740,9 +1742,10 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
       if (hudEl) {
         var bSahne = (res.d.senaryo && res.d.senaryo.image_prompt) || job.image_prompt || job.prompt || '';
         var bKaynak = (res.d.senaryo && res.d.senaryo.kaynak) || job.senaryo_kaynak || '';
+        var metinBaslik = job.raw_prompt ? 'Prompt' : 'Anlatım';
         hudEl.innerHTML = '♈ <strong>' + esc((res.d.burc && res.d.burc.ad) || burcKodu) + '</strong> · Bilet: <code>' + esc(res.d.job_id) + '</code>' + simBadge + '<br>' +
           '• Yöntem: <strong>' + esc(job.method) + '</strong> | Hedef: <strong>' + esc(job.render_target) + '</strong> | Oran: <strong>' + esc(job.aspect_ratio || aspect) + '</strong><br>' +
-          '• Anlatım: <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>' +
+          '• ' + metinBaslik + ': <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>' +
           (bSahne ? '<br>• 🎨 <strong>Görsel Sahne (' + esc(bKaynak || 'yerel') + '):</strong> <code>' + esc(bSahne) + '</code>' : '');
       }
 
