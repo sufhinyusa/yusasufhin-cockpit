@@ -12,14 +12,19 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=12">
+  <link rel="stylesheet" href="/site.css?v=13">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v10-studio') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v18-studio') caches.delete(names[i]);
         }
       });
+    }
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (var j = 0; j < regs.length; j++) { regs[j].update().catch(function(){}); }
+      }).catch(function(){});
     }
   </script>
 </head>
@@ -1135,7 +1140,7 @@
     <button type="button" data-site-theme-btn="minimal" aria-pressed="false" title="Minimalist">✨</button>
   </div>
 
-  <script src="/site.js?v=12"></script>
-  <script src="/lab.js?v=17"></script>
+  <script src="/site.js?v=13"></script>
+  <script src="/lab.js?v=18"></script>
 </body>
 </html>

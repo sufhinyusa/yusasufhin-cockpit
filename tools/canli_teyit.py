@@ -30,8 +30,8 @@ TABAN = "https://yusasufhin.com"
 # (Eski dedektör `fonts/DejaVuSans.ttf` idi; o dosya bir kez deploy edildikten
 #  sonra hep 200 döndüğü için yeni sürümleri ayırt edemiyordu.)
 SURUM_YOLU = "/static/surum.json"
-BEKLENEN_SURUM = "2026.11.12-flux2-wan21-kanit"
-RAPOR = Path("/tmp/canli_teyit_rapor.txt")
+BEKLENEN_SURUM = "2026.11.17-hyperframes-v18"
+RAPOR = Path(__file__).resolve().parent.parent / "data" / "canli_teyit_rapor.txt"
 
 
 
@@ -68,8 +68,11 @@ def deploy_var_mi() -> bool:
 
 
 
-def pin_bul() -> str | None:
-    """Persona/.env içinden GATEWAY_PIN okur (yalnız yerel kullanım)."""
+def _env_oku(anahtar: str) -> str | None:
+    """Ortam değişkeni veya `Persona/.env` içinden anahtar okur."""
+    val = os.environ.get(anahtar)
+    if val and val.strip():
+        return val.strip().strip('"').strip("'")
     adaylar = [
         Path("/Users/yusufsahin/Desktop/PYTHON PROJECTS/Fabrika/Persona/.env"),
         Path(__file__).resolve().parent.parent / ".env",
@@ -77,11 +80,19 @@ def pin_bul() -> str | None:
     for p in adaylar:
         try:
             for satir in p.read_text(encoding="utf-8").splitlines():
-                if satir.strip().startswith("GATEWAY_PIN="):
-                    return satir.split("=", 1)[1].strip().strip('"').strip("'")
+                k, _, v = satir.partition("=")
+                if k.strip().lower() == anahtar.lower() and not satir.strip().startswith("#"):
+                    temiz = v.strip().strip('"').strip("'")
+                    if temiz:
+                        return temiz
         except Exception:
             continue
-    return os.environ.get("GATEWAY_PIN")
+    return None
+
+
+def pin_bul() -> str | None:
+    """Persona/.env içinden `alansifre` veya `GATEWAY_PIN` okur (yalnız yerel kullanım)."""
+    return _env_oku("GATEWAY_PIN")
 
 
 def _mp4_dogrula(veri: bytes) -> str:
@@ -134,25 +145,33 @@ def tam_teyit() -> int:
         except Exception as e:
             satirlar.append(f"galeri okunamadı: {e}")
 
-    pin = pin_bul()
-    if not pin:
-        satirlar.append("PIN bulunamadı — üretim testi atlandı")
+    token = None
+    for pw_key in ("alansifre", "alanadisifre", "FABRIKA_GATEWAY_PASSWORD"):
+        pw = _env_oku(pw_key)
+        if not pw:
+            continue
+        kod, govde = _istek("/api/auth/login", {"password": pw})
+        if kod == 200:
+            token = json.loads(govde).get("token") or json.loads(govde).get("access_token")
+            if token:
+                break
+    if not token:
+        pin = pin_bul()
+        if pin:
+            kod, govde = _istek("/api/auth/verify_pin", {"pin": pin})
+            if kod == 200:
+                token = json.loads(govde).get("token")
+    if not token:
+        satirlar.append("login BAŞARISIZ (alansifre / GATEWAY_PIN)")
         rapor_yaz(satirlar)
         return 1
-
-    kod, govde = _istek("/api/auth/verify_pin", {"pin": pin})
-    if kod != 200:
-        satirlar.append(f"login BAŞARISIZ HTTP {kod}")
-        rapor_yaz(satirlar)
-        return 1
-    token = json.loads(govde).get("token")
     satirlar.append("login OK")
 
     kod, govde = _istek("/api/studio/video/generate", {
         "channel": "Astroloji_Kova",
         "prompt": "Kova burcu haftalik analizi: gezegen kavusumlari ve sezgisel uyanis donemi",
-        "method": "remotion_cinema",
-        "render_target": "local_mac",
+        "workflow": "hyperframes_motion",
+        "execution_mode": "auto",
     }, token=token, zaman_asimi=180)
     satirlar.append(f"üretim HTTP {kod}")
     if kod != 200:
@@ -182,18 +201,20 @@ def tam_teyit() -> int:
     satirlar.append(f"indirme HTTP {kod} ({len(veri)} bayt)")
     satirlar.append("MP4 doğrulama: " + _mp4_dogrula(veri))
 
-    hedef = Path("/tmp/canli_teyit_video.mp4")
-    hedef.write_bytes(veri)
-    try:
-        cikti = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration,size,bit_rate",
-             "-show_entries", "stream=codec_name,width,height,nb_frames",
-             "-of", "default=nw=1", str(hedef)],
-            capture_output=True, text=True, timeout=60,
-        )
-        satirlar.append("ffprobe:\n" + (cikti.stdout or cikti.stderr).strip())
-    except Exception as e:
-        satirlar.append(f"ffprobe çalıştırılamadı: {e}")
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="canli_teyit_") as td:
+        hedef = Path(td) / "canli_teyit_video.mp4"
+        hedef.write_bytes(veri)
+        try:
+            cikti = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration,size,bit_rate",
+                 "-show_entries", "stream=codec_name,width,height,nb_frames",
+                 "-of", "default=nw=1", str(hedef)],
+                capture_output=True, text=True, timeout=60,
+            )
+            satirlar.append("ffprobe:\n" + (cikti.stdout or cikti.stderr).strip())
+        except Exception as e:
+            satirlar.append(f"ffprobe çalıştırılamadı: {e}")
 
     rapor_yaz(satirlar)
     return 0 if "BAŞARILI" in "\n".join(satirlar) else 1

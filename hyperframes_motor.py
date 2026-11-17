@@ -268,7 +268,7 @@ def instant_i2v_motion(
             "-vf", vf_str,
             "-map", "0:v:0", "-map", "1:a:0",
             "-frames:v", str(kare),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "22", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart",
             str(gecici),
         ]

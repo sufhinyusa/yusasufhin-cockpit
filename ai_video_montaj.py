@@ -306,7 +306,7 @@ def _cloudflare_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
             url, data=govde,
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=180) as y:
+        with urllib.request.urlopen(req, timeout=30) as y:
             veri = _json.loads(y.read())
         if not veri.get("success"):
             logger.info("[AIVideoMontaj] CF yanıtı: %s", str(veri)[:160])
@@ -356,7 +356,7 @@ def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
     )
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "yusasufhin-cockpit/1.0"})
-        with urllib.request.urlopen(req, timeout=150) as y:
+        with urllib.request.urlopen(req, timeout=30) as y:
             ham = y.read()
         if len(ham) < 5000:
             return None
@@ -373,14 +373,9 @@ def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
 
 
 def _pollinations_sahne_tekrar(prompt: str, hedef: Path, genislik: int, yukseklik: int,
-                               tohum: int, deneme: int = 4) -> Optional[Path]:
-    """`_pollinations_sahne` + üstel geri çekilme.
-
-    NEDEN: Pollinations hızlı ardışık isteklerde 429 (rate limit) döndürüyor;
-    ilk sahne geçip 2. ve 3. sahne 0.3 sn'de başarısız oluyordu (montaj tek
-    sahneye düşüyordu). 4 deneme + artan bekleme bunu çözer.
-    """
-    bekleme = 3.0
+                               tohum: int, deneme: int = 2) -> Optional[Path]:
+    """`_pollinations_sahne` + kısa geri çekilme (Cloudflare 100 sn HTTP tavanına uyumlu)."""
+    bekleme = 1.5
     for deneme_no in range(1, deneme + 1):
         sonuc = _pollinations_sahne(prompt, hedef, genislik, yukseklik, tohum)
         if sonuc is not None:

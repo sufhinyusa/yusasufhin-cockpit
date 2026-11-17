@@ -1130,7 +1130,7 @@ window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) 
   }
 
   if (taskBadge) {
-    taskBadge.textContent = (execMode === 'instant_cloud' || workflow === 'hyperframes_motion' || workflow === 'product_launch')
+    taskBadge.textContent = (execMode === 'instant_cloud' || (execMode === 'auto' && _liveGpuWorkersCount <= 0) || workflow === 'hyperframes_motion' || workflow === 'product_launch')
       ? '⚡ Bulutta Üretiliyor...' : '⏳ Kuyruğa Gönderiliyor...';
     taskBadge.className = 'site-badge site-badge-free';
   }
@@ -2059,7 +2059,8 @@ var _liveGpuWorkersCount = 0;
 window._resolveStudioExecMode = function () {
   var sel = (document.getElementById('videoExecModeSelect') || {}).value || 'auto';
   if (sel === 'gpu_queue') return 'gpu_queue';
-  return _liveGpuWorkersCount > 0 ? 'gpu_queue' : 'instant_cloud';
+  if (sel === 'instant_cloud') return 'instant_cloud';
+  return 'auto';
 };
 
 window.refreshStudioWorkerWarn = function () {

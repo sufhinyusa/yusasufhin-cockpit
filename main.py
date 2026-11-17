@@ -1459,7 +1459,11 @@ async def generate_lab_video(req: Request):
                 "not": "Yerel sahte render yapılmadı; gerçek üretim Kaggle/Colab GPU işçisinde.",
             },
         }
-        aninda = method in ("hyperframes_motion", "product_launch") or execution_mode == "instant_cloud"
+        aninda = (
+            method in ("hyperframes_motion", "product_launch")
+            or execution_mode == "instant_cloud"
+            or (execution_mode == "auto" and not _has_live_gpu_worker())
+        )
         if aninda:
             res = await run_in_threadpool(
                 lambda: _run_instant_cloud_render_sync(
@@ -2079,7 +2083,11 @@ async def studio_video_generate(req: Request):
         "hyperframes_motion", "product_launch",
     )
     if method in gpu_diffusion_methods:
-        scene_n = 3 if (method in ("hyperframes_motion", "product_launch", "image_then_i2v", "t2v_direct") or execution_mode == "instant_cloud") else 1
+        scene_n = 3 if (
+            method in ("hyperframes_motion", "product_launch", "image_then_i2v", "t2v_direct")
+            or execution_mode == "instant_cloud"
+            or (execution_mode == "auto" and not _has_live_gpu_worker())
+        ) else 1
         story = await run_in_threadpool(
             lambda: compose_story_plan(
                 effective_prompt, style_preset, camera_motion, neg_raw, scene_count=scene_n, duration_sec=sure_sn
@@ -2159,7 +2167,11 @@ async def studio_video_generate(req: Request):
                 else f"Tutarlı 2 aşamalı GPU üretimi ({image_model} → {i2v_model}) kuyruğa alındı."
             ),
         }
-        aninda = method in ("hyperframes_motion", "product_launch") or execution_mode == "instant_cloud"
+        aninda = (
+            method in ("hyperframes_motion", "product_launch")
+            or execution_mode == "instant_cloud"
+            or (execution_mode == "auto" and not _has_live_gpu_worker())
+        )
         if aninda:
             res = await run_in_threadpool(
                 lambda: _run_instant_cloud_render_sync(
@@ -2814,7 +2826,11 @@ async def burc_video_generate(req: Request):
         },
         "created_at": time.time(),
     }
-    aninda = yontem == "hyperframes_motion" or execution_mode == "instant_cloud"
+    aninda = (
+        yontem == "hyperframes_motion"
+        or execution_mode == "instant_cloud"
+        or (execution_mode == "auto" and not _has_live_gpu_worker())
+    )
     if aninda:
         res = await run_in_threadpool(
             lambda: _run_instant_cloud_render_sync(

@@ -1419,6 +1419,89 @@ def test_product_launch_ssrf_rejected_and_queue_instant_render(client, auth_head
                 p.unlink(missing_ok=True)
 
 
+def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers, monkeypatch):
+    """execution_mode='auto' işçisiz bulutta anında render eder, işçi bağlıyken GPU kuyruğuna yönlendirir."""
+    import ai_video_montaj as avm
+    import hyperframes_motor as hf
+    import main as main_mod
+
+    def fast_prev(prompt, hedef_yol, genislik=1280, yukseklik=720, **kw):
+        hf._kinetic_card_png(hedef_yol, "Auto Mode Frame", prompt[:60], 640, 360)
+        return {"ok": True, "provider": "test_mock"}
+
+    monkeypatch.setattr(avm, "preview_single_image", fast_prev)
+    created_ids = []
+    try:
+        main_mod.ACTIVE_GPU_WORKERS.clear()
+
+        auto_studio = client.post("/api/studio/video/generate", json={
+            "channel": "Astroloji_Kova",
+            "workflow": "image_then_i2v",
+            "execution_mode": "auto",
+            "aspect_ratio": "16:9",
+            "duration": 3,
+            "voice": "none",
+            "prompt": "Kova burcu kozmik sahne",
+        }, headers=auth_headers)
+        assert auto_studio.status_code == 200
+        st_task = auto_studio.json()["task"]
+        created_ids.append(st_task["job_id"])
+        assert st_task["gpu_kuyruk"] is False
+        assert st_task["output_url"].startswith("/api/media/file?path=")
+
+        auto_burc = client.post("/api/burc/video/generate", json={
+            "burc_kodu": "kova",
+            "konu": "Kariyer ve dönüşüm",
+            "sure_sn": 3,
+            "method": "image_then_i2v",
+            "execution_mode": "auto",
+        }, headers=auth_headers)
+        assert auto_burc.status_code == 200
+        b_task = auto_burc.json()["task"]
+        created_ids.append(b_task["job_id"])
+        assert b_task["gpu_kuyruk"] is False
+        assert b_task["output_url"].startswith("/api/media/file?path=")
+
+        # Canlı GPU işçisi kalp atışı göndermişse `auto` gerçek GPU kuyruğuna alır
+        wh = {"X-Worker-Key": main_mod.get_worker_key()}
+        hb = client.post("/api/worker/heartbeat", json={
+            "worker_id": "kaggle_live_t4",
+            "worker_type": "kaggle",
+            "gpu_name": "Tesla T4",
+            "vram_gb": 16.0,
+            "status": "idle",
+        }, headers=wh)
+        assert hb.status_code == 200
+
+        gpu_studio = client.post("/api/studio/video/generate", json={
+            "channel": "Astroloji_Kova",
+            "workflow": "image_then_i2v",
+            "execution_mode": "auto",
+            "aspect_ratio": "16:9",
+            "duration": 3,
+            "voice": "none",
+            "prompt": "Canlı işçi kuyruk yönlendirmesi",
+        }, headers=auth_headers)
+        assert gpu_studio.status_code == 200
+        g_task = gpu_studio.json()["task"]
+        created_ids.append(g_task["job_id"])
+        assert g_task["gpu_kuyruk"] is True
+        assert g_task["gpu_durum"] == "bekliyor"
+
+        sw_txt = (Path(__file__).resolve().parent.parent / "static" / "sw.js").read_text(encoding="utf-8")
+        lab_txt = (Path(__file__).resolve().parent.parent / "static" / "lab.html").read_text(encoding="utf-8")
+        assert "/lab.js?v=18" in sw_txt
+        assert "/lab.js?v=18" in lab_txt
+        assert "fabrika-pwa-v18-studio" in sw_txt
+        assert "fabrika-pwa-v18-studio" in lab_txt
+    finally:
+        main_mod.ACTIVE_GPU_WORKERS.clear()
+        for jid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
+                p.unlink(missing_ok=True)
+
+
+
 
 
 
