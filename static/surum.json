@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.17-mobile-v19",
-  "ozellik": "hyperframes_auto_mode_ve_mobil_duzen",
+  "surum": "2026.11.17-render-v20",
+  "ozellik": "hyperframes_low_mem_cloudflare_dict_fix",
   "kontrol": "gpu_worker_or_cloud"
 }

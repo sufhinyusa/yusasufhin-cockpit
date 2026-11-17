@@ -1032,6 +1032,67 @@ def test_gpu_worker_image_then_i2v_dispatch(tmp_path, monkeypatch):
     assert kayitlar[2][:2] == ("i2v", "cogvideox-5b-i2v")
 
 
+def test_cloudflare_llm_dict_response_and_render_budget(monkeypatch, tmp_path):
+    """Cloudflare dict result.response AttributeError vermez ve RENDER modunda 2 sahneli 480p üretir."""
+    import json as _json
+    import ai_video_montaj as avm
+    import hyperframes_motor as hf
+    import prompt_director as pd
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf_tok")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "cf_acc")
+    for k in list(os.environ):
+        if "GEMINI_API_KEY" in k.upper():
+            monkeypatch.delenv(k, raising=False)
+
+    class FakeResp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+        def read(self):
+            return _json.dumps({
+                "success": True,
+                "result": {
+                    "response": {
+                        "narration_text": "Kova burcu kozmik sularla akıyor",
+                        "motion_prompt": "smooth cosmic orbit",
+                        "scenes": [
+                            {"image_prompt": "Aquarius pouring cosmic water above Earth"},
+                            {"image_prompt": "Golden constellations over starry clouds"},
+                        ],
+                    }
+                },
+            }).encode("utf-8")
+
+    monkeypatch.setattr(pd.urllib.request, "urlopen", lambda req, timeout=10: FakeResp())
+    plan = pd.plan_visual_scenes("kova burcu su boşaltıyor", style_preset="astrology_mystic", scene_count=2, use_llm=True)
+    assert plan["planner_source"].startswith("cloudflare:")
+    assert "aquarius" in plan["image_prompt"].lower()
+
+    monkeypatch.setenv("RENDER", "true")
+    seen = []
+
+    def fake_prev(prompt, hedef_png, genislik=1280, yukseklik=720, **kw):
+        seen.append((genislik, yukseklik, kw.get("use_planner")))
+        hf._kinetic_card_png(hedef_png, "Render 480p", prompt[:60], genislik, yukseklik)
+        return {"ok": True, "provider": "test_mock"}
+
+    monkeypatch.setattr(avm, "preview_single_image", fake_prev)
+    res = hf.hyperframes_studio_render(
+        tmp_path / "out.mp4",
+        tmp_path / "out.html",
+        prompt="Kova testi",
+        image_prompts=["Aquarius water bearer", "Cosmic nebula", "Glowing stars"],
+        aspect_ratio="16:9",
+        duration_sec=5.0,
+    )
+    assert res["ok"] is True
+    assert res["resolution"] == "854x480"
+    assert len(seen) == 2
+    assert all(item == (854, 480, False) for item in seen)
+
+
 def test_prompt_director_grounds_turkish_astroloji_to_english_visuals(monkeypatch):
     """Türkçe soyut istem (ör. Kova burcu analizi) ham halde difüzyona gitmez, İngilizce sahneye çevrilir."""
     import prompt_director as pd

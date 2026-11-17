@@ -11,6 +11,7 @@ video_factory/
 static/media/*
 data/.session_secret
 data/.worker_key
+data/canli_teyit_rapor.txt
 graft/
 temp/
 *.db

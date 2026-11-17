@@ -163,23 +163,30 @@ def preview_single_image(
     yukseklik: int = 720,
     style_preset: str = "cinematic_realism",
     camera_motion: str = "otomatik",
+    use_planner: bool = True,
 ) -> Dict[str, Any]:
     """Hızlı bulut önizleme PNG üretir (Cloudflare FLUX.1-schnell birincil, Pollinations yedek)."""
-    try:
-        from prompt_director import plan_visual_scenes
+    if use_planner:
+        try:
+            from prompt_director import plan_visual_scenes
 
-        plan = plan_visual_scenes(
-            prompt=prompt, style_preset=style_preset, camera_motion=camera_motion, scene_count=1, use_llm=True
-        )
-        img_prompt = plan["image_prompt"]
-        mot_prompt = plan["motion_prompt"]
-        narration = plan["narration_text"]
-        planner = plan["planner_source"]
-    except Exception:
+            plan = plan_visual_scenes(
+                prompt=prompt, style_preset=style_preset, camera_motion=camera_motion, scene_count=1, use_llm=True
+            )
+            img_prompt = plan["image_prompt"]
+            mot_prompt = plan["motion_prompt"]
+            narration = plan["narration_text"]
+            planner = plan["planner_source"]
+        except Exception:
+            img_prompt = prompt
+            mot_prompt = prompt
+            narration = prompt
+            planner = "ham_fallback"
+    else:
         img_prompt = prompt
         mot_prompt = prompt
         narration = prompt
-        planner = "ham_fallback"
+        planner = "hazir_sahne"
 
     hedef = Path(hedef)
     hedef.parent.mkdir(parents=True, exist_ok=True)
@@ -519,7 +526,8 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
     `d=1` kullanılır: her giriş karesi tam bir çıkış karesi olur, süreyi
     `-frames:v` belirler.
     """
-    kare = max(1, int(sure_sn * 30))
+    render_fps = 24 if os.environ.get("RENDER") else 30
+    kare = max(1, int(sure_sn * render_fps))
     mod = hareket or ("zoom_in" if zoom_in else "zoom_out")
     x_ifade = "iw/2-(iw/zoom/2)"
     y_ifade = "ih/2-(ih/zoom/2)"
@@ -536,14 +544,14 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
 
     cmd = [
         _ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-        "-loop", "1", "-framerate", "30", "-t", f"{sure_sn:.3f}", "-i", str(sahne_png),
+        "-loop", "1", "-framerate", str(render_fps), "-t", f"{sure_sn:.3f}", "-i", str(sahne_png),
         "-vf", (
-            f"scale={int(genislik * 1.25)}:{int(yukseklik * 1.25)},"
+            f"scale={int(genislik * 1.18)}:{int(yukseklik * 1.18)},"
             f"zoompan=z='{z_ifade}':x='{x_ifade}':y='{y_ifade}':"
-            f"d=1:s={genislik}x{yukseklik}:fps=30,setsar=1,format=yuv420p"
+            f"d=1:s={genislik}x{yukseklik}:fps={render_fps},setsar=1,format=yuv420p"
         ),
         "-frames:v", str(kare),
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-threads", "1", "-crf", "24",
         "-pix_fmt", "yuv420p",
         str(cikti),
     ]
@@ -586,7 +594,7 @@ def montaj_birlestir(sahne_mp4leri: List[Path], hedef: Path,
     cmd += [
         "-filter_complex", filtre,
         "-map", onceki,
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-crf", "24",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(hedef),
     ]

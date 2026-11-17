@@ -268,7 +268,7 @@ def instant_i2v_motion(
             "-vf", vf_str,
             "-map", "0:v:0", "-map", "1:a:0",
             "-frames:v", str(kare),
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "22", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-threads", "1", "-crf", "24", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart",
             str(gecici),
         ]
@@ -362,8 +362,14 @@ def hyperframes_studio_render(
     """Çok sahneli HyperFrames + Link #296 sinematik montaj motoru."""
     import ai_video_montaj as _avm
 
+    dusuk_bellek = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
     w, h = _cozunurluk(aspect_ratio)
-    sahneler_say = max(2, min(4, len(image_prompts) or 3))
+    if dusuk_bellek:
+        oran = (aspect_ratio or "16:9").replace(" ", "")
+        w, h = (480, 854) if oran == "9:16" else (480, 480) if oran == "1:1" else (854, 480)
+        sahneler_say = 2
+    else:
+        sahneler_say = max(2, min(4, len(image_prompts) or 3))
     sahne_suresi = max(2.5, min(5.0, float(duration_sec) / sahneler_say))
 
     gecici = Path(tempfile.mkdtemp(prefix="hf_studio_"))
@@ -373,7 +379,10 @@ def hyperframes_studio_render(
         for i in range(sahneler_say):
             sp = image_prompts[i % len(image_prompts)] if image_prompts else prompt
             hedef_png = gecici / f"scene_{i}.png"
-            prev = _avm.preview_single_image(sp, hedef_png, genislik=w, yukseklik=h, style_preset=style_preset, camera_motion=camera_motion)
+            prev = _avm.preview_single_image(
+                sp, hedef_png, genislik=w, yukseklik=h,
+                style_preset=style_preset, camera_motion=camera_motion, use_planner=False,
+            )
             if prev.get("ok") and hedef_png.is_file():
                 saglayici = str(prev.get("provider") or "cloud")
                 png_list.append(hedef_png)

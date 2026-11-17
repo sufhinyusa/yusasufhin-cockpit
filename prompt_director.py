@@ -255,12 +255,7 @@ def _cf_credentials() -> Tuple[Optional[str], Optional[str]]:
     return token, hesap
 
 
-def _parse_plan_json(txt: str, scene_count: int, cam_hint: str, source_tag: str) -> Optional[Dict[str, Any]]:
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (txt or "").strip(), flags=re.IGNORECASE)
-    bas, son = cleaned.find("{"), cleaned.rfind("}")
-    if bas < 0 or son <= bas:
-        return None
-    parsed = json.loads(cleaned[bas:son + 1])
+def _normalize_plan_dict(parsed: Dict[str, Any], scene_count: int, cam_hint: str, source_tag: str) -> Optional[Dict[str, Any]]:
     scenes = [s for s in (parsed.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")]
     if scenes and parsed.get("narration_text"):
         return {
@@ -271,6 +266,17 @@ def _parse_plan_json(txt: str, scene_count: int, cam_hint: str, source_tag: str)
             "simulasyon": False,
         }
     return None
+
+
+def _parse_plan_json(txt: Any, scene_count: int, cam_hint: str, source_tag: str) -> Optional[Dict[str, Any]]:
+    if isinstance(txt, dict):
+        return _normalize_plan_dict(txt, scene_count, cam_hint, source_tag)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", str(txt or "").strip(), flags=re.IGNORECASE)
+    bas, son = cleaned.find("{"), cleaned.rfind("}")
+    if bas < 0 or son <= bas:
+        return None
+    parsed = json.loads(cleaned[bas:son + 1])
+    return _normalize_plan_dict(parsed, scene_count, cam_hint, source_tag) if isinstance(parsed, dict) else None
 
 
 def _cloudflare_llm_plan(
@@ -298,13 +304,13 @@ def _cloudflare_llm_plan(
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=14) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 raw = json.loads(resp.read().decode("utf-8"))
-            txt = ((raw.get("result") or {}).get("response") or "").strip()
-            plan = _parse_plan_json(txt, scene_count, cam_hint, f"cloudflare:{model.split('/')[-1]}")
+            resp_val = (raw.get("result") or {}).get("response")
+            plan = _parse_plan_json(resp_val, scene_count, cam_hint, f"cloudflare:{model.split('/')[-1]}")
             if plan:
                 return plan
-        except (urllib.error.URLError, ValueError, KeyError, IndexError, TimeoutError):
+        except Exception:
             continue
     return None
 
@@ -337,6 +343,8 @@ def _gemini_plan(
         '{"narration_text": "...", "motion_prompt": "...", "scenes": [{"image_prompt": "...", "motion_prompt": "..."}]}'
     )
 
+    import time
+
     keys = _gemini_keys()
     if keys:
         body = json.dumps({
@@ -344,10 +352,11 @@ def _gemini_plan(
             "generationConfig": {"temperature": 0.4, "maxOutputTokens": 900, "responseMimeType": "application/json"},
         }).encode("utf-8")
 
+        t_basla = time.monotonic()
         dead_keys: set[str] = set()
         for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-            for key in keys:
-                if key in dead_keys:
+            for key in keys[:4]:
+                if key in dead_keys or (time.monotonic() - t_basla) > 5.5:
                     continue
                 url = (
                     "https://generativelanguage.googleapis.com/v1beta/models/"
@@ -355,7 +364,7 @@ def _gemini_plan(
                 )
                 req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
                 try:
-                    with urllib.request.urlopen(req, timeout=8) as resp:
+                    with urllib.request.urlopen(req, timeout=4) as resp:
                         raw = json.loads(resp.read().decode("utf-8"))
                     parts = ((raw.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
                     txt = "".join(str(p.get("text") or "") for p in parts).strip()
@@ -366,7 +375,7 @@ def _gemini_plan(
                     if e.code in (400, 403, 404):
                         dead_keys.add(key)
                     continue
-                except (urllib.error.URLError, ValueError, KeyError, IndexError, TimeoutError):
+                except Exception:
                     continue
 
     return _cloudflare_llm_plan(director_prompt, scene_count, cam_hint)
