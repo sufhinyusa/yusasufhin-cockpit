@@ -177,6 +177,9 @@ body {
 .roster-section {
   padding: 16px;
   overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   flex: 1;
 }
 
@@ -394,6 +397,8 @@ body {
   gap: 14px;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .msg-row {
@@ -465,7 +470,10 @@ code {
   padding: 8px 18px;
   display: flex;
   gap: 8px;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
   scrollbar-width: none;
   flex-shrink: 0;
   -webkit-overflow-scrolling: touch;
@@ -731,22 +739,44 @@ code {
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(10px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   z-index: 1000;
-  padding: 16px;
+  padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
 }
 
-.modal-content {
+.modal-content,
+.rea-modal {
   background: #0d121c;
   border: 1px solid rgba(0, 242, 254, 0.3);
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 680px;
-  max-height: 90vh;
+  max-height: 88dvh;
   overflow-y: auto;
-  padding: 24px;
+  -webkit-overflow-scrolling: touch;
+  margin: auto;
+  padding: 20px;
   box-shadow: 0 0 35px rgba(0, 242, 254, 0.15);
+}
+
+.rea-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 10px;
+}
+
+.rea-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-cyan);
 }
 
 .modal-header {
@@ -841,6 +871,7 @@ textarea#reaInput:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
 }
@@ -1107,9 +1138,12 @@ select#reaPersonaSelect {
   backdrop-filter: blur(35px);
   -webkit-backdrop-filter: blur(35px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: max(16px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -1125,11 +1159,12 @@ select#reaPersonaSelect {
 .pin-card {
   width: 100%;
   max-width: 350px;
+  margin: auto;
   background: rgba(15, 23, 42, 0.72);
   border: 1px solid rgba(0, 242, 254, 0.22);
   border-radius: 28px;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(0, 242, 254, 0.12);
-  padding: 32px 24px 24px;
+  padding: 28px 20px 22px;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -1871,10 +1906,11 @@ select#reaPersonaSelect {
 
 .link-pool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 12px;
-  max-height: 55vh;
+  max-height: 55dvh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-right: 4px;
 }
 
@@ -2038,4 +2074,30 @@ select#reaPersonaSelect {
   .hide-mobile {
     display: none;
   }
+}
+
+@media (max-width: 640px) {
+  .bento-dashboard {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    gap: 8px;
+    padding: 8px 12px;
+    max-width: 100%;
+  }
+  .bento-dashboard::-webkit-scrollbar { display: none; }
+  .bento-card {
+    flex: 0 0 185px;
+    min-width: 185px;
+    padding: 9px 11px;
+  }
+  .bento-main-val { font-size: 1.08rem; }
+}
+
+@media (max-height: 700px) {
+  .numpad-key { height: 50px; font-size: 1.25rem; }
+  .pin-indicators { margin: 14px 0 8px; }
 }

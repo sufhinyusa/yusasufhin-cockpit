@@ -2,7 +2,7 @@
 <html lang="tr" data-theme="cyber_hud">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>yusasufhin.com — Fabrika AI Komuta Merkezi</title>
   
   <!-- PWA Meta Tags -->
@@ -14,15 +14,20 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/styles.css?v=6">
+  <link rel="stylesheet" href="/styles.css?v=8">
   <script>
     // Kurumsal VPN & Tarayıcı Eski Service Worker Önbellek Temizleyici
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (let name of names) {
-          if (name !== 'fabrika-pwa-v7-site') caches.delete(name);
+          if (name !== 'fabrika-pwa-v19-studio') caches.delete(name);
         }
       });
+    }
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (var j = 0; j < regs.length; j++) { regs[j].update().catch(function(){}); }
+      }).catch(function(){});
     }
   </script>
 </head>
@@ -555,6 +560,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=6"></script>
+  <script src="/app.js?v=8"></script>
 </body>
 </html>

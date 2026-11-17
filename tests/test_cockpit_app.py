@@ -1490,10 +1490,21 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
 
         sw_txt = (Path(__file__).resolve().parent.parent / "static" / "sw.js").read_text(encoding="utf-8")
         lab_txt = (Path(__file__).resolve().parent.parent / "static" / "lab.html").read_text(encoding="utf-8")
-        assert "/lab.js?v=18" in sw_txt
-        assert "/lab.js?v=18" in lab_txt
-        assert "fabrika-pwa-v18-studio" in sw_txt
-        assert "fabrika-pwa-v18-studio" in lab_txt
+        idx_txt = (Path(__file__).resolve().parent.parent / "static" / "index.html").read_text(encoding="utf-8")
+        fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
+        site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
+        styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
+        assert "/lab.js?v=19" in sw_txt
+        assert "/lab.js?v=19" in lab_txt
+        assert "/site.css?v=14" in idx_txt and "/site.css?v=14" in lab_txt
+        assert "/styles.css?v=8" in fab_txt
+        assert "fabrika-pwa-v19-studio" in sw_txt
+        assert "fabrika-pwa-v19-studio" in lab_txt
+        assert "fabrika-pwa-v19-studio" in fab_txt
+        assert "[hidden] { display: none !important; }" in site_css
+        assert "overflow-x: clip;" in site_css
+        assert ".site-picker-tray" in site_css and "min-width: 0" in site_css
+        assert "overflow-y: auto" in styles_css and "touch-action: pan-x" in styles_css
     finally:
         main_mod.ACTIVE_GPU_WORKERS.clear()
         for jid in created_ids:

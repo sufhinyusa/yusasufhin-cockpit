@@ -67,6 +67,8 @@ html[data-site-theme="minimal"] {
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -75,10 +77,15 @@ html, body {
   color: var(--site-text);
   font-family: var(--site-font);
   -webkit-font-smoothing: antialiased;
+  -webkit-overflow-scrolling: touch;
+  overflow-x: clip;
   scroll-behavior: smooth;
 }
 
-body.site-body { overflow-x: hidden; }
+body.site-body { overflow-x: clip; }
+
+img, video { max-width: 100%; height: auto; }
+code, pre { overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
 
 /* ── Canlı arka plan (Link #103) ───────────────────────────────────────── */
 .site-canvas {
@@ -156,7 +163,38 @@ html[data-site-theme="minimal"] .site-canvas { opacity: 0.28; }
 .site-nav-links a:hover { color: var(--site-accent); }
 
 @media (max-width: 760px) {
-  .site-nav-links { display: none; }
+  .site-nav {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 0;
+  }
+  .site-nav-links {
+    order: 3;
+    flex: 1 1 100%;
+    margin-left: 0;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+    padding: 2px 0 4px;
+  }
+  .site-nav-links::-webkit-scrollbar { display: none; }
+  .site-nav-links a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--site-border);
+    background: var(--site-card);
+  }
+  .site-nav .site-btn {
+    margin-left: auto;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+  }
 }
 
 /* ── Düğmeler ──────────────────────────────────────────────────────────── */
@@ -282,8 +320,27 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
 
 .site-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(292px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 18px;
+}
+
+.site-grid > *,
+.site-hub-grid > *,
+.site-model-grid > *,
+.site-channel-grid > *,
+.site-cards-grid > *,
+.site-studio-grid > *,
+.site-studio-row-2 > *,
+.site-studio-row-3 > *,
+.site-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.site-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
 }
 
 .site-card {
@@ -366,9 +423,13 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
   inset: 0;
   z-index: 90;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 22px;
+  justify-content: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: max(22px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--site-bg) 88%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -379,7 +440,8 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
 .site-gate-card {
   width: 100%;
   max-width: 396px;
-  padding: 32px 28px;
+  margin: auto;
+  padding: 28px 22px;
   border-radius: 22px;
   border: 1px solid var(--site-border-strong);
   background: var(--site-card);
@@ -463,8 +525,11 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 26px;
+  justify-content: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: max(26px, env(safe-area-inset-top)) 16px max(96px, calc(32px + env(safe-area-inset-bottom)));
   background: color-mix(in srgb, var(--site-bg) 92%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -472,7 +537,7 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
 
 .site-hub[hidden] { display: none; }
 
-.site-hub-head { text-align: center; margin-bottom: 34px; }
+.site-hub-head { text-align: center; margin: auto 0 28px; }
 
 .site-hub-head h2 {
   margin: 0 0 8px;
@@ -484,8 +549,8 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
 
 .site-hub-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 268px), 1fr));
+  gap: 16px;
   width: 100%;
   max-width: 720px;
 }
@@ -547,10 +612,13 @@ html[data-site-theme="saas"] .site-btn-primary { color: #fff; }
 }
 
 .site-hub-foot {
-  margin-top: 30px;
+  margin: 26px 0 auto;
+  padding-bottom: 12px;
   display: flex;
   gap: 14px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   color: var(--site-text-faint);
   font-size: 0.78rem;
 }
@@ -644,7 +712,7 @@ html[data-site-theme="saas"] .site-lab-tab[aria-selected="true"] { color: #fff; 
 
 .site-model-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
   gap: 16px;
 }
 
@@ -962,6 +1030,19 @@ html[data-site-theme="saas"] .site-nav-pill.active {
 }
 
 @media (max-width: 768px) {
+  .site-shell {
+    padding: 0 14px max(96px, calc(76px + env(safe-area-inset-bottom)));
+  }
+  .site-card {
+    padding: 18px 14px;
+  }
+  .site-hero {
+    padding: 44px 0 32px;
+  }
+  .site-studio-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   .site-studio-grid {
     grid-template-columns: 1fr;
   }
@@ -970,10 +1051,30 @@ html[data-site-theme="saas"] .site-nav-pill.active {
   }
   .site-master-nav {
     padding-bottom: 8px;
+    touch-action: pan-x;
+    max-width: 100%;
   }
   .site-nav-pill {
     padding: 8px 14px;
     font-size: 0.8rem;
+  }
+  .site-btn {
+    white-space: normal;
+    text-align: center;
+    max-width: 100%;
+    line-height: 1.3;
+  }
+  .site-select,
+  .site-input,
+  .site-textarea,
+  .site-field input {
+    font-size: 16px;
+    max-width: 100%;
+  }
+  .site-theme-pod {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    opacity: 0.92;
   }
 }
 
@@ -981,8 +1082,13 @@ html[data-site-theme="saas"] .site-nav-pill.active {
 .site-picker-tray {
   display: flex;
   gap: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
   padding: 4px 2px 6px;
   margin-top: 6px;
   scrollbar-width: thin;
@@ -1017,9 +1123,17 @@ html[data-site-theme="saas"] .site-nav-pill.active {
   border-color: var(--site-accent);
   color: var(--site-accent);
 }
+#videoHistoryList {
+  max-height: 460px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .site-channel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
   gap: 14px;
 }
 .site-channel-card {
