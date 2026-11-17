@@ -221,7 +221,7 @@ STYLE_PRESETS: List[Dict[str, str]] = [
     },
     {
         "id": "astrology_mystic",
-        "ad": "♈ Astroloji & Kozmik Mistik (Burçlar)",
+        "ad": "🔮 Astroloji & Kozmik Mistik (Burçlar)",
         "prompt_suffix": "mystical celestial astrology artwork, luminous golden zodiac constellation geometry glowing in deep cosmic nebula, ethereal stardust, atmospheric cinema lighting",
         "negative_prompt": "modern office, neon clutter, lowres text, blurry stars, distorted symbols",
         "motion_default": "slow hypnotic cosmic orbit, shimmering constellation golden energy flow and drifting nebula dust",

@@ -1676,7 +1676,7 @@ window.loadBurcCatalog = function () {
       sel.innerHTML = d.items.map(function (b) {
         var kod = b.kod || b.slug || '';
         var s = kod === 'kova' ? ' selected' : '';
-        return '<option value="' + esc(kod) + '"' + s + '>' + esc(b.ad) + ' (' + esc(b.tarih || '') + ' · ' + esc(b.element || '') + ')</option>';
+        return '<option value="' + esc(kod) + '"' + s + '>' + esc((b.simge ? b.simge + ' ' : '') + b.ad) + ' (' + esc(b.tarih || '') + ' · ' + esc(b.element || '') + ')</option>';
       }).join('');
       sel.setAttribute('data-loaded', '1');
     })
@@ -1743,7 +1743,8 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
         var bSahne = (res.d.senaryo && res.d.senaryo.image_prompt) || job.image_prompt || job.prompt || '';
         var bKaynak = (res.d.senaryo && res.d.senaryo.kaynak) || job.senaryo_kaynak || '';
         var metinBaslik = job.raw_prompt ? 'Prompt' : 'Anlatım';
-        hudEl.innerHTML = '♈ <strong>' + esc((res.d.burc && res.d.burc.ad) || burcKodu) + '</strong> · Bilet: <code>' + esc(res.d.job_id) + '</code>' + simBadge + '<br>' +
+        var bSimge = (res.d.burc && res.d.burc.simge) || job.burc_simge || '🔮';
+        hudEl.innerHTML = esc(bSimge) + ' <strong>' + esc((res.d.burc && res.d.burc.ad) || burcKodu) + '</strong> · Bilet: <code>' + esc(res.d.job_id) + '</code>' + simBadge + '<br>' +
           '• Yöntem: <strong>' + esc(job.method) + '</strong> | Hedef: <strong>' + esc(job.render_target) + '</strong> | Oran: <strong>' + esc(job.aspect_ratio || aspect) + '</strong><br>' +
           '• ' + metinBaslik + ': <em>' + esc((res.d.senaryo && res.d.senaryo.narration_text) || '') + '</em>' +
           (bSahne ? '<br>• 🎨 <strong>Görsel Sahne (' + esc(bKaynak || 'yerel') + '):</strong> <code>' + esc(bSahne) + '</code>' : '');

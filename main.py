@@ -2821,6 +2821,7 @@ async def burc_video_generate(req: Request):
         "raw_prompt": bool(senaryo.get("raw_prompt") or (raw_prompt and konu)),
         "burc_kodu": senaryo.get("burc_kodu") or burc_kodu,
         "burc_adi": senaryo.get("burc_adi") or burc.get("ad", ""),
+        "burc_simge": str(burc.get("simge") or senaryo.get("simge") or ""),
         "method": yontem,
         "mode": ("burc_video" if yontem in ("burc_video", "image_then_i2v")
                  else "flux2_resim" if yontem == "flux2_resim" else "video"),
@@ -2877,7 +2878,7 @@ async def burc_video_generate(req: Request):
             "success": True,
             "job_id": job_id,
             "task": job,
-            "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"]},
+            "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"], "simge": job["burc_simge"]},
             "senaryo": {
                 "narration_text": metin,
                 "image_prompt": job["prompt"],
@@ -2908,7 +2909,7 @@ async def burc_video_generate(req: Request):
         "success": True,
         "job_id": job_id,
         "task": job,
-        "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"]},
+        "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"], "simge": job["burc_simge"]},
         "senaryo": {
             "narration_text": metin,
             "image_prompt": job["prompt"],

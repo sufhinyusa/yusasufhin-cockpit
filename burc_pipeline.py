@@ -21,26 +21,26 @@ __all__ = ["BURC_KATALOGU", "burc_listesi", "burc_senaryo_olustur",
            "altyazi_dosyalari_olustur"]
 
 # slug, ad, tarih, element, gorsel_tema, hareket_yonu, varsayilan_ses,
-# gorsel_tema_en, hareket_yonu_en
+# gorsel_tema_en, hareket_yonu_en, simge (Unicode U+2648..U+2653)
 _KATALOG_HAM = [
-    ("koc", "Koç", "21 Mart – 19 Nisan", "Ateş", "Kızıl çöl şafağı, koç boynuzu silüeti, cesur figür", "Kameranın sağdan sola ilerleyişi", "Puck", "Crimson desert dawn, ram-horn silhouette, bold heroic figure", "slow right-to-left camera track"),
-    ("boga", "Boğa", "20 Nisan – 20 Mayıs", "Toprak", "Yemyeşil vadi, mermer heykel, dokunsal doku", "Yavaş yukarı pan", "Aoede", "Lush green valley, marble sculpture, tactile textures", "slow upward pan"),
-    ("ikizler", "İkizler", "21 Mayıs – 20 Haziran", "Hava", "İkiz yansımalar, aynalı koridor, hafif ışık", "Hızlı sağa kaydırma", "Puck", "Twin reflections, mirrored corridor, airy light", "quick lateral slide to the right"),
-    ("yengec", "Yengeç", "21 Haziran – 22 Temmuz", "Su", "Ay ışığında kumsal, inci kabuğu, sıcak ev", "Yavaş yaklaşma (dolly in)", "Aoede", "Moonlit beach, pearl shell, warm home interior", "slow dolly in"),
-    ("aslan", "Aslan", "23 Temmuz – 22 Ağustos", "Ateş", "Altın taht odası, aslan gölgesi, dramatik ışık", "Alçaktan yukarı tilt", "Fenrir", "Golden throne room, lion shadow, dramatic light", "low-angle tilt up"),
-    ("basak", "Başak", "23 Ağustos – 22 Eylül", "Toprak", "Buğday tarlası, kristal büyüteç, düzenli geometri", "Mikro detaya yavaş zoom", "Kore", "Wheat field, crystal magnifier, orderly geometry", "slow zoom into a fine detail"),
-    ("terazi", "Terazi", "23 Eylül – 22 Ekim", "Hava", "Dengede süzülen terazi, pastel gök, simetri", "Yatay orbit", "Aoede", "Floating balanced scales, pastel sky, symmetry", "horizontal orbit"),
-    ("akrep", "Akrep", "23 Ekim – 21 Kasım", "Su", "Karanlık su altı, mor ışık, gizemli sembol", "Yavaş dolly out", "Charon", "Dark underwater scene, violet light, mysterious symbol", "slow dolly out"),
-    ("yay", "Yay", "22 Kasım – 21 Aralık", "Ateş", "Yıldızlı gökyüzü, ok ve yay, ufka koşu", "Hızlı ileri sürüş", "Puck", "Starry sky, bow and arrow, sprint toward the horizon", "fast forward tracking shot"),
-    ("oglak", "Oğlak", "22 Aralık – 19 Ocak", "Toprak", "Karlı dağ zirvesi, taş merdiven, keçi silüeti", "Yavaş yukarı çıkış", "Charon", "Snowy mountain summit, stone staircase, goat silhouette", "slow climb upward"),
-    ("kova", "Kova", "20 Ocak – 18 Şubat", "Hava", "Yıldızlı gökyüzünden su boşaltan göksel figür, safir nebula, altın takımyıldızı", "Geniş açıdan içeri zoom", "Puck", "Mythic Aquarius celestial figure pouring glowing water from starry heavens toward Earth, sapphire nebula, golden constellations", "zoom in from a wide angle"),
-    ("balik", "Balık", "19 Şubat – 20 Mart", "Su", "Sualtı rüyası, iki balık, yumuşak mor-mavi", "Serbest yüzme hareketi", "Aoede", "Underwater dreamscape, two fish, soft violet-blue", "free-floating swimming motion"),
+    ("koc", "Koç", "21 Mart – 19 Nisan", "Ateş", "Kızıl çöl şafağı, koç boynuzu silüeti, cesur figür", "Kameranın sağdan sola ilerleyişi", "Puck", "Crimson desert dawn, ram-horn silhouette, bold heroic figure", "slow right-to-left camera track", "♈"),
+    ("boga", "Boğa", "20 Nisan – 20 Mayıs", "Toprak", "Yemyeşil vadi, mermer heykel, dokunsal doku", "Yavaş yukarı pan", "Aoede", "Lush green valley, marble sculpture, tactile textures", "slow upward pan", "♉"),
+    ("ikizler", "İkizler", "21 Mayıs – 20 Haziran", "Hava", "İkiz yansımalar, aynalı koridor, hafif ışık", "Hızlı sağa kaydırma", "Puck", "Twin reflections, mirrored corridor, airy light", "quick lateral slide to the right", "♊"),
+    ("yengec", "Yengeç", "21 Haziran – 22 Temmuz", "Su", "Ay ışığında kumsal, inci kabuğu, sıcak ev", "Yavaş yaklaşma (dolly in)", "Aoede", "Moonlit beach, pearl shell, warm home interior", "slow dolly in", "♋"),
+    ("aslan", "Aslan", "23 Temmuz – 22 Ağustos", "Ateş", "Altın taht odası, aslan gölgesi, dramatik ışık", "Alçaktan yukarı tilt", "Fenrir", "Golden throne room, lion shadow, dramatic light", "low-angle tilt up", "♌"),
+    ("basak", "Başak", "23 Ağustos – 22 Eylül", "Toprak", "Buğday tarlası, kristal büyüteç, düzenli geometri", "Mikro detaya yavaş zoom", "Kore", "Wheat field, crystal magnifier, orderly geometry", "slow zoom into a fine detail", "♍"),
+    ("terazi", "Terazi", "23 Eylül – 22 Ekim", "Hava", "Dengede süzülen terazi, pastel gök, simetri", "Yatay orbit", "Aoede", "Floating balanced scales, pastel sky, symmetry", "horizontal orbit", "♎"),
+    ("akrep", "Akrep", "23 Ekim – 21 Kasım", "Su", "Karanlık su altı, mor ışık, gizemli sembol", "Yavaş dolly out", "Charon", "Dark underwater scene, violet light, mysterious symbol", "slow dolly out", "♏"),
+    ("yay", "Yay", "22 Kasım – 21 Aralık", "Ateş", "Yıldızlı gökyüzü, ok ve yay, ufka koşu", "Hızlı ileri sürüş", "Puck", "Starry sky, bow and arrow, sprint toward the horizon", "fast forward tracking shot", "♐"),
+    ("oglak", "Oğlak", "22 Aralık – 19 Ocak", "Toprak", "Karlı dağ zirvesi, taş merdiven, keçi silüeti", "Yavaş yukarı çıkış", "Charon", "Snowy mountain summit, stone staircase, goat silhouette", "slow climb upward", "♑"),
+    ("kova", "Kova", "20 Ocak – 18 Şubat", "Hava", "Yıldızlı gökyüzünden su boşaltan göksel figür, safir nebula, altın takımyıldızı", "Geniş açıdan içeri zoom", "Puck", "Mythic Aquarius celestial figure pouring glowing water from starry heavens toward Earth, sapphire nebula, golden constellations", "zoom in from a wide angle", "♒"),
+    ("balik", "Balık", "19 Şubat – 20 Mart", "Su", "Sualtı rüyası, iki balık, yumuşak mor-mavi", "Serbest yüzme hareketi", "Aoede", "Underwater dreamscape, two fish, soft violet-blue", "free-floating swimming motion", "♓"),
 ]
 
 BURC_KATALOGU: Dict[str, Dict[str, str]] = {
     h[0]: dict(slug=h[0], kod=h[0], ad=h[1], tarih=h[2], element=h[3], gorsel_tema=h[4],
                hareket_yonu=h[5], varsayilan_ses=h[6], gorsel_tema_en=h[7],
-               hareket_yonu_en=h[8])
+               hareket_yonu_en=h[8], simge=h[9])
     for h in _KATALOG_HAM
 }
 _KOD_ESLEME = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
@@ -201,6 +201,7 @@ def _cevrimdisi_sonuc(burc: Dict[str, str], konu: str, dil: str,
     hareket = f"{burc['hareket_yonu_en']}, gentle parallax, cinematic 24fps feel"
     return {
         "ok": True, "burc_kodu": burc["slug"], "burc_adi": burc["ad"],
+        "simge": burc["simge"],
         "narration_text": anlatim,
         "image_prompt": gorsel_istem,
         "motion_prompt": hareket,
@@ -285,6 +286,7 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
                 "ok": True,
                 "burc_kodu": kod,
                 "burc_adi": burc["ad"],
+                "simge": burc["simge"],
                 "narration_text": konu,
                 "image_prompt": img_p or f"{konu}, {oran_en}",
                 "motion_prompt": mot_p,
@@ -317,6 +319,7 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
                     raise ValueError("Gemini yanıtı eksik veya image_prompt Türkçe kaldı")
                 return {
                     "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
+                    "simge": burc["simge"],
                     "narration_text": anlatim, "image_prompt": gorsel,
                     "motion_prompt": hareket,
                     "scenes": _senaryo_sahneleri_cikar(veri, gorsel, hareket),
@@ -367,6 +370,7 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
                     if anlatim and gorsel and hareket and not _turkce_kaldi_mi(gorsel):
                         return {
                             "ok": True, "burc_kodu": kod, "burc_adi": burc["ad"],
+                            "simge": burc["simge"],
                             "narration_text": anlatim, "image_prompt": gorsel,
                             "motion_prompt": hareket,
                             "scenes": _senaryo_sahneleri_cikar(veri, gorsel, hareket),

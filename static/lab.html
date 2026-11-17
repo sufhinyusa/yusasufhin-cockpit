@@ -17,7 +17,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v21-studio') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v22-studio') caches.delete(names[i]);
         }
       });
     }
@@ -42,7 +42,7 @@
       <div class="site-nav-links">
         <a href="#videoStudio" onclick="switchStudioView('video')">🎬 Video Stüdyosu</a>
         <a href="#channelsStudio" onclick="switchStudioView('channels')">📺 YouTube Kanallarım</a>
-        <a href="#burcStudio" onclick="switchStudioView('burc')">♈ Burç Stüdyosu</a>
+        <a href="#burcStudio" onclick="switchStudioView('burc')">🔮 Burç Stüdyosu</a>
         <a href="#audioStudio" onclick="switchStudioView('audio')">🎵 Ses &amp; Müzik</a>
         <a href="#omniStudio" onclick="switchStudioView('omni')">🤖 OmniRoute</a>
         <a href="#humanizerStudio" onclick="switchStudioView('humanizer')">✍️ Anti-Slop</a>
@@ -72,7 +72,7 @@
         📺 YouTube Kanallarım &amp; Otomasyon
       </button>
       <button class="site-nav-pill" id="tabNavBurc" onclick="switchStudioView('burc')">
-        ♈ Burç Videosu Stüdyosu (Kaggle / Colab)
+        🔮 Burç Videosu Stüdyosu (Kaggle / Colab)
       </button>
       <button class="site-nav-pill" id="tabNavAudio" onclick="switchStudioView('audio')">
         🎵 Ses, Müzik &amp; Podcast (Gemini TTS)
@@ -167,7 +167,7 @@
                 <option value="cinematic_realism">🎬 Sinematik Realizm (Film)</option>
                 <option value="pixar_3d_animation">🧸 3D Animasyon (Pixar / Blender Tarzı)</option>
                 <option value="anime_2d">⛩️ Anime &amp; 2D Çizgi Evren</option>
-                <option value="astrology_mystic">♈ Astroloji &amp; Kozmik Mistik (Burçlar)</option>
+                <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik Mistik (Burçlar)</option>
                 <option value="tech_futuristic" selected>🤖 Yapay Zeka, Kod &amp; Fütürizm</option>
                 <option value="history_documentary">🏛️ Tarih &amp; Kültür Belgeseli</option>
                 <option value="minimal_explainer">📊 Bilgi, Eğitim &amp; Hareketli İnfografik</option>
@@ -448,7 +448,7 @@
                   <option value="cinematic_realism">🎬 Sinematik Realizm (Film)</option>
                   <option value="pixar_3d_animation">🧸 3D Animasyon (Pixar/Blender)</option>
                   <option value="anime_2d">⛩️ Anime &amp; 2D Çizgi Evren</option>
-                  <option value="astrology_mystic">♈ Astroloji &amp; Kozmik Mistik</option>
+                  <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik Mistik</option>
                   <option value="tech_futuristic">🤖 Teknoloji &amp; Fütürizm</option>
                   <option value="history_documentary">🏛️ Tarih &amp; Kültür Belgeseli</option>
                   <option value="minimal_explainer">📊 Bilgi &amp; İnfografik Motion</option>
@@ -824,7 +824,7 @@
           <div class="site-studio-header">
             <div>
               <span class="site-badge site-badge-free" id="burcQueueBadge">Kaggle / Colab GPU Kuyruğu</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">♈ Burç Videosu Stüdyosu (Gerçek I2V + Ses + Altyazı)</h2>
+              <h2 style="margin:6px 0 2px; font-size:1.25rem;">🔮 Burç Videosu Stüdyosu (Gerçek I2V + Ses + Altyazı)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
                 Önce FLUX.2 önizleme görseli üretip beğendikten sonra Wan2.1 I2V ile videoya çevirin ya da tek tıkla doğrudan Kaggle/Colab'da burç videosu üretin.
               </p>
@@ -995,7 +995,7 @@
                     <option value="cinematic_realism" selected>🎬 Sinematik</option>
                     <option value="pixar_3d_animation">🧸 3D Animasyon</option>
                     <option value="anime_2d">⛩️ Anime / 2D</option>
-                    <option value="astrology_mystic">♈ Astroloji / Mistik</option>
+                    <option value="astrology_mystic">🔮 Astroloji / Mistik</option>
                     <option value="tech_futuristic">🤖 Teknoloji</option>
                     <option value="history_documentary">🏛️ Belgesel</option>
                   </select>
@@ -1145,6 +1145,6 @@
   </div>
 
   <script src="/site.js?v=14"></script>
-  <script src="/lab.js?v=21"></script>
+  <script src="/lab.js?v=22"></script>
 </body>
 </html>

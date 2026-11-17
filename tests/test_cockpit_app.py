@@ -820,6 +820,13 @@ def test_burc_list_and_burc_video_generate_flow(client, auth_headers, monkeypatc
     assert lst.status_code == 200
     assert lst.json()["count"] == 12
     assert any(b["kod"] == "kova" for b in lst.json()["items"])
+    beklenen_simgeler = {
+        "koc": "♈", "boga": "♉", "ikizler": "♊", "yengec": "♋",
+        "aslan": "♌", "basak": "♍", "terazi": "♎", "akrep": "♏",
+        "yay": "♐", "oglak": "♑", "kova": "♒", "balik": "♓",
+    }
+    gercek_simgeler = {b["kod"]: b.get("simge") for b in lst.json()["items"]}
+    assert gercek_simgeler == beklenen_simgeler
 
     gen = client.post("/api/burc/video/generate", json={
         "burc_kodu": "kova",
@@ -831,6 +838,8 @@ def test_burc_list_and_burc_video_generate_flow(client, auth_headers, monkeypatc
     assert gen.status_code == 200
     body = gen.json()
     assert body["success"] is True
+    assert body["burc"]["simge"] == "♒"
+    assert body["task"]["burc_simge"] == "♒"
     assert body["task"]["gpu_kuyruk"] is True
     assert body["task"]["mode"] == "burc_video"
     assert body["task"]["metin_simulasyon"] is True
@@ -1555,13 +1564,17 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=21" in sw_txt
-        assert "/lab.js?v=21" in lab_txt
+        assert "/lab.js?v=22" in sw_txt
+        assert "/lab.js?v=22" in lab_txt
         assert "/site.css?v=15" in idx_txt and "/site.css?v=15" in lab_txt
         assert "/styles.css?v=8" in fab_txt
-        assert "fabrika-pwa-v21-studio" in sw_txt
-        assert "fabrika-pwa-v21-studio" in lab_txt
-        assert "fabrika-pwa-v21-studio" in fab_txt
+        assert "fabrika-pwa-v22-studio" in sw_txt
+        assert "fabrika-pwa-v22-studio" in lab_txt
+        assert "fabrika-pwa-v22-studio" in fab_txt
+        assert "♈ Burç" not in lab_txt and "♈ Astroloji" not in lab_txt
+        lab_js = (Path(__file__).resolve().parent.parent / "static" / "lab.js").read_text(encoding="utf-8")
+        assert "'♈ <strong>'" not in lab_js
+        assert "burc.simge" in lab_js
         assert "burcRawPromptCheck" in lab_txt
         assert "[hidden] { display: none !important; }" in site_css
         assert "overflow-x: clip;" in site_css
