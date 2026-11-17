@@ -1564,13 +1564,13 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=22" in sw_txt
-        assert "/lab.js?v=22" in lab_txt
+        assert "/lab.js?v=23" in sw_txt
+        assert "/lab.js?v=23" in lab_txt
         assert "/site.css?v=15" in idx_txt and "/site.css?v=15" in lab_txt
         assert "/styles.css?v=8" in fab_txt
-        assert "fabrika-pwa-v22-studio" in sw_txt
-        assert "fabrika-pwa-v22-studio" in lab_txt
-        assert "fabrika-pwa-v22-studio" in fab_txt
+        assert "fabrika-pwa-v23-studio" in sw_txt
+        assert "fabrika-pwa-v23-studio" in lab_txt
+        assert "fabrika-pwa-v23-studio" in fab_txt
         assert "♈ Burç" not in lab_txt and "♈ Astroloji" not in lab_txt
         lab_js = (Path(__file__).resolve().parent.parent / "static" / "lab.js").read_text(encoding="utf-8")
         assert "'♈ <strong>'" not in lab_js
@@ -1668,6 +1668,101 @@ def test_burc_prompt_parity_cloudflare_dict_and_video_stage_layout(monkeypatch):
         "narration_text": "Türkçe anlatım",
         "scenes": [{"image_prompt": "Bir adam gökyüzünde duruyor"}],
     }, 2, "orbit", "cloudflare:llama-3.1-8b") is None
+
+
+def test_no_pollinations_no_text_card_and_real_i2v_character_animation(client, auth_headers, monkeypatch, tmp_path):
+    """Pollinations tamamen kapalı, görsel üretimi düşerse metin kartı üretilmez ve real_i2v zoom/pan ile sahtelenmez."""
+    import ai_video_montaj as avm
+    import hyperframes_motor as hf
+    import main as main_mod
+
+    avm_src = (Path(__file__).resolve().parent.parent / "ai_video_montaj.py").read_text(encoding="utf-8")
+    assert "image.pollinations.ai" not in avm_src
+
+    # 1. Tüm gerçek görsel sağlayıcıları başarısızken ne preview ne studio text card PNG basmaz
+    monkeypatch.setattr(avm, "preview_single_image", lambda *a, **k: {"ok": False, "provider": None, "error": "kota dolu"})
+    hf_fail = hf.hyperframes_studio_render(tmp_path / "fail.mp4", tmp_path / "fail.html", "prompt metni", ["test prompt"])
+    assert hf_fail["ok"] is False
+    assert not (tmp_path / "fail.mp4").exists()
+
+    main_mod.ACTIVE_GPU_WORKERS.clear()
+    fail_prev = client.post("/api/burc/video/generate", json={
+        "burc_kodu": "kova",
+        "konu": "elinde kova olan bir adam gökyüzünden yeryüzüne su boşaltıyor",
+        "raw_prompt": True,
+        "method": "flux2_resim",
+        "execution_mode": "auto",
+    }, headers=auth_headers)
+    assert fail_prev.status_code == 502
+
+    # 2. Onaylı görselde execution_mode='real_i2v' iken LTX başarısızsa zoom/pan YAPILMAZ, GPU kuyruğuna alınır
+    fake_png = tmp_path / "approved.png"
+    hf._kinetic_card_png(fake_png, "Onaylı Kare", "Test", 320, 180)
+    up_bytes = fake_png.read_bytes()
+    monkeypatch.setattr(hf, "cloud_real_i2v_animate", lambda *a, **k: {"ok": False, "error": "HF_TOKEN yok"})
+
+    called_zoom = {"n": 0}
+    orig_zoom = hf.instant_i2v_motion
+
+    def spy_zoom(*a, **k):
+        called_zoom["n"] += 1
+        return orig_zoom(*a, **k)
+
+    monkeypatch.setattr(hf, "instant_i2v_motion", spy_zoom)
+    created_ids = []
+    try:
+        import base64
+        b64_img = "data:image/png;base64," + base64.b64encode(up_bytes).decode("ascii")
+        q_real = client.post("/api/burc/video/generate", json={
+            "burc_kodu": "kova",
+            "konu": "adam kovadan su boşaltıyor",
+            "raw_prompt": True,
+            "method": "wan_i2v",
+            "execution_mode": "real_i2v",
+            "image_base64": b64_img,
+        }, headers=auth_headers)
+        assert q_real.status_code == 200
+        qd = q_real.json()
+        created_ids.append(qd["job_id"])
+        assert called_zoom["n"] == 0
+        assert qd["gpu_kuyruk"] is True
+        assert qd["needs_gpu_worker"] is True
+
+        # 3. LTX ZeroGPU I2V başarılıysa gerçek video_difuzyonu=True ve simulasyon=False döner
+        def fake_ltx(src_img, hedef_mp4, **kw):
+            hf.instant_i2v_motion(src_img, hedef_mp4, duration_sec=3.0)
+            return {
+                "ok": True,
+                "path": hedef_mp4,
+                "file_size_bytes": hedef_mp4.stat().st_size,
+                "resolution": "854x480",
+                "duration_sec": 3.0,
+                "kalite": {"gecerli": True},
+                "simulasyon": False,
+                "video_difuzyonu": True,
+                "kaynak": "ltx-video-distilled-i2v",
+            }
+
+        monkeypatch.setattr(hf, "cloud_real_i2v_animate", fake_ltx)
+        ok_real = client.post("/api/burc/video/generate", json={
+            "burc_kodu": "kova",
+            "konu": "adam kovadan su boşaltıyor",
+            "raw_prompt": True,
+            "method": "wan_i2v",
+            "execution_mode": "real_i2v",
+            "image_base64": b64_img,
+        }, headers=auth_headers)
+        assert ok_real.status_code == 200
+        od = ok_real.json()
+        created_ids.append(od["job_id"])
+        assert od["gpu_kuyruk"] is False
+        assert od["simulasyon"] is False
+        assert od["video_difuzyonu"] is True
+        assert od["task"]["kaynak"] == "ltx-video-distilled-i2v"
+    finally:
+        for jid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
+                p.unlink(missing_ok=True)
 
 
 

@@ -1033,7 +1033,10 @@ function _renderStudioPreviewApprove(task, i2vModel, tok) {
       onayBtnler +
       '</div>';
     var aBtn = document.getElementById('studioApproveI2vBtn');
-    if (aBtn) aBtn.onclick = function () { window.handleStudioVideoSubmit(null, 'wan_i2v', rawPrev); };
+    if (aBtn) aBtn.onclick = function () {
+      var mode = (_liveGpuWorkersCount > 0) ? 'gpu_queue' : 'real_i2v';
+      window.handleStudioVideoSubmit(null, 'wan_i2v', rawPrev, mode);
+    };
     var rBtn = document.getElementById('studioRegenImgBtn');
     if (rBtn) rBtn.onclick = function () { window.handleStudioVideoSubmit(null, 'image_first_preview'); };
   }
@@ -1060,9 +1063,11 @@ function _renderStudioVideoPlayer(task, tok) {
   var step5 = document.getElementById('step5');
   if (step5) step5.className = 'site-pipeline-step active';
 
-  var simEtiket = task.simulasyon
-    ? '⚠️ Bulut Hareket Kurgusu (simülasyon — GPU difüzyonu değil)'
-    : '✅ Üretildi (İndirilebilir)';
+  var simEtiket = task.video_difuzyonu
+    ? '✅ Gerçek I2V Canlandırma (video difüzyonu)'
+    : (task.simulasyon
+      ? '⚠️ Bulut Kamera Kurgusu (simülasyon — GPU/LTX karakter canlandırması değil)'
+      : '✅ Üretildi (İndirilebilir)');
   if (taskBadge) {
     taskBadge.textContent = simEtiket;
     taskBadge.className = task.simulasyon ? 'site-badge site-badge-auto' : 'site-badge site-badge-free';
@@ -1099,7 +1104,7 @@ function _renderStudioVideoPlayer(task, tok) {
   if (window.loadStudioQueue) window.loadStudioQueue();
 }
 
-window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) {
+window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl, forcedExecMode) {
   if (e && e.preventDefault) e.preventDefault();
   var channel = (document.getElementById('videoChannelSelect') || {}).value || 'Tech_AI_Fabrika';
   var wfEl = document.getElementById('videoMethodSelect');
@@ -1119,7 +1124,10 @@ window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) 
   var promptVal = ((document.getElementById('videoPromptInput') || {}).value || '').trim();
   var negPromptVal = ((document.getElementById('videoNegPromptInput') || {}).value || '').trim();
   var sourceUrlVal = ((document.getElementById('videoSourceUrlInput') || {}).value || '').trim();
-  var execMode = window._resolveStudioExecMode ? window._resolveStudioExecMode() : 'instant_cloud';
+  var execMode = forcedExecMode || (window._resolveStudioExecMode ? window._resolveStudioExecMode() : 'instant_cloud');
+  if (!forcedExecMode && workflow === 'wan_i2v' && execMode === 'auto' && _liveGpuWorkersCount <= 0) {
+    execMode = 'real_i2v';
+  }
   var hudLog = document.getElementById('studioHudLog');
   var taskBadge = document.getElementById('studioTaskBadge');
   var stageArea = document.getElementById('studioStageArea');
@@ -1130,8 +1138,10 @@ window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) 
   }
 
   if (taskBadge) {
-    taskBadge.textContent = (execMode === 'instant_cloud' || (execMode === 'auto' && _liveGpuWorkersCount <= 0) || workflow === 'hyperframes_motion' || workflow === 'product_launch')
-      ? '⚡ Bulutta Üretiliyor...' : '⏳ Kuyruğa Gönderiliyor...';
+    taskBadge.textContent = (execMode === 'real_i2v')
+      ? '🎬 Gerçek I2V Canlandırılıyor...'
+      : ((execMode === 'instant_cloud' || execMode === 'camera_motion_only' || (execMode === 'auto' && _liveGpuWorkersCount <= 0) || workflow === 'hyperframes_motion' || workflow === 'product_launch')
+        ? '⚡ Bulutta Üretiliyor...' : '⏳ Kuyruğa Gönderiliyor...');
     taskBadge.className = 'site-badge site-badge-free';
   }
   if (hudLog) {
@@ -1198,13 +1208,17 @@ window.handleStudioVideoSubmit = function (e, forcedWorkflow, approvedImageUrl) 
         _renderStudioVideoPlayer(task, liveTok);
         return;
       }
-      if (taskBadge) taskBadge.textContent = '⏳ GPU Kuyruğunda';
+      if (taskBadge) taskBadge.textContent = task.needs_gpu_worker ? '⏳ Gerçek I2V GPU Bekliyor' : '⏳ GPU Kuyruğunda';
       if (stageArea) {
+        var aciklama = task.needs_gpu_worker
+          ? '<p style="margin:6px 0; font-size:0.82rem; color:#fbbf24;">' + esc(task.message || 'Gerçek karakter canlandırma için canlı GPU işçisi (Kaggle Wan2.1) veya HF_TOKEN gerekli; FFmpeg zoom/kaydırma yapılmadı.') + '</p>'
+          : '';
         stageArea.innerHTML = '<div style="text-align:center; padding:18px;">' +
           '<div style="font-size:2.2rem; margin-bottom:8px;">🖼️ ⏳</div>' +
-          '<strong>GPU İşçisi Bekleniyor / Üretiliyor</strong>' +
+          '<strong>' + (task.needs_gpu_worker ? 'Gerçek I2V Karakter Canlandırma Bekleniyor' : 'GPU İşçisi Bekleniyor / Üretiliyor') + '</strong>' +
           '<p style="margin:6px 0; font-size:0.82rem; color:var(--site-text-dim);">Bilet: <code>' + esc(task.job_id) + '</code> · Model: <strong>' + esc(task.method === 'flux2_resim' ? imageModel : i2vModel) + '</strong></p>' +
-          '<button type="button" class="site-btn site-btn-primary" style="margin-top:8px;" onclick="instantRenderQueuedJob(\'' + esc(task.job_id) + '\')">⚡ Beklemeden Anında Bulutta Render Et</button>' +
+          aciklama +
+          '<button type="button" class="site-btn site-btn-ghost" style="margin-top:8px;" onclick="instantRenderQueuedJob(\'' + esc(task.job_id) + '\')">🎞️ Yalnızca Kamera Zoom/Pan Önizleme Al (Karakter Hareket Etmez)</button>' +
           '</div>';
       }
       if (window.loadStudioQueue) window.loadStudioQueue();
@@ -1683,7 +1697,7 @@ window.loadBurcCatalog = function () {
     .catch(function () { });
 };
 
-window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
+window.handleBurcSubmit = function (forcedMethod, approvedImageUrl, forcedExecMode) {
   var msgEl = document.getElementById('burcStatusMsg');
   var hudEl = document.getElementById('burcHudLog');
   var badgeEl = document.getElementById('burcOutputBadge');
@@ -1704,6 +1718,10 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
   if (!approvedImageUrl && _burcUploadedB64 && yontem !== 'flux2_resim') {
     yontem = 'wan_i2v';
   }
+  var execMod = forcedExecMode || (window._resolveStudioExecMode ? window._resolveStudioExecMode() : 'instant_cloud');
+  if (!forcedExecMode && yontem === 'wan_i2v' && execMod === 'auto' && _liveGpuWorkersCount <= 0) {
+    execMod = 'real_i2v';
+  }
 
   var payload = {
     burc_kodu: burcKodu,
@@ -1713,15 +1731,17 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
     aspect_ratio: aspect,
     render_target: target,
     method: yontem,
-    execution_mode: window._resolveStudioExecMode ? window._resolveStudioExecMode() : 'instant_cloud',
+    execution_mode: execMod,
     image_model: bImgModel,
     i2v_model: bI2vModel,
     image_base64: approvedImageUrl ? null : _burcUploadedB64,
     input_image_url: approvedImageUrl || null
   };
 
-  if (badgeEl) badgeEl.textContent = '⏳ Hazırlanıyor...';
-  if (msgEl) msgEl.textContent = 'Senaryo, seslendirme ve üretim hazırlanıyor...';
+  if (badgeEl) badgeEl.textContent = (execMod === 'real_i2v') ? '🎬 Karakter Canlandırılıyor...' : '⏳ Hazırlanıyor...';
+  if (msgEl) msgEl.textContent = (execMod === 'real_i2v')
+    ? 'Gerçek I2V canlandırma başlatıldı (LTX ZeroGPU / Kaggle Wan2.1)...'
+    : 'Senaryo, seslendirme ve üretim hazırlanıyor...';
   if (approveBox) approveBox.hidden = true;
 
   window.authFetch('/api/burc/video/generate', {
@@ -1737,7 +1757,11 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
       var tk = window.token ? window.token() : '';
       var job = res.d.task;
       var simBadge = job.metin_simulasyon ? ' <span class="site-badge" style="background:#f59e0b;color:#000;">(simülasyon metin)</span>' : '';
-      if (badgeEl) badgeEl.textContent = job.gpu_kuyruk ? '⏳ GPU Kuyruğunda' : '✅ Hazır';
+      if (badgeEl) {
+        badgeEl.textContent = job.needs_gpu_worker
+          ? '⏳ Gerçek I2V GPU Bekliyor'
+          : (job.gpu_kuyruk ? '⏳ GPU Kuyruğunda' : '✅ Hazır');
+      }
       if (msgEl) msgEl.textContent = res.d.message || 'Burç işi başlatıldı.';
       if (hudEl) {
         var bSahne = (res.d.senaryo && res.d.senaryo.image_prompt) || job.image_prompt || job.prompt || '';
@@ -1753,7 +1777,11 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
       function _burcGuncelle(guncel) {
         if (guncel.output_url && guncel.status !== 'onizleme_hazir') {
           var u = guncel.output_url + (guncel.output_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk);
-          if (badgeEl) badgeEl.textContent = guncel.simulasyon ? '⚠️ Tamamlandı (simülasyon)' : '✅ Burç Videosu Hazır';
+          if (badgeEl) {
+            badgeEl.textContent = guncel.video_difuzyonu
+              ? '✅ Gerçek I2V Canlandırma Hazır'
+              : (guncel.simulasyon ? '⚠️ Kamera Kurgusu (simülasyon)' : '✅ Burç Videosu Hazır');
+          }
           if (stageEl) {
             stageEl.innerHTML =
               '<video controls autoplay playsinline preload="metadata" src="' + esc(u) + '" style="width:100%;height:auto;max-height:440px;object-fit:contain;border-radius:10px;background:#000;display:block;"></video>' +
@@ -1765,6 +1793,25 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
           if (window.refreshStudioMediaLists) window.refreshStudioMediaLists();
           return true;
         }
+        if (guncel.needs_gpu_worker || (guncel.gpu_kuyruk && guncel.preview_image_url)) {
+          var kUrl = guncel.preview_image_url + (guncel.preview_image_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk);
+          if (badgeEl) badgeEl.textContent = '⏳ Gerçek I2V GPU Bekliyor (Zoom Yapılmadı)';
+          if (stageEl) {
+            stageEl.innerHTML =
+              '<img src="' + esc(kUrl) + '" alt="Onaylı görsel" style="width:100%;max-width:100%;max-height:360px;object-fit:contain;border-radius:10px;display:block;margin:0 auto;">' +
+              '<div style="width:100%;text-align:center;font-size:0.82rem;color:#fbbf24;padding:6px;">' +
+              esc(guncel.message || 'Karakter canlandırma (Wan2.1 / LTX I2V) için canlı GPU işçisi veya HF_TOKEN gerekli; FFmpeg zoom/kaydırma uygulanmadı.') +
+              '</div>';
+          }
+          if (approveBox && approveBtn) {
+            approveBtn.textContent = '🎞️ Yalnızca Kamera Zoom/Pan Önizleme Al (Karakter Hareket Etmez)';
+            approveBox.hidden = false;
+            approveBtn.onclick = function () {
+              window.handleBurcSubmit('wan_i2v', guncel.preview_image_url, 'camera_motion_only');
+            };
+          }
+          return false;
+        }
         if (guncel.preview_image_url) {
           var pUrl = guncel.preview_image_url + (guncel.preview_image_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk);
           if (badgeEl) badgeEl.textContent = '🖼️ Önizleme Görseli Hazır (Onay Bekliyor)';
@@ -1772,10 +1819,11 @@ window.handleBurcSubmit = function (forcedMethod, approvedImageUrl) {
             stageEl.innerHTML = '<img src="' + esc(pUrl) + '" alt="Burç önizleme görseli" style="width:100%;max-width:100%;max-height:420px;object-fit:contain;border-radius:10px;display:block;margin:0 auto;">';
           }
           if (approveBox && approveBtn) {
-            approveBtn.textContent = '✅ Görseli Beğendim → ' + bI2vModel + ' ile Videoya Çevir';
+            approveBtn.textContent = '✅ Görseli Beğendim → ' + bI2vModel + ' ile Videoya Çevir (Canlandır)';
             approveBox.hidden = false;
             approveBtn.onclick = function () {
-              window.handleBurcSubmit('wan_i2v', guncel.preview_image_url);
+              var mod = (_liveGpuWorkersCount > 0) ? 'gpu_queue' : 'real_i2v';
+              window.handleBurcSubmit('wan_i2v', guncel.preview_image_url, mod);
             };
           }
           return true;
@@ -2240,7 +2288,10 @@ window.handleInstantCloudPreview = function (customPrompt) {
           '</div>' +
           '</div>';
         var btn = document.getElementById('cloudApproveI2vBtn');
-        if (btn) btn.onclick = function () { window.handleStudioVideoSubmit(null, 'wan_i2v', d.preview_image_url); };
+        if (btn) btn.onclick = function () {
+          var mod = (_liveGpuWorkersCount > 0) ? 'gpu_queue' : 'real_i2v';
+          window.handleStudioVideoSubmit(null, 'wan_i2v', d.preview_image_url, mod);
+        };
       }
     }).catch(function (e) {
       if (taskBadge) taskBadge.textContent = '❌ Hata';

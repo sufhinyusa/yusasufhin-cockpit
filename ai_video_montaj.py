@@ -61,10 +61,12 @@ def sec_xfade_gecisleri(adet: int, palet: Tuple[str, ...] = XFADE_PALETI) -> Lis
 
 
 def _hf_token() -> Optional[str]:
-    """HF token: env → Persona/.env → KovaLab/.env sırasıyla aranır."""
+    """HF token: env → Persona/.env → KovaLab/.env → ~/.cache/huggingface/token sırasıyla aranır."""
     aday = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
-    if aday:
+    if aday and aday.strip():
         return aday.strip()
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
     for dosya in (
         KOK.parent / "Video_Otomasyon" / "KovaLab" / ".env",
         Path("/Users/yusufsahin/Desktop/Fabrika_Products/Video_Otomasyon/KovaLab/.env"),
@@ -73,21 +75,69 @@ def _hf_token() -> Optional[str]:
         try:
             for satir in dosya.read_text(encoding="utf-8").splitlines():
                 if satir.strip().startswith(("HF_TOKEN=", "HUGGINGFACE_TOKEN=")):
-                    return satir.split("=", 1)[1].strip().strip('"').strip("'")
+                    val = satir.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+        except Exception:
+            continue
+    try:
+        cache_tok = Path.home() / ".cache" / "huggingface" / "token"
+        if cache_tok.is_file():
+            val = cache_tok.read_text(encoding="utf-8").strip()
+            if val:
+                return val
+    except Exception:
+        pass
+    return None
+
+
+def _nvidia_kimlik() -> Optional[str]:
+    """NVIDIA_API_KEY okur (pytest sırasında açık env yoksa atlar)."""
+    val = os.environ.get("NVIDIA_API_KEY")
+    if val and val.strip():
+        return val.strip().strip('"').strip("'")
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
+    for dosya in (
+        KOK / ".env",
+        Path("/Users/yusufsahin/Desktop/PYTHON PROJECTS/Fabrika/Persona/.env"),
+        KOK.parent / "Persona" / ".env",
+    ):
+        try:
+            for satir in dosya.read_text(encoding="utf-8").splitlines():
+                k, _, v = satir.partition("=")
+                if k.strip() == "NVIDIA_API_KEY" and not satir.strip().startswith("#"):
+                    temiz = v.strip().strip('"').strip("'")
+                    if temiz:
+                        return temiz
         except Exception:
             continue
     return None
 
 
-def tesis_durumu() -> Dict[str, Any]:
-    """YZ video hattının canlı ortamda çalışabilirliğini teşhis eder.
+def _cover_kaydet_png(im: Any, hedef: Path, genislik: int, yukseklik: int) -> Path:
+    """PIL Image nesnesini hedef en-boy oranına göre ortadan kırpıp PNG kaydeder."""
+    from PIL import Image
 
-    NEDEN: Render'da `HF_TOKEN` tanımlı değilse hat sessizce yedeğe düşüyordu
-    ve kullanıcı nedenini göremiyordu ("YZ sahne üretilemedi" belirsizdi).
-    Bu fonksiyon eksik olan tam adımı söyler.
-    """
+    im = im.convert("RGB")
+    hedef_oran = max(0.1, float(genislik) / max(1, int(yukseklik)))
+    w, h = im.size
+    if w / max(1, h) > hedef_oran:
+        yeni_w = max(1, int(h * hedef_oran))
+        im = im.crop(((w - yeni_w) // 2, 0, (w + yeni_w) // 2, h))
+    else:
+        yeni_h = max(1, int(w / hedef_oran))
+        im = im.crop((0, (h - yeni_h) // 2, w, (h + yeni_h) // 2))
+    hedef.parent.mkdir(parents=True, exist_ok=True)
+    im.resize((genislik, yukseklik), Image.LANCZOS).save(hedef, "PNG")
+    return hedef
+
+
+def tesis_durumu() -> Dict[str, Any]:
+    """YZ video hattının canlı ortamda çalışabilirliğini teşhis eder."""
     durum: Dict[str, Any] = {
-        "hf_token": False,
+        "nvidia": bool(_nvidia_kimlik()),
+        "hf_token": bool(_hf_token()),
         "cloudflare": False,
         "gradio_client": False,
         "pillow": False,
@@ -96,13 +146,12 @@ def tesis_durumu() -> Dict[str, Any]:
         "eksikler": [],
     }
 
-    durum["hf_token"] = bool(_hf_token())
     cf_token, cf_hesap = _cf_kimlik()
     durum["cloudflare"] = bool(cf_token and cf_hesap)
-    if not durum["cloudflare"]:
+    if not (durum["nvidia"] or durum["cloudflare"] or durum["hf_token"]):
         durum["eksikler"].append(
-            "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID yok "
-            "(kaliteli FLUX.1-schnell için gerekli; yoksa Pollinations'a düşer)"
+            "NVIDIA_API_KEY / CLOUDFLARE_API_TOKEN / HF_TOKEN tanımlı değil "
+            "(anonim ZeroGPU FLUX.2 denenebilir)"
         )
 
     try:
@@ -190,22 +239,12 @@ def preview_single_image(
 
     hedef = Path(hedef)
     hedef.parent.mkdir(parents=True, exist_ok=True)
-    cf_tok, cf_acc = _cf_kimlik()
-    if cf_tok and cf_acc and _cloudflare_sahne(img_prompt, hedef, genislik, yukseklik, 42):
+    yol, saglayici = _tek_gorsel_saglayici_zinciri(img_prompt, hedef, genislik, yukseklik, 42)
+    if yol is not None and hedef.is_file():
         return {
             "ok": True,
             "path": hedef,
-            "provider": "cloudflare-flux1-schnell",
-            "image_prompt": img_prompt,
-            "motion_prompt": mot_prompt,
-            "narration_text": narration,
-            "planner_source": planner,
-        }
-    if _pollinations_sahne_tekrar(img_prompt, hedef, genislik, yukseklik, 42, deneme=2):
-        return {
-            "ok": True,
-            "path": hedef,
-            "provider": "pollinations",
+            "provider": saglayici,
             "image_prompt": img_prompt,
             "motion_prompt": mot_prompt,
             "narration_text": narration,
@@ -219,7 +258,7 @@ def preview_single_image(
         "motion_prompt": mot_prompt,
         "narration_text": narration,
         "planner_source": planner,
-        "error": "Cloudflare kimliği veya bulut görsel sağlayıcısı yanıt vermedi.",
+        "error": "Gerçek YZ görsel sağlayıcıları yanıt vermedi (Pollinations devre dışı; metin kartı üretilmez).",
     }
 
 
@@ -338,15 +377,10 @@ def _cloudflare_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
         return None
 
 
-def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
-                        tohum: int) -> Optional[Path]:
-    """Pollinations.ai ile ÜCRETSİZ, kotasız, token'sız görsel üretir.
-
-    NEDEN: HF ZeroGPU ücretsiz kotası dolduğunda ("90s requested vs 0s left")
-    FLUX hattı tamamen duruyordu ve video yedeğe düşüyordu. Pollinations
-    anahtar/kota gerektirmez; bu yüzden birincil sağlayıcı yapıldı.
-    """
-    import urllib.parse
+def _nvidia_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int) -> Optional[Path]:
+    """NVIDIA NIM (`flux.1-dev`) ile gerçek yüksek kaliteli görsel üretir."""
+    import base64
+    import json as _json
     import urllib.request
 
     try:
@@ -354,81 +388,143 @@ def _pollinations_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
     except Exception:
         return None
 
-    # Pollinations 1024x576 gibi 16:9 oranları destekler
-    w, h = (1024, 576) if genislik >= yukseklik else (576, 1024)
-    url = (
-        "https://image.pollinations.ai/prompt/"
-        + urllib.parse.quote(prompt)
-        + f"?width={w}&height={h}&nologo=true&seed={tohum}"
-    )
+    nv_key = _nvidia_kimlik()
+    if not nv_key:
+        return None
+
+    if genislik > yukseklik:
+        nv_w, nv_h = 1344, 768
+    elif yukseklik > genislik:
+        nv_w, nv_h = 768, 1344
+    else:
+        nv_w, nv_h = 1024, 1024
+
+    url = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev"
+    govde = _json.dumps({"prompt": prompt, "width": nv_w, "height": nv_h, "steps": 6}).encode("utf-8")
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "yusasufhin-cockpit/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as y:
-            ham = y.read()
+        req = urllib.request.Request(
+            url,
+            data=govde,
+            headers={
+                "Authorization": f"Bearer {nv_key}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=40) as y:
+            veri = _json.loads(y.read().decode("utf-8"))
+        arts = veri.get("artifacts") or []
+        b64 = (arts[0] or {}).get("base64") if arts else ""
+        if not b64:
+            return None
+        ham = base64.b64decode(b64)
         if len(ham) < 5000:
             return None
-        gecici = hedef.with_suffix(".raw")
-        gecici.write_bytes(ham)
-        Image.open(gecici).convert("RGB").resize(
-            (genislik, yukseklik), Image.LANCZOS
-        ).save(hedef, "PNG")
-        gecici.unlink(missing_ok=True)
-        return hedef
+        im = Image.open(__import__("io").BytesIO(ham))
+        return _cover_kaydet_png(im, hedef, genislik, yukseklik)
     except Exception as e:
-        logger.info("[AIVideoMontaj] Pollinations sahne hatası: %s", str(e)[:120])
+        logger.info("[AIVideoMontaj] NVIDIA FLUX hatası: %s", str(e)[:140])
         return None
 
 
-def _pollinations_sahne_tekrar(prompt: str, hedef: Path, genislik: int, yukseklik: int,
-                               tohum: int, deneme: int = 2) -> Optional[Path]:
-    """`_pollinations_sahne` + kısa geri çekilme (Cloudflare 100 sn HTTP tavanına uyumlu)."""
-    bekleme = 1.5
-    for deneme_no in range(1, deneme + 1):
-        sonuc = _pollinations_sahne(prompt, hedef, genislik, yukseklik, tohum)
-        if sonuc is not None:
-            return sonuc
-        if deneme_no < deneme:
-            logger.info("[AIVideoMontaj] Pollinations %s. deneme başarısız, "
-                        "%.0f sn bekleniyor", deneme_no, bekleme)
-            time.sleep(bekleme)
-            bekleme *= 2
+def _gradio_dosya_yolu(sonuc: Any) -> Optional[str]:
+    item = sonuc[0] if isinstance(sonuc, (list, tuple)) and sonuc else sonuc
+    if isinstance(item, dict):
+        return item.get("path") or item.get("url")
+    if isinstance(item, (str, Path)):
+        return str(item)
     return None
 
 
-
-def _flux_sahne(istemci, prompt: str, hedef: Path, genislik: int, yukseklik: int,
-                tohum: int) -> Optional[Path]:
-    """FLUX.1-schnell (HF ZeroGPU) ile sahne üretir. Kota doluysa None."""
+def _flux_sahne(istemci: Any, space_id: str, prompt: str, hedef: Path,
+                genislik: int, yukseklik: int, tohum: int) -> Optional[Path]:
+    """HuggingFace ZeroGPU Space (`FLUX.2-klein-4B` veya `FLUX.1-schnell`) ile sahne üretir."""
     try:
         from PIL import Image
     except Exception:
         return None
-    w, h = (1024, 576) if genislik >= yukseklik else (576, 1024)
+    w, h = (1024, 576) if genislik > yukseklik else (576, 1024) if yukseklik > genislik else (768, 768)
+    kaynak_yol: Optional[str] = None
     try:
-        sonuc = istemci.predict(
-            prompt=prompt, seed=tohum, randomize_seed=True,
-            width=w, height=h, num_inference_steps=4, api_name="/infer",
-        )
-        kaynak = sonuc[0] if isinstance(sonuc, (list, tuple)) else sonuc
-        Image.open(kaynak).convert("RGB").resize(
-            (genislik, yukseklik), Image.LANCZOS
-        ).save(hedef, "PNG")
-        return hedef
+        if "FLUX.2" in space_id:
+            sonuc = istemci.predict(
+                prompt=prompt,
+                input_images=[],
+                mode_choice="Distilled (4 steps)",
+                seed=tohum,
+                randomize_seed=False,
+                width=w,
+                height=h,
+                num_inference_steps=4,
+                guidance_scale=1.0,
+                prompt_upsampling=False,
+                api_name="/infer",
+            )
+        else:
+            sonuc = istemci.predict(
+                prompt=prompt,
+                seed=tohum,
+                randomize_seed=False,
+                width=w,
+                height=h,
+                num_inference_steps=4,
+                api_name="/infer",
+            )
+        kaynak_yol = _gradio_dosya_yolu(sonuc)
+        if not kaynak_yol or not Path(kaynak_yol).is_file():
+            return None
+        return _cover_kaydet_png(Image.open(kaynak_yol), hedef, genislik, yukseklik)
     except Exception as e:
-        logger.info("[AIVideoMontaj] FLUX sahne hatası: %s", str(e)[:120])
+        logger.info("[AIVideoMontaj] %s ZeroGPU sahne hatası: %s", space_id, str(e)[:140])
         return None
+    finally:
+        if kaynak_yol:
+            shutil.rmtree(Path(kaynak_yol).parent, ignore_errors=True)
+
+
+def _hf_zerogpu_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
+                      tohum: int = 42) -> Tuple[Optional[Path], Optional[str]]:
+    """HF_TOKEN varsa token'lı, yoksa anonim ZeroGPU üzerinden FLUX.2 / FLUX.1 sahnesi üretir."""
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("HF_TOKEN"):
+        return None, None
+    try:
+        from gradio_client import Client
+    except Exception:
+        return None, None
+
+    tok = _hf_token()
+    for space, etiket in ((FLUX2_SPACE, "hf-flux2-klein-4b"), (FLUX_SPACE, "hf-flux1-schnell")):
+        try:
+            istemci = Client(space, verbose=False, token=tok or None)
+            if _flux_sahne(istemci, space, prompt, hedef, genislik, yukseklik, tohum):
+                return hedef, etiket
+        except Exception as e:
+            logger.info("[AIVideoMontaj] %s bağlantısı kurulamadı: %s", space, str(e)[:120])
+            continue
+    return None, None
+
+
+def _tek_gorsel_saglayici_zinciri(
+    prompt: str, hedef: Path, genislik: int, yukseklik: int, tohum: int = 42,
+) -> Tuple[Optional[Path], Optional[str]]:
+    """NVIDIA FLUX -> Cloudflare FLUX -> HF ZeroGPU FLUX.2/1 sırasıyla gerçek görsel üretir (Pollinations yok)."""
+    if _nvidia_kimlik() and _nvidia_sahne(prompt, hedef, genislik, yukseklik):
+        return hedef, "nvidia-flux1-dev"
+
+    cf_tok, cf_acc = _cf_kimlik()
+    if cf_tok and cf_acc and _cloudflare_sahne(prompt, hedef, genislik, yukseklik, tohum):
+        return hedef, "cloudflare-flux1-schnell"
+
+    hf_yol, hf_etiket = _hf_zerogpu_sahne(prompt, hedef, genislik, yukseklik, tohum)
+    if hf_yol is not None:
+        return hf_yol, hf_etiket
+    return None, None
 
 
 def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
                    log=None) -> List[Path]:
-    """Prompt'tan gerçek YZ sahne görselleri üretir.
-
-    Sağlayıcı sırası (dürüstlük: hangisi kullanıldıysa `saglayici` alanında döner):
-      1. **Pollinations.ai** — ücretsiz, kotasız, token'sız (birincil)
-      2. **FLUX.1-schnell** (HF ZeroGPU) — kota varsa (ikincil)
-
-    Döner: üretilen PNG yolları (başarısız sahne atlanır).
-    """
+    """Prompt'tan gerçek YZ sahne görselleri üretir (Pollinations devre dışı)."""
     def _log(m: str) -> None:
         logger.info(m)
         if log:
@@ -446,70 +542,21 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
     gecici = Path(tempfile.mkdtemp(prefix="ai_sahne_"))
     yollar: List[Path] = []
     promptlar = _sahne_promptlari(prompt, adet)
+    son_saglayici = ""
 
-    # --- Sağlayıcı 1: Cloudflare Workers AI · FLUX.1-schnell (KALİTE) ---
-    # Ücretsiz katman, anahtar gerektirir. Pollinations'ın `sana` modelinden
-    # ölçülebilir şekilde 2.4× daha detaylı (kenar enerjisi 20.4 vs 8.39).
-    cf_token, cf_hesap = _cf_kimlik()
-    if cf_token and cf_hesap:
-        for i, sahne_prompt in enumerate(promptlar, 1):
-            _log(f"🎨 Sahne {i}/{adet} — Cloudflare FLUX.1-schnell…")
-            hedef = gecici / f"sahne_{i}.png"
-            if _cloudflare_sahne(sahne_prompt, hedef, genislik, yukseklik, 42 + i):
-                yollar.append(hedef)
-                _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
-            else:
-                _log(f"   ⚠️ Sahne {i} Cloudflare'de üretilemedi")
-        if yollar:
-            sahneleri_uret.son_saglayici = "cloudflare-flux1-schnell"  # type: ignore[attr-defined]
-            return yollar
-    else:
-        _log("ℹ️ Cloudflare kimliği yok — sonraki sağlayıcıya geçiliyor")
-
-    # --- Sağlayıcı 2: FLUX.2 / FLUX.1 HF ZeroGPU (kota varsa) ---
-    token = _hf_token()
-    if token:
-        try:
-            from gradio_client import Client
-        except Exception as e:
-            _log(f"⚠️ gradio_client yok: {e}")
-            Client = None  # type: ignore[assignment]
-
-        if Client is not None:
-            os.environ["HF_TOKEN"] = token
-            for space, etiket in ((FLUX2_SPACE, "FLUX.2-klein-4B"), (FLUX_SPACE, "FLUX.1-schnell")):
-                try:
-                    istemci = Client(space, verbose=False, token=token)
-                except Exception as e:
-                    _log(f"⚠️ {etiket} Space'e bağlanılamadı: {str(e)[:120]}")
-                    continue
-                uretilen: List[Path] = []
-                for i, sahne_prompt in enumerate(promptlar, 1):
-                    _log(f"🎨 Sahne {i}/{adet} — {etiket} (ZeroGPU)…")
-                    hedef = gecici / f"z_{etiket.replace('.', '')}_{i}.png"
-                    if _flux_sahne(istemci, sahne_prompt, hedef, genislik, yukseklik, 42 + i):
-                        uretilen.append(hedef)
-                        _log(f"   ✅ Sahne {i} hazır")
-                    else:
-                        _log(f"   ⚠️ Sahne {i} üretilemedi (ZeroGPU kotası dolu olabilir)")
-                if uretilen:
-                    yollar.extend(uretilen)
-                    sahneleri_uret.son_saglayici = etiket.lower()  # type: ignore[attr-defined]
-                    return yollar
-
-    # --- Sağlayıcı 3: Pollinations (son çare, düşük kalite ama kotasız) ---
-    _log("ℹ️ Yüksek kaliteli sağlayıcılar yok — Pollinations (yedek) kullanılıyor")
     for i, sahne_prompt in enumerate(promptlar, 1):
-        _log(f"🎨 Sahne {i}/{adet} — Pollinations…")
+        _log(f"🎨 Sahne {i}/{adet} üretiliyor…")
         hedef = gecici / f"sahne_{i}.png"
-        if _pollinations_sahne_tekrar(sahne_prompt, hedef, genislik, yukseklik, 42 + i):
+        yol, saglayici = _tek_gorsel_saglayici_zinciri(sahne_prompt, hedef, genislik, yukseklik, 42 + i)
+        if yol is not None and hedef.is_file():
             yollar.append(hedef)
-            _log(f"   ✅ Sahne {i} hazır ({hedef.stat().st_size // 1024} KB)")
+            son_saglayici = saglayici or son_saglayici
+            _log(f"   ✅ Sahne {i} hazır ({saglayici}, {hedef.stat().st_size // 1024} KB)")
         else:
-            _log(f"   ⚠️ Sahne {i} Pollinations'ta üretilemedi")
+            _log(f"   ⚠️ Sahne {i} hiçbir gerçek YZ görsel sağlayıcısında üretilemedi")
 
-    if yollar:
-        sahneleri_uret.son_saglayici = "pollinations"  # type: ignore[attr-defined]
+    if yollar and son_saglayici:
+        sahneleri_uret.son_saglayici = son_saglayici  # type: ignore[attr-defined]
     return yollar
 
 

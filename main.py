@@ -1062,18 +1062,18 @@ def _run_instant_cloud_render_sync(
     camera_motion: str,
     duration_sec: float,
     source_url: Optional[str] = None,
+    execution_mode: str = "instant_cloud",
 ) -> Dict[str, Any]:
-    """GPU işçisi yokken anında oynatılabilir PNG/MP4 + HyperFrames HTML üretir.
+    """GPU işçisi yokken gerçek YZ görseli, LTX I2V canlandırma veya HyperFrames kurgu üretir.
 
-    Kural 1 uyumu: Video difüzyonu yerine kamera hareketli FFmpeg/HyperFrames kurgusu
-    olduğunda `simulasyon=True`, `video_difuzyonu=False` ve `gpu_upgrade_available=True`
-    alanları dürüstçe işaretlenir.
+    Kural 1 uyumu: Başarısız görseli metin kartına çevirip sahte resim diye sunmaz;
+    `execution_mode=='real_i2v'` iken FFmpeg zoom/pan ile karakter canlandırma taklidi yapmaz.
     """
     import ai_video_montaj as _avm
     from hyperframes_motor import (
         _cozunurluk,
-        _kinetic_card_png,
         build_hyperframes_html,
+        cloud_real_i2v_animate,
         hyperframes_studio_render,
         instant_i2v_motion,
         verify_onscreen_metrics,
@@ -1093,12 +1093,12 @@ def _run_instant_cloud_render_sync(
             style_preset=style_preset,
             camera_motion=camera_motion,
         )
-        simulasyon = False
-        saglayici = str(prev.get("provider") or "cloud")
         if not prev.get("ok") or not hedef_png.is_file():
-            _kinetic_card_png(hedef_png, prompt[:70], clean_prompts[0][:110], w, h)
-            simulasyon = True
-            saglayici = "hyperframes_kinetic_card"
+            return {
+                "ok": False,
+                "error": prev.get("error") or "Gerçek YZ görseli üretilemedi (Pollinations devre dışı; metin kartı üretilmez).",
+            }
+        saglayici = str(prev.get("provider") or "cloud")
         preview_url = f"/api/media/file?path={hedef_png.name}"
         return {
             "ok": True,
@@ -1108,7 +1108,7 @@ def _run_instant_cloud_render_sync(
             "download_url": f"{preview_url}&download=1",
             "preview_image_url": preview_url,
             "hyperframes_url": None,
-            "simulasyon": simulasyon,
+            "simulasyon": False,
             "video_difuzyonu": False,
             "gpu_upgrade_available": True,
             "kaynak": saglayici,
@@ -1132,22 +1132,51 @@ def _run_instant_cloud_render_sync(
                 camera_motion=camera_motion,
             )
             if not prev.get("ok") or not src_img.is_file():
-                _kinetic_card_png(src_img, prompt[:70], clean_prompts[0][:110], w, h)
+                return {
+                    "ok": False,
+                    "error": prev.get("error") or "Gerçek YZ görseli üretilemedi (metin kartı devre dışı).",
+                }
 
         hedef_mp4 = MEDIA_DIR / f"{job_id}.mp4"
         hedef_html = MEDIA_DIR / f"{job_id}_hyperframes.html"
         audio_path = MEDIA_DIR / f"{job_id}.wav"
         ass_path = MEDIA_DIR / f"{job_id}.ass"
-        res = instant_i2v_motion(
-            src_img,
-            hedef_mp4,
-            prompt=motion_prompt or prompt,
-            camera_motion=camera_motion,
-            aspect_ratio=aspect_ratio,
-            duration_sec=duration_sec,
-            audio_path=audio_path if audio_path.is_file() else None,
-            ass_path=ass_path if ass_path.is_file() else None,
-        )
+        exec_mod = (execution_mode or "instant_cloud").strip().lower()
+
+        res: Optional[Dict[str, Any]] = None
+        if exec_mod != "camera_motion_only":
+            ltx_res = cloud_real_i2v_animate(
+                src_img,
+                hedef_mp4,
+                prompt=motion_prompt or prompt,
+                aspect_ratio=aspect_ratio,
+                duration_sec=duration_sec,
+                audio_path=audio_path if audio_path.is_file() else None,
+                ass_path=ass_path if ass_path.is_file() else None,
+            )
+            if ltx_res.get("ok"):
+                res = ltx_res
+            elif exec_mod == "real_i2v":
+                return {
+                    "ok": False,
+                    "needs_gpu_worker": True,
+                    "error": ltx_res.get("error") or (
+                        "Gerçek karakter canlandırma (LTX ZeroGPU / Kaggle Wan2.1) şu an yanıt vermedi; "
+                        "kamera zoom/kaydırma uygulanmadı."
+                    ),
+                }
+
+        if res is None:
+            res = instant_i2v_motion(
+                src_img,
+                hedef_mp4,
+                prompt=motion_prompt or prompt,
+                camera_motion=camera_motion,
+                aspect_ratio=aspect_ratio,
+                duration_sec=duration_sec,
+                audio_path=audio_path if audio_path.is_file() else None,
+                ass_path=ass_path if ass_path.is_file() else None,
+            )
         if not res.get("ok"):
             return res
         build_hyperframes_html(
@@ -1160,6 +1189,7 @@ def _run_instant_cloud_render_sync(
             style_preset,
         )
         video_url = f"/api/media/file?path={hedef_mp4.name}"
+        is_real_diff = bool(res.get("video_difuzyonu"))
         return {
             "ok": True,
             "status": "tamamlandi",
@@ -1168,10 +1198,10 @@ def _run_instant_cloud_render_sync(
             "download_url": f"{video_url}&download=1",
             "preview_image_url": f"/api/media/file?path={src_img.name}" if src_img.is_file() else None,
             "hyperframes_url": f"/api/studio/hyperframes/{job_id}",
-            "simulasyon": True,
-            "video_difuzyonu": False,
-            "gpu_upgrade_available": True,
-            "kaynak": "bulut_hareket_i2v",
+            "simulasyon": bool(res.get("simulasyon", not is_real_diff)),
+            "video_difuzyonu": is_real_diff,
+            "gpu_upgrade_available": not is_real_diff,
+            "kaynak": str(res.get("kaynak") or "bulut_hareket_i2v"),
             "file_size_bytes": res.get("file_size_bytes", 0),
             "resolution": res.get("resolution", f"{w}x{h}"),
             "duration_sec": res.get("duration_sec", duration_sec),
@@ -1227,14 +1257,14 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
     job["status"] = res.get("status") or "tamamlandi"
     job["progress_pct"] = int(res.get("progress_pct") or 100)
     job["gpu_kuyruk"] = False
-    job["gpu_durum"] = "tamamlandi_onizleme"
+    job["simulasyon"] = bool(res.get("simulasyon", True))
+    job["video_difuzyonu"] = bool(res.get("video_difuzyonu", False))
+    job["gpu_durum"] = "tamamlandi" if job["video_difuzyonu"] else "tamamlandi_onizleme"
     job["output_url"] = res.get("output_url")
     job["download_url"] = res.get("download_url")
     job["preview_image_url"] = res.get("preview_image_url")
     if res.get("hyperframes_url"):
         job["hyperframes_url"] = res["hyperframes_url"]
-    job["simulasyon"] = bool(res.get("simulasyon", True))
-    job["video_difuzyonu"] = bool(res.get("video_difuzyonu", False))
     job["gpu_upgrade_available"] = bool(res.get("gpu_upgrade_available", True))
     job["kalite_raporu"] = res.get("kalite_raporu")
     job["open_edit_metrics"] = res.get("open_edit_metrics")
@@ -1255,10 +1285,15 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
             job["youtube_bundle"] = ChannelStore(DATA_DIR).build_publish_bundle(job, MEDIA_DIR)
         except Exception:
             pass
-        job["message"] = (
-            "Anında bulut hareket kurgusu MP4 hazır (gerçek GPU video difüzyonu değildir — "
-            "Wan2.1/LTX için GPU işçisi bağlayıp yükseltebilirsiniz)."
-        )
+        if job["video_difuzyonu"]:
+            job["message"] = (
+                f"Gerçek YZ video difüzyonu ({res.get('kaynak', 'I2V')}) — karakter & sahne canlandırma MP4 hazır."
+            )
+        else:
+            job["message"] = (
+                "Anında bulut kamera kurgusu MP4 hazır (gerçek karakter canlandırması değildir; "
+                "karakter animasyonu için LTX ZeroGPU / Kaggle Wan2.1 GPU işçisi gerekir)."
+            )
     else:
         job["message"] = (
             f"Anahtar görsel hazır ({res.get('kaynak', 'bulut')}) — 2. Aşamaya geçip videoya çevirebilirsiniz."
@@ -2169,8 +2204,8 @@ async def studio_video_generate(req: Request):
         }
         aninda = (
             method in ("hyperframes_motion", "product_launch")
-            or execution_mode == "instant_cloud"
-            or (execution_mode == "auto" and not _has_live_gpu_worker())
+            or execution_mode in ("instant_cloud", "camera_motion_only")
+            or (execution_mode in ("auto", "real_i2v") and not _has_live_gpu_worker())
         )
         if aninda:
             res = await run_in_threadpool(
@@ -2185,16 +2220,23 @@ async def studio_video_generate(req: Request):
                     camera_motion=camera_motion,
                     duration_sec=sure_sn,
                     source_url=source_url or None,
+                    execution_mode=execution_mode or "instant_cloud",
                 )
             )
-            if not res.get("ok"):
+            if res.get("needs_gpu_worker"):
+                task_data["status"] = "kuyrukta (Gerçek I2V GPU bekleniyor)"
+                task_data["preview_image_url"] = task_data.get("input_image_url")
+                task_data["message"] = str(res.get("error") or "Gerçek karakter canlandırma için GPU işçisi bekleniyor; iş kuyruğa alındı.")
+                task_data["needs_gpu_worker"] = True
+            elif not res.get("ok"):
                 return JSONResponse(status_code=502, content={"success": False, "detail": res.get("error") or "Anında bulut render başarısız."})
-            _finalize_instant_cloud_job(task_data, res)
-            task_data["stages"] = [
-                {"ad": "1. Stil & Prompt Kurgusu", "durum": "tamamlandi"},
-                {"ad": f"2. Anında Bulut Kurgu ({task_data.get('kaynak', 'cloud')})", "durum": "tamamlandi"},
-                {"ad": "3. FFmpeg Kalite & YouTube Paketi", "durum": "tamamlandi"},
-            ]
+            else:
+                _finalize_instant_cloud_job(task_data, res)
+                task_data["stages"] = [
+                    {"ad": "1. Stil & Prompt Kurgusu", "durum": "tamamlandi"},
+                    {"ad": f"2. {'Gerçek I2V Canlandırma' if task_data.get('video_difuzyonu') else 'Anında Bulut Kurgu'} ({task_data.get('kaynak', 'cloud')})", "durum": "tamamlandi"},
+                    {"ad": "3. FFmpeg Kalite & YouTube Paketi", "durum": "tamamlandi"},
+                ]
         _append_job_record(task_data)
         return {"success": True, "task": task_data}
 
@@ -2853,8 +2895,8 @@ async def burc_video_generate(req: Request):
     }
     aninda = (
         yontem == "hyperframes_motion"
-        or execution_mode == "instant_cloud"
-        or (execution_mode == "auto" and not _has_live_gpu_worker())
+        or execution_mode in ("instant_cloud", "camera_motion_only")
+        or (execution_mode in ("auto", "real_i2v") and not _has_live_gpu_worker())
     )
     if aninda:
         res = await run_in_threadpool(
@@ -2868,8 +2910,33 @@ async def burc_video_generate(req: Request):
                 style_preset=burc_stili,
                 camera_motion=str(body.get("camera_motion") or "orbital"),
                 duration_sec=sure_sn,
+                execution_mode=execution_mode or "instant_cloud",
             )
         )
+        if res.get("needs_gpu_worker"):
+            job["status"] = "kuyrukta (Gerçek I2V GPU bekleniyor)"
+            job["preview_image_url"] = input_url
+            _append_job_record(job)
+            return {
+                "success": True,
+                "job_id": job_id,
+                "task": job,
+                "burc": {"kod": job["burc_kodu"], "ad": job["burc_adi"], "simge": job["burc_simge"]},
+                "senaryo": {
+                    "narration_text": metin,
+                    "image_prompt": job["prompt"],
+                    "motion_prompt": job["motion_prompt"],
+                    "simulasyon": bool(senaryo.get("simulasyon")),
+                    "kaynak": job["senaryo_kaynak"],
+                },
+                "input_image_url": input_url,
+                "audio_url": audio_url,
+                "subtitle_url": subtitle_url,
+                "gpu_kuyruk": True,
+                "gpu_durum": "bekliyor",
+                "needs_gpu_worker": True,
+                "message": str(res.get("error") or "Gerçek karakter canlandırma için GPU işçisi bekleniyor; kamera zoom/pan uygulanmadı."),
+            }
         if not res.get("ok"):
             return JSONResponse(status_code=502, content={"success": False, "detail": res.get("error") or "Burç anında bulut render başarısız."})
         _finalize_instant_cloud_job(job, res)
@@ -2896,6 +2963,7 @@ async def burc_video_generate(req: Request):
             "gpu_kuyruk": False,
             "gpu_durum": job["gpu_durum"],
             "simulasyon": job["simulasyon"],
+            "video_difuzyonu": job.get("video_difuzyonu", False),
             "message": job["message"],
         }
 

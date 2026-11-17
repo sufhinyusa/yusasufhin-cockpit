@@ -302,6 +302,130 @@ def instant_i2v_motion(
     }
 
 
+def cloud_real_i2v_animate(
+    image_path: Path,
+    hedef_mp4: Path,
+    prompt: str = "",
+    aspect_ratio: str = "16:9",
+    duration_sec: float = 3.0,
+    audio_path: Optional[Path] = None,
+    ass_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Onaylı bir görseldeki karakterleri & sahneyi gerçek I2V difüzyonuyla canlandırır (LTX-Video ZeroGPU).
+
+    FFmpeg zoompan değildir — görselin içindeki figür, su, rüzgar ve nesnelere gerçek
+    kare-arası video difüzyonu uygular (`video_difuzyonu=True`, `simulasyon=False`).
+    """
+    src = Path(image_path)
+    out = Path(hedef_mp4)
+    if not src.is_file():
+        return {"ok": False, "error": "Kaynak görsel bulunamadı."}
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("HF_TOKEN"):
+        return {"ok": False, "error": "Pytest ortamında HF_TOKEN olmadan LTX ZeroGPU atlandı."}
+
+    try:
+        from gradio_client import Client, handle_file
+        import ai_video_montaj as _avm
+    except Exception as e:
+        return {"ok": False, "error": f"LTX istemci yüklenemedi: {type(e).__name__}"}
+
+    tok = _avm._hf_token()
+    if not tok:
+        return {"ok": False, "error": "Bulut gerçek karakter canlandırma (LTX-Video ZeroGPU) için HF_TOKEN gerekli."}
+
+    oran = (aspect_ratio or "16:9").replace(" ", "")
+    if oran == "9:16":
+        lw, lh = 448, 768
+    elif oran == "1:1":
+        lw, lh = 576, 576
+    else:
+        lw, lh = 768, 448
+
+    temiz_p = (prompt or "").strip()
+    anim_prompt = (
+        "The subject, hands, water, hair, fabric, and natural elements inside the image come alive with smooth, "
+        f"expressive continuous motion: {temiz_p}"
+        if temiz_p
+        else "The characters and natural elements in the scene move smoothly and realistically with gentle natural motion."
+    )
+    dur_val = max(2.0, min(5.0, float(duration_sec or 3.0)))
+
+    gradio_vid_path: Optional[Path] = None
+    try:
+        client = Client("Lightricks/ltx-video-distilled", token=tok, verbose=False)
+        res = client.predict(
+            prompt=anim_prompt[:450],
+            negative_prompt="static frozen frame, worst quality, inconsistent motion, blurry, jittery, distorted faces, extra limbs",
+            input_image_filepath=handle_file(str(src)),
+            input_video_filepath=None,
+            height_ui=lh,
+            width_ui=lw,
+            mode="image-to-video",
+            duration_ui=dur_val,
+            ui_frames_to_use=9,
+            seed_ui=42,
+            randomize_seed=True,
+            ui_guidance_scale=1,
+            improve_texture_flag=True,
+            api_name="/image_to_video",
+        )
+        vid_item = res[0] if isinstance(res, (list, tuple)) and res else res
+        raw_vid = vid_item.get("video") if isinstance(vid_item, dict) else vid_item
+        if not raw_vid or not Path(str(raw_vid)).is_file():
+            return {"ok": False, "error": "LTX-Video çıktı videosu üretemedi."}
+        gradio_vid_path = Path(str(raw_vid))
+
+        out.parent.mkdir(parents=True, exist_ok=True)
+        gecici = out.with_name(f".{out.stem}.{time.time_ns()}.ltx.mp4")
+        ff = _ffmpeg_bin()
+        has_audio = bool(audio_path and Path(audio_path).is_file() and Path(audio_path).stat().st_size > 500)
+        cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(gradio_vid_path)]
+        if has_audio:
+            cmd += ["-i", str(audio_path)]
+        vf_parts: List[str] = ["format=yuv420p"]
+        if ass_path and Path(ass_path).is_file():
+            kacis = str(Path(ass_path)).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+            vf_parts.append(f"subtitles=filename='{kacis}'")
+        cmd += ["-vf", ",".join(vf_parts), "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-crf", "22", "-pix_fmt", "yuv420p"]
+        if has_audio:
+            cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "128k", "-shortest"]
+        cmd += ["-movflags", "+faststart", str(gecici)]
+
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0 and len(vf_parts) > 1:
+            # Altyazı olmadan tekrar dene
+            cmd_no_sub = [x if not x.startswith("format=yuv420p,") else "format=yuv420p" for x in cmd]
+            r = subprocess.run(cmd_no_sub, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0 or not gecici.is_file():
+            gecici.unlink(missing_ok=True)
+            shutil.copy2(gradio_vid_path, gecici)
+        os.replace(gecici, out)
+
+        try:
+            from video_render import video_kalite_denetle
+            kalite = video_kalite_denetle(out, beklenen_oran=aspect_ratio)
+        except Exception:
+            kalite = {"gecerli": True, "uygun": True, "genislik": lw, "yukseklik": lh}
+
+        return {
+            "ok": bool(kalite.get("gecerli", True)) and out.is_file() and out.stat().st_size > 10000,
+            "path": out,
+            "file_size_bytes": out.stat().st_size,
+            "resolution": f"{kalite.get('genislik') or lw}x{kalite.get('yukseklik') or lh}",
+            "duration_sec": float(kalite.get("sure_sn") or dur_val),
+            "kalite": kalite,
+            "simulasyon": False,
+            "video_difuzyonu": True,
+            "kaynak": "ltx-video-distilled-i2v",
+        }
+    except Exception as e:
+        logger.info("[HyperFrames] LTX-Video I2V başarısız: %s", str(e)[:160])
+        return {"ok": False, "error": f"LTX-Video ZeroGPU I2V hatası: {type(e).__name__}: {str(e)[:140]}"}
+    finally:
+        if gradio_vid_path is not None:
+            shutil.rmtree(gradio_vid_path.parent, ignore_errors=True)
+
+
 def _kinetic_card_png(
     hedef_png: Path,
     title: str,
@@ -387,8 +511,10 @@ def hyperframes_studio_render(
                 saglayici = str(prev.get("provider") or "cloud")
                 png_list.append(hedef_png)
             else:
-                _kinetic_card_png(hedef_png, prompt[:70], sp[:110], w, h)
-                png_list.append(hedef_png)
+                return {
+                    "ok": False,
+                    "error": prev.get("error") or "Gerçek YZ görseli üretilemedi; promptu metin kartı olarak basma devre dışı.",
+                }
 
         parcalar: List[Path] = []
         for idx, png in enumerate(png_list):
