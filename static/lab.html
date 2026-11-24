@@ -720,6 +720,27 @@
             </div>
             <button type="button" class="site-btn site-btn-ghost" onclick="loadContactInbox()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
           </div>
+
+          <!-- ys@yusasufhin.com Doğrudan E-posta Kurulum & Test Kartı -->
+          <div style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:14px; background:color-mix(in srgb, var(--site-accent) 5%, transparent);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <strong style="font-size:0.88rem;">✉️ ys@yusasufhin.com Doğrudan E-posta Bağlantısı</strong>
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="font-size:0.78rem; color:var(--site-accent);">🔑 Google Uygulama Şifresi Al →</a>
+            </div>
+            <p style="margin:0 0 10px; font-size:0.79rem; color:var(--site-text-dim);">
+              Google hesabınızdan (<code>ys@yusasufhin.com</code>) 16 haneli Uygulama Şifresini girin (Mac köprüsü üzerinden doğrudan Gmail TLS 587 ile yollar, üçüncü parti hesap gerekmez) <strong>veya</strong> Mac kapalıyken de 7/24 gitmesi için ücretsiz <code>RESEND_API_KEY</code> girin.
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom:10px;">
+              <input id="mailCfgAppPass" type="password" class="site-input" placeholder="ys@yusasufhin.com 16 haneli Uygulama Şifresi" autocomplete="off">
+              <input id="mailCfgResendKey" type="password" class="site-input" placeholder="Opsiyonel: RESEND_API_KEY (re_...)" autocomplete="off">
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <button type="button" class="site-btn site-btn-primary" onclick="saveContactMailConfig()" style="padding:7px 14px; font-size:0.8rem;">💾 Kaydet ve Bağla</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="sendTestContactMail()" style="padding:7px 14px; font-size:0.8rem;">📨 ys@yusasufhin.com'a Test Maili Gönder</button>
+              <span id="mailCfgStatusText" style="font-size:0.79rem; color:var(--site-text-dim);"></span>
+            </div>
+          </div>
+
           <div id="contactInboxList" style="display:flex; flex-direction:column; gap:10px;">
             <div class="site-empty">Mesajlar yükleniyor…</div>
           </div>

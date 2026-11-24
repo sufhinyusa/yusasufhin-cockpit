@@ -427,29 +427,60 @@ def _gemini_plan(
     return _cloudflare_llm_plan(director_prompt, scene_count, cam_hint)
 
 
-def fetch_url_launch_brief(url: str, timeout: int = 8) -> Dict[str, Any]:
-    """Link #296 (`product-launch-motion`): Web sitesi URL'sinden güvenli tanıtım özeti çıkarır."""
+def _validate_public_http_url(url_str: str) -> Tuple[bool, str, str]:
+    """URL şemasını ve çözümlenen tüm IP'lerin genel (public) ağda olduğunu doğrular (SSRF kalkanı)."""
     import ipaddress
     import socket
 
-    temiz_url = (url or "").strip()
-    parsed = urllib.parse.urlparse(temiz_url)
+    temiz = (url_str or "").strip()
+    parsed = urllib.parse.urlparse(temiz)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        return {"ok": False, "error": "Geçerli bir http(s) URL gerekli."}
-    host = parsed.hostname or ""
-    if not host or host in ("localhost", "127.0.0.1", "::1"):
-        return {"ok": False, "error": "Yerel/özel ağ adreslerine izin verilmez."}
+        return False, "", "Geçerli bir http(s) URL gerekli."
+    host = (parsed.hostname or "").strip().lower()
+    if not host or host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local") or host.endswith(".internal"):
+        return False, "", "Yerel/özel ağ adreslerine izin verilmez."
     try:
-        for info in socket.getaddrinfo(host, None):
+        infos = socket.getaddrinfo(host, None)
+        if not infos:
+            return False, "", "Alan adı çözümlenemedi."
+        for info in infos:
             ip_obj = ipaddress.ip_address(info[4][0])
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved or ip_obj.is_multicast:
-                return {"ok": False, "error": "Özel ağ IP hedefi engellendi."}
+            if (
+                ip_obj.is_private
+                or ip_obj.is_loopback
+                or ip_obj.is_link_local
+                or ip_obj.is_reserved
+                or ip_obj.is_multicast
+                or ip_obj.is_unspecified
+            ):
+                return False, "", "Özel ağ IP hedefi engellendi."
     except Exception:
-        return {"ok": False, "error": "Alan adı çözümlenemedi."}
+        return False, "", "Alan adı çözümlenemedi."
+    return True, host, ""
 
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """HTTP 301/302/307/308 yönlendirmelerinde dahili IP'lere SSRF atlamasını engeller."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        full_new = urllib.parse.urljoin(req.full_url, newurl)
+        ok, _h, err = _validate_public_http_url(full_new)
+        if not ok:
+            raise urllib.error.URLError(f"Güvensiz yönlendirme engellendi: {err}")
+        return super().redirect_request(req, fp, code, msg, headers, full_new)
+
+
+def fetch_url_launch_brief(url: str, timeout: int = 8) -> Dict[str, Any]:
+    """Link #296 (`product-launch-motion`): Web sitesi URL'sinden güvenli tanıtım özeti çıkarır."""
+    temiz_url = (url or "").strip()
+    ok, host, err = _validate_public_http_url(temiz_url)
+    if not ok:
+        return {"ok": False, "error": err}
+
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
     req = urllib.request.Request(temiz_url, headers={"User-Agent": "yusasufhin-cockpit/1.0"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with opener.open(req, timeout=timeout) as resp:
             html_txt = resp.read(160_000).decode("utf-8", errors="ignore")
     except Exception as e:
         return {"ok": False, "error": f"Site okunamadı: {type(e).__name__}"}

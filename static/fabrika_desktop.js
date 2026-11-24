@@ -866,9 +866,27 @@
   };
 
   function sanitizeReportHtml(rawHtml) {
-    return String(rawHtml || '')
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    const raw = String(rawHtml || '');
+    if (typeof DOMParser === 'undefined') {
+      return escapeHtmlSimple(raw);
+    }
+    const doc = new DOMParser().parseFromString(raw, 'text/html');
+    const blockedTags = 'script,iframe,object,embed,form,meta,base,link,svg,math,applet,frame,frameset';
+    doc.body.querySelectorAll(blockedTags).forEach((el) => el.remove());
+    doc.body.querySelectorAll('*').forEach((el) => {
+      Array.from(el.attributes).forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        const val = (attr.value || '').trim().toLowerCase();
+        if (name.startsWith('on') || name === 'srcdoc') {
+          el.removeAttribute(attr.name);
+        } else if (['href', 'src', 'xlink:href', 'action', 'formaction'].includes(name)) {
+          if (val.startsWith('javascript:') || val.startsWith('vbscript:') || val.startsWith('data:text/html')) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      });
+    });
+    return doc.body.innerHTML;
   }
 
   function renderQuestionCard(card) {

@@ -1020,6 +1020,52 @@
       .catch(function (err) { if (hud) hud.textContent = 'Hata: ' + err.message; });
   };
 
+  window.saveContactMailConfig = function () {
+    var passEl = document.getElementById('mailCfgAppPass');
+    var resendEl = document.getElementById('mailCfgResendKey');
+    var stEl = document.getElementById('mailCfgStatusText');
+    var smtpPass = passEl ? passEl.value.trim() : '';
+    var resendKey = resendEl ? resendEl.value.trim() : '';
+    if (!smtpPass && !resendKey) {
+      if (stEl) stEl.textContent = '⚠️ Lütfen Google Uygulama Şifresi veya RESEND_API_KEY girin.';
+      return;
+    }
+    if (stEl) stEl.textContent = '⏳ Kaydediliyor…';
+    window.authFetch('/api/contact/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smtp_pass: smtpPass, resend_api_key: resendKey, to_email: 'ys@yusasufhin.com' })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (passEl) passEl.value = '';
+        if (resendEl) resendEl.value = '';
+        if (stEl) {
+          stEl.textContent = d && d.success
+            ? ('✅ Kaydedildi' + (d.pushed_to_mac ? ' ve Mac köprüsüne aktarıldı!' : '! Şimdi Test Maili Gönder düğmesine basabilirsiniz.'))
+            : '❌ Kaydedilemedi.';
+        }
+        window.loadContactInbox();
+      })
+      .catch(function (err) { if (stEl) stEl.textContent = '❌ Hata: ' + err.message; });
+  };
+
+  window.sendTestContactMail = function () {
+    var stEl = document.getElementById('mailCfgStatusText');
+    if (stEl) stEl.textContent = '📨 ys@yusasufhin.com adresine test e-postası gönderiliyor…';
+    window.authFetch('/api/contact/test', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!stEl) return;
+        if (d && d.email_sent) {
+          stEl.textContent = '✅ Gerçek test e-postası ys@yusasufhin.com adresine iletildi (' + (d.email_provider || 'email') + ')!';
+        } else {
+          stEl.textContent = '⚠️ Gönderilemedi: ' + ((d && d.email_error) || 'Önce uygulama şifresi veya RESEND_API_KEY kaydedin.');
+        }
+      })
+      .catch(function (err) { if (stEl) stEl.textContent = '❌ Hata: ' + err.message; });
+  };
+
   window.loadContactInbox = function () {
     var listEl = document.getElementById('contactInboxList');
     var hintEl = document.getElementById('contactNotifierHint');

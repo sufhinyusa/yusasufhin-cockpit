@@ -60,7 +60,7 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "X-Worker-Key", "X-Fabrika-Bridge-Secret"],
 )
 
 _REQ_COUNT = 0
@@ -83,8 +83,14 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Permissions-Policy"] = "camera=(), geolocation=(), payment=()"
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
+        "base-uri 'self'; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
@@ -231,20 +237,76 @@ LOCKOUT_WINDOW_SEC: float = 60.0
 # Bilinen, tahmin edilebilir veya ifşa olmuş güvensiz PIN kara listesi
 DISALLOWED_PINS = {"192300", "123456", "000000", "111111", "091091", "654321", "123123", "999999"}
 
+_INTERNAL_PROXY_NETS = None
+
+def _is_trusted_proxy_ip(ip_str: str) -> bool:
+    import ipaddress
+    global _INTERNAL_PROXY_NETS
+    if _INTERNAL_PROXY_NETS is None:
+        _INTERNAL_PROXY_NETS = tuple(ipaddress.ip_network(n) for n in (
+            "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+            "100.64.0.0/10", "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10",
+        ))
+    try:
+        ip_obj = ipaddress.ip_address(ip_str)
+        return any(ip_obj in net for net in _INTERNAL_PROXY_NETS)
+    except ValueError:
+        return False
+
 def get_client_ip(req: Request) -> str:
-    """İstemci IP adresini güvenilir şekilde döner (X-Forwarded-For spoofing koruması)."""
-    cf_ip = req.headers.get("cf-connecting-ip")
-    if cf_ip and req.client and req.client.host in ("127.0.0.1", "::1", "10.", "172."):
-        return cf_ip.strip()
-    if req.client and req.client.host:
-        return req.client.host
-    return "127.0.0.1"
+    """İstemci IP adresini sahte başlık (spoofing) ve paylaşımlı LB kilitlemesine karşı güvenli çözer."""
+    import ipaddress
+
+    direct_host = (req.client.host if req.client and req.client.host else "127.0.0.1").strip()
+    if not _is_trusted_proxy_ip(direct_host):
+        return direct_host
+
+    # Yalnızca yusasufhin.com (Cloudflare arkası) trafiğinde CF-Connecting-IP geçerli IP ise kabul et
+    host_hdr = (req.headers.get("host") or "").lower().split(":", 1)[0]
+    cf_ip = (req.headers.get("cf-connecting-ip") or "").strip()
+    if cf_ip and host_hdr.endswith("yusasufhin.com"):
+        try:
+            ipaddress.ip_address(cf_ip)
+            return cf_ip
+        except ValueError:
+            pass
+
+    # Render / ters vekil: X-Forwarded-For içindeki en sağdaki dahili-olmayan IP vekil tarafından eklenir
+    xff = req.headers.get("x-forwarded-for") or ""
+    if xff:
+        hops = [h.strip() for h in xff.split(",") if h.strip()]
+        for candidate in reversed(hops):
+            try:
+                ipaddress.ip_address(candidate)
+                if not _is_trusted_proxy_ip(candidate):
+                    return candidate
+            except ValueError:
+                continue
+
+    return direct_host
+
+MAX_TRACKED_IPS = 2048
+MAX_ACTIVE_SESSIONS = 512
+
+def _prune_ip_dict(store: Dict[str, List[float]], window_sec: float) -> None:
+    if len(store) <= MAX_TRACKED_IPS:
+        return
+    now = time.time()
+    dead = [k for k, ts_list in store.items() if not ts_list or (now - ts_list[-1]) >= window_sec]
+    for k in dead:
+        store.pop(k, None)
+    if len(store) > MAX_TRACKED_IPS:
+        for k in list(store.keys())[: len(store) - MAX_TRACKED_IPS]:
+            store.pop(k, None)
 
 def is_rate_limited(ip: str) -> Tuple[bool, int]:
     """IP adresi için rate limit kontrolü yapar."""
     now = time.time()
     attempts = [t for t in FAILED_ATTEMPTS.get(ip, []) if now - t < LOCKOUT_WINDOW_SEC]
-    FAILED_ATTEMPTS[ip] = attempts
+    if attempts:
+        FAILED_ATTEMPTS[ip] = attempts
+    else:
+        FAILED_ATTEMPTS.pop(ip, None)
     if len(attempts) >= MAX_FAILED_ATTEMPTS:
         wait_sec = int(LOCKOUT_WINDOW_SEC - (now - attempts[0]))
         return True, max(1, wait_sec)
@@ -252,6 +314,7 @@ def is_rate_limited(ip: str) -> Tuple[bool, int]:
 
 def record_failed_attempt(ip: str):
     """Başarısız oturum denemesini kaydeder."""
+    _prune_ip_dict(FAILED_ATTEMPTS, LOCKOUT_WINDOW_SEC)
     now = time.time()
     attempts = [t for t in FAILED_ATTEMPTS.get(ip, []) if now - t < LOCKOUT_WINDOW_SEC]
     attempts.append(now)
@@ -312,6 +375,10 @@ def create_session(user: str = "Yusuf Şahin", prefix: str = "tok") -> str:
     sig_raw = f"{user}:{now}:{exp}"
     sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
     token = f"{prefix}_{now}_{exp}_{sig}"
+    if len(ACTIVE_SESSIONS) >= MAX_ACTIVE_SESSIONS:
+        oldest = sorted(ACTIVE_SESSIONS.keys(), key=lambda k: ACTIVE_SESSIONS[k].get("created_at", 0))[:64]
+        for k in oldest:
+            ACTIVE_SESSIONS.pop(k, None)
     ACTIVE_SESSIONS[token] = {
         "user": user,
         "created_at": now,
@@ -626,10 +693,11 @@ async def auth_check(authorization: Optional[str] = Header(None)):
 @app.post("/api/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
     token = (authorization or "").replace("Bearer ", "").strip()
-    if token:
+    if token and is_session_valid(token):
+        if len(REVOKED_TOKENS) >= 4096:
+            REVOKED_TOKENS.clear()
         REVOKED_TOKENS.add(token)
-    if token in ACTIVE_SESSIONS:
-        del ACTIVE_SESSIONS[token]
+        ACTIVE_SESSIONS.pop(token, None)
     return {"success": True}
 
 @app.post("/api/auth/change_pin")
@@ -707,10 +775,12 @@ CONTACT_RATE: Dict[str, List[float]] = {}
 
 @app.post("/api/contact")
 async def public_contact(req: Request):
-    """Genel vitrin iletişim formu: gerçek e-posta (Resend/SMTP) + Telegram + gelen kutusu."""
-    from contact_notifier import dispatch_contact_notification
+    """Genel vitrin iletişim formu: Resend / SMTP / Mac Port-443 Gmail Rölesi + Telegram + gelen kutusu."""
+    from contact_notifier import dispatch_contact_notification, make_layered_env_getter
+    from mac_bridge import bridge_hub
 
     ip = get_client_ip(req)
+    _prune_ip_dict(CONTACT_RATE, 300.0)
     now = time.time()
     recent = [t for t in CONTACT_RATE.get(ip, []) if now - t < 300.0]
     if len(recent) >= 5:
@@ -719,21 +789,23 @@ async def public_contact(req: Request):
         body = await req.json()
     except Exception:
         body = {}
-    name = str(body.get("name") or "").strip()[:100]
-    email = str(body.get("email") or "").strip()[:160]
+    name = re.sub(r"[\r\n]+", " ", str(body.get("name") or "")).strip()[:100]
+    email = re.sub(r"[\r\n\s]+", "", str(body.get("email") or "")).strip()[:160]
     message = str(body.get("message") or "").strip()[:2000]
     if len(name) < 2 or "@" not in email or "." not in email.split("@")[-1] or len(message) < 10:
         return JSONResponse(status_code=400, content={"success": False, "detail": "Lütfen geçerli bir ad, e-posta adresi ve en az 10 karakterlik mesaj girin."})
 
     recent.append(now)
     CONTACT_RATE[ip] = recent
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
 
     delivery = await run_in_threadpool(
         lambda: dispatch_contact_notification(
             name=name,
             sender_email=email,
             message=message,
-            get_env=get_secret_from_env,
+            get_env=env_getter,
+            mac_relay_fn=lambda p: bridge_hub.relay_contact_email(p, allow_offline_queue=True),
         )
     )
 
@@ -744,6 +816,7 @@ async def public_contact(req: Request):
         "message": message,
         "ip": ip,
         "email_sent": delivery["email_sent"],
+        "email_queued_mac": delivery.get("email_queued_mac", False),
         "telegram_sent": delivery["telegram_sent"],
         "delivery_channel": delivery["delivery_channel"],
     }
@@ -754,8 +827,10 @@ async def public_contact(req: Request):
     except OSError as exc:
         logger.warning("İletişim kaydı yazılamadı: %s", exc)
 
-    if delivery["email_sent"] or delivery["telegram_sent"]:
-        user_msg = "Mesajınız iletildi. En kısa sürede e-posta üzerinden dönüş yapılacaktır."
+    if delivery["email_sent"]:
+        user_msg = f"Mesajınız doğrudan {delivery['to_email']} adresine iletildi. En kısa sürede dönüş yapılacaktır."
+    elif delivery.get("email_queued_mac") or delivery["telegram_sent"]:
+        user_msg = "Mesajınız iletildi ve bildirim kuyruğuna alındı. En kısa sürede e-posta üzerinden dönüş yapılacaktır."
     else:
         user_msg = (
             "Mesajınız site gelen kutusuna kaydedildi (sunucuda otomatik e-posta/SMTP aktarımı henüz bağlı değil). "
@@ -765,8 +840,9 @@ async def public_contact(req: Request):
     return {
         "success": True,
         "email_sent": delivery["email_sent"],
+        "email_queued_mac": delivery.get("email_queued_mac", False),
         "telegram_sent": delivery["telegram_sent"],
-        "notified": bool(delivery["email_sent"] or delivery["telegram_sent"]),
+        "notified": bool(delivery["email_sent"] or delivery.get("email_queued_mac") or delivery["telegram_sent"]),
         "delivery_channel": delivery["delivery_channel"],
         "mailto_fallback_url": delivery["mailto_fallback_url"],
         "message": user_msg,
@@ -776,15 +852,79 @@ async def public_contact(req: Request):
 @app.get("/api/contact/messages", dependencies=[Depends(verify_auth)])
 async def list_contact_messages(limit: int = Query(30)):
     """Yetkili yönetici için gelen iletişim mesajlarını ve bildirim kanalı durumunu döner."""
-    from contact_notifier import notifier_status, read_contact_messages
+    from contact_notifier import make_layered_env_getter, notifier_status, read_contact_messages
+    from mac_bridge import bridge_hub
 
+    st = bridge_hub.get_status()
+    mac_stats = st.get("stats") or {}
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
     items = read_contact_messages(DATA_DIR, limit=limit)
     return {
         "success": True,
         "count": len(items),
         "items": items,
-        "notifier": notifier_status(get_secret_from_env),
+        "notifier": notifier_status(
+            env_getter,
+            mac_online=bool(st.get("online")),
+            mac_smtp_ready=bool(mac_stats.get("smtp_ready")),
+        ),
     }
+
+
+@app.post("/api/contact/config", dependencies=[Depends(verify_auth)])
+async def update_contact_mail_config(req: Request):
+    """Yöneticinin ys@yusasufhin.com uygulama şifresini veya Resend anahtarını 0600 izinle kaydeder ve Mac'e senkronlar."""
+    from contact_notifier import DEFAULT_TO_EMAIL, make_layered_env_getter, notifier_status, save_mail_config
+    from mac_bridge import bridge_hub
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    smtp_pass = str(body.get("smtp_pass") or "").strip()
+    resend_key = str(body.get("resend_api_key") or "").strip()
+    to_email = re.sub(r"[\r\n\s]+", "", str(body.get("to_email") or DEFAULT_TO_EMAIL)).strip() or DEFAULT_TO_EMAIL
+    smtp_user = re.sub(r"[\r\n\s]+", "", str(body.get("smtp_user") or to_email)).strip() or to_email
+    smtp_host = re.sub(r"[\r\n\s]+", "", str(body.get("smtp_host") or "smtp.gmail.com")).strip() or "smtp.gmail.com"
+    smtp_port = int(body.get("smtp_port") or 587)
+
+    updates: Dict[str, Optional[str]] = {"CONTACT_TO_EMAIL": to_email}
+    if smtp_pass:
+        updates["SMTP_HOST"] = smtp_host
+        updates["SMTP_PORT"] = str(smtp_port)
+        updates["SMTP_USER"] = smtp_user
+        updates["SMTP_PASS"] = smtp_pass
+    if resend_key:
+        updates["RESEND_API_KEY"] = resend_key
+
+    save_mail_config(DATA_DIR, updates)
+    pushed_mac = bridge_hub.push_mail_config_to_mac(smtp_user, smtp_pass, smtp_host, smtp_port) if smtp_pass else False
+    st = bridge_hub.get_status()
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
+    return {
+        "success": True,
+        "pushed_to_mac": pushed_mac,
+        "notifier": notifier_status(env_getter, mac_online=bool(st.get("online")), mac_smtp_ready=pushed_mac),
+    }
+
+
+@app.post("/api/contact/test", dependencies=[Depends(verify_auth)])
+async def send_test_contact_email():
+    """Yönetici için ys@yusasufhin.com adresine gerçek uçtan uca test e-postası gönderir."""
+    from contact_notifier import dispatch_contact_notification, make_layered_env_getter
+    from mac_bridge import bridge_hub
+
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
+    res = await run_in_threadpool(
+        lambda: dispatch_contact_notification(
+            name="Fabrika Doğrulama Testi",
+            sender_email="ys@yusasufhin.com",
+            message="Bu mesaj yusasufhin.com iletişim formu e-posta teslim hattını doğrulamak için gönderilmiştir.",
+            get_env=env_getter,
+            mac_relay_fn=lambda p: bridge_hub.relay_contact_email(p, allow_offline_queue=False, timeout_sec=14.0),
+        )
+    )
+    return {"success": bool(res.get("email_sent")), **res}
 
 @app.get("/api/system/stats", dependencies=[Depends(verify_auth)])
 async def get_system_stats():
@@ -3910,16 +4050,12 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
     if ext not in ALLOWED_MEDIA_EXT:
         return JSONResponse(status_code=415, content={"detail": "Yalnızca doğrulanmış medya formatları desteklenir."})
 
-    # Dosyayı yalıtılmış storage/media, eski static/media veya data içinde ara; yoksa R2'den geri yükle
+    # Dosyayı yalnızca yalıtılmış storage/media, eski static/media veya video_factory içinde ara (data/ hariç!)
     target = (MEDIA_DIR / file_name).resolve()
     if not target.is_file() and LEGACY_MEDIA_DIR.is_dir():
         legacy_cand = (LEGACY_MEDIA_DIR / file_name).resolve()
         if legacy_cand.is_file() and legacy_cand.is_relative_to(LEGACY_MEDIA_DIR):
             target = legacy_cand
-    if not target.is_file():
-        data_cand = (DATA_MEDIA_DIR / file_name).resolve()
-        if data_cand.is_file() and data_cand.is_relative_to(DATA_MEDIA_DIR):
-            target = data_cand
     if not target.is_file():
         for _aday in sorted((BASE_DIR / "video_factory").glob(f"*/{file_name}"), reverse=True):
             if _aday.is_file():
@@ -3930,7 +4066,7 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
         if restored.is_relative_to(MEDIA_DIR) and await run_in_threadpool(lambda: ensure_local(restored)):
             target = restored
 
-    _izinli_kokler = (MEDIA_DIR, LEGACY_MEDIA_DIR, DATA_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
+    _izinli_kokler = (MEDIA_DIR, LEGACY_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
     if target.is_file() and any(target.is_relative_to(k) for k in _izinli_kokler):
         if ext == ".mp4" and not _mp4_oynatilabilir(target):
             return JSONResponse(
@@ -3949,7 +4085,8 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
             ".webm": "video/webm", ".mov": "video/quicktime", ".pdf": "application/pdf",
             ".srt": "application/x-subrip; charset=utf-8", ".ass": "text/x-ssa; charset=utf-8",
         }
-        disp = f'attachment; filename="{file_name}"' if download else "inline"
+        safe_disp_name = re.sub(r'["\\\r\n]', "_", file_name)
+        disp = f'attachment; filename="{safe_disp_name}"' if download else "inline"
         return FileResponse(
             target,
             media_type=media_types.get(ext, "application/octet-stream"),

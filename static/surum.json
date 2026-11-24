@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.24-live-desktop-mirror-v28",
-  "ozellik": "bidirectional_live_mac_desktop_ipc_mirror_chat_xai_logs_right_panel_ui_actions",
+  "surum": "2026.11.24-mail-relay-sec-hardening-v29",
+  "ozellik": "direct_ys_gmail_mac_relay_oauth_csrf_ssrf_domxss_cors_ip_hardening",
   "kontrol": "gpu_worker_or_mac_bridge"
 }

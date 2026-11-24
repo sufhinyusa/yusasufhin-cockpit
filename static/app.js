@@ -974,8 +974,8 @@ function renderMediaCard(url, fileName, fullPath) {
   const safePath = escapeHtml(fullPath || '');
   return `
     <div class="msg-media-box">
-      <div class="img-preview-wrapper" onclick="openLightbox('${cleanSafeUrl}', '${safeName}')">
-        <img src="${cleanSafeUrl}" alt="${safeName}" class="msg-img-thumb" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'img-load-error\\'>⚠️ Görsel yüklenemedi (Erişim engeli veya dosya taşınmış)</div>';" />
+      <div class="img-preview-wrapper" data-lightbox-url="${cleanSafeUrl}" data-lightbox-title="${safeName}">
+        <img src="${cleanSafeUrl}" alt="${safeName}" class="msg-img-thumb" loading="lazy" />
         <div class="img-overlay">
           <span class="zoom-icon">🔍 Büyüt</span>
         </div>
@@ -989,6 +989,18 @@ function renderMediaCard(url, fileName, fullPath) {
     </div>
   `;
 }
+
+document.addEventListener('click', (ev) => {
+  const lb = ev.target.closest && ev.target.closest('[data-lightbox-url]');
+  if (lb) {
+    openLightbox(lb.getAttribute('data-lightbox-url') || '', lb.getAttribute('data-lightbox-title') || 'Görsel');
+    return;
+  }
+  const la = ev.target.closest && ev.target.closest('[data-analyze-link-id]');
+  if (la && typeof window.sendLinkToAgent === 'function') {
+    window.sendLinkToAgent(Number(la.getAttribute('data-analyze-link-id')), la.getAttribute('data-analyze-link-title') || '');
+  }
+});
 
 function openLightbox(url, title = 'Ekran Görüntüsü Önizleme') {
   const modal = document.getElementById('imageLightboxModal');
@@ -1197,7 +1209,7 @@ async function loadLinkPoolItems() {
         <p>${escapeHtml(item.summary || 'Açıklama mevcut değil.')}</p>
         <div class="link-pool-card-actions">
           ${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" class="btn-link-visit">🔗 Kaynağı Aç</a>` : ''}
-          <button type="button" class="btn-link-analyze" onclick="sendLinkToAgent(${Number(item.id)}, '${escapeHtml(item.title.replace(/'/g, ''))}')">⚡ Ajanla Analiz Et</button>
+          <button type="button" class="btn-link-analyze" data-analyze-link-id="${Number(item.id)}" data-analyze-link-title="${escapeHtml(item.title)}">⚡ Ajanla Analiz Et</button>
         </div>
       </div>
     `).join('');

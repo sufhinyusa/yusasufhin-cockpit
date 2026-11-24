@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("Fabrika.ChannelsManager")
 
 _STORE_LOCK = threading.Lock()
+_OAUTH_NONCES: Dict[str, float] = {}
+_OAUTH_STATE_TTL = 900.0
 
 # Doğrulanmış (HF API gated=False) görsel üretim modelleri
 IMAGE_MODELS: List[Dict[str, Any]] = [
@@ -612,9 +614,11 @@ class ChannelStore:
         if not isinstance(parsed, dict) or not any(k in parsed for k in ("installed", "web")):
             raise ValueError("Google OAuth client_secret.json içinde 'installed' veya 'web' anahtarı bulunamadı.")
         self.auth_dir.mkdir(parents=True, exist_ok=True)
-        (self.auth_dir / "client_secret.json").write_text(
+        cs_path = self.auth_dir / "client_secret.json"
+        cs_path.write_text(
             json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        os.chmod(cs_path, 0o600)
         return self.get_youtube_status()
 
     def _read_oauth_client(self) -> Dict[str, Any]:
@@ -627,11 +631,52 @@ class ChannelStore:
             raise ValueError("client_secret.json içinde client_id / client_secret eksik.")
         return cfg
 
+    def _sign_oauth_state(self, cid: str, client_secret: str) -> str:
+        import hashlib
+        import hmac
+        import secrets
+
+        now = int(time.time())
+        nonce = secrets.token_hex(12)
+        with _STORE_LOCK:
+            expired = [n for n, ts in _OAUTH_NONCES.items() if now - ts > _OAUTH_STATE_TTL]
+            for n in expired:
+                _OAUTH_NONCES.pop(n, None)
+            _OAUTH_NONCES[nonce] = float(now)
+        raw = f"{cid}.{now}.{nonce}"
+        sig = hmac.new(client_secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+        return f"{raw}.{sig}"
+
+    def _verify_and_consume_oauth_state(self, state: str, client_secret: str) -> str:
+        import hashlib
+        import hmac
+
+        parts = str(state or "").strip().split(".")
+        if len(parts) != 4:
+            raise ValueError("Geçersiz veya eksik OAuth state parametresi (CSRF koruması).")
+        cid, ts_str, nonce, sig = parts
+        try:
+            ts = int(ts_str)
+        except ValueError as exc:
+            raise ValueError("Bozuk OAuth state zaman damgası.") from exc
+        if abs(time.time() - ts) > _OAUTH_STATE_TTL:
+            raise ValueError("OAuth yetkilendirme isteğinin süresi dolmuş (15 dk); lütfen yeniden başlatın.")
+        raw = f"{cid}.{ts_str}.{nonce}"
+        expected = hmac.new(client_secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+        if not hmac.compare_digest(sig, expected):
+            raise ValueError("OAuth state imzası doğrulanamadı (CSRF koruması).")
+        with _STORE_LOCK:
+            if nonce not in _OAUTH_NONCES:
+                raise ValueError("OAuth state tek kullanımlık anahtarı geçersiz veya daha önce kullanılmış.")
+            _OAUTH_NONCES.pop(nonce, None)
+        return cid
+
     def build_oauth_authorize_url(self, channel_id: str, redirect_uri: str) -> str:
         import urllib.parse
 
         cfg = self._read_oauth_client()
         cid = _slugify_channel_id(channel_id) if channel_id else "default"
+        signed_state = self._sign_oauth_state(cid, str(cfg["client_secret"]))
         params = urllib.parse.urlencode({
             "client_id": cfg["client_id"],
             "redirect_uri": redirect_uri,
@@ -639,16 +684,17 @@ class ChannelStore:
             "scope": "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
             "access_type": "offline",
             "prompt": "consent",
-            "state": cid,
+            "state": signed_state,
         })
         auth_uri = cfg.get("auth_uri") or "https://accounts.google.com/o/oauth2/auth"
         return f"{auth_uri}?{params}"
 
-    def exchange_oauth_code(self, channel_id: str, code: str, redirect_uri: str) -> Dict[str, Any]:
+    def exchange_oauth_code(self, state: str, code: str, redirect_uri: str) -> Dict[str, Any]:
         import urllib.parse
         import urllib.request
 
         cfg = self._read_oauth_client()
+        verified_cid = self._verify_and_consume_oauth_state(state, str(cfg["client_secret"]))
         token_uri = cfg.get("token_uri") or "https://oauth2.googleapis.com/token"
         data = urllib.parse.urlencode({
             "code": code.strip(),
@@ -672,10 +718,12 @@ class ChannelStore:
             "client_secret": cfg["client_secret"],
             "scopes": ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
         }
-        cid = _slugify_channel_id(channel_id) if channel_id and channel_id != "default" else ""
+        cid = _slugify_channel_id(verified_cid) if verified_cid and verified_cid != "default" else ""
         fname = f"{cid}_token.json" if cid else "youtube_token.json"
         self.auth_dir.mkdir(parents=True, exist_ok=True)
-        (self.auth_dir / fname).write_text(json.dumps(tok_out, ensure_ascii=False, indent=2), encoding="utf-8")
+        tok_path = self.auth_dir / fname
+        tok_path.write_text(json.dumps(tok_out, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.chmod(tok_path, 0o600)
         return {"saved_token_file": fname, **self.get_youtube_status(cid or None)}
 
     def build_publish_bundle(self, job: Dict[str, Any], media_dir: Path) -> Dict[str, Any]:

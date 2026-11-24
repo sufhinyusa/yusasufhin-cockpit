@@ -1794,6 +1794,7 @@ def test_media_bypass_blocked_and_private_read_endpoints_require_auth(client):
 def test_mac_port443_bridge_and_websocket_relay(client, auth_headers, auth_token):
     """Mac Port-443 köprüsü kapalıyken dürüst çevrimdışı döner; açıkken gerçek komut ve telemetri taşır."""
     import threading
+    import time
     from mac_bridge import bridge_hub
 
     bridge_hub.reset()
@@ -2163,6 +2164,118 @@ def test_live_desktop_mirror_poll_sync_and_ui_actions(client, auth_headers, monk
         assert "applyDesktopSync" in desk_js and "sendUiAction" in desk_js
     finally:
         bridge_hub.reset()
+
+
+def test_v29_direct_mail_relay_and_security_hardening(client, auth_headers, monkeypatch, tmp_path):
+    """v29: Mac Gmail TLS rölesi, OAuth state CSRF kalkanı, SSRF 302 engeli, proxy IP ve güvenlik başlıkları."""
+    import threading
+    import time
+    import urllib.error
+    import urllib.parse
+    import main as main_mod
+    import prompt_director as pd
+    from channels_manager import ChannelStore
+    from mac_bridge import bridge_hub
+
+    # 1. Güvenlik başlıkları (HSTS, CSP frame-ancestors, Permissions-Policy)
+    r_idx = client.get("/")
+    assert r_idx.status_code == 200
+    assert "max-age=31536000" in r_idx.headers.get("strict-transport-security", "")
+    assert "frame-ancestors 'none'" in r_idx.headers.get("content-security-policy", "")
+    assert "camera=()" in r_idx.headers.get("permissions-policy", "")
+
+    # 2. Proxy IP sahteciliği koruması: onrender.com üzerinden sahte CF-Connecting-IP yoksayılır, sağdaki genel XFF alınır
+    class _FakeClient:
+        host = "10.204.11.8"
+
+    class _FakeReq:
+        client = _FakeClient()
+        headers = {
+            "host": "yusasufhin-cockpit.onrender.com",
+            "cf-connecting-ip": "1.1.1.1",
+            "x-forwarded-for": "9.9.9.9, 198.51.100.42, 10.204.11.8",
+        }
+
+    assert main_mod.get_client_ip(_FakeReq()) == "198.51.100.42"
+
+    # 3. YouTube OAuth state HMAC-CSRF koruması: imzasız/sahte state reddedilir, imzalı state tek kullanımlıktır
+    store = ChannelStore(tmp_path)
+    store.save_client_secret(json.dumps({
+        "web": {"client_id": "cid.apps.googleusercontent.com", "client_secret": "csec_test_999"}
+    }))
+    assert ((tmp_path / "youtube_auth" / "client_secret.json").stat().st_mode & 0o777) == 0o600
+    auth_url = store.build_oauth_authorize_url("Tech_AI_Fabrika", "https://yusasufhin.com/api/youtube/oauth/callback")
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query)
+    signed_state = qs["state"][0]
+    with pytest.raises(ValueError):
+        store._verify_and_consume_oauth_state("Tech_AI_Fabrika", "csec_test_999")
+    assert store._verify_and_consume_oauth_state(signed_state, "csec_test_999") == "Tech_AI_Fabrika"
+    with pytest.raises(ValueError):
+        store._verify_and_consume_oauth_state(signed_state, "csec_test_999")  # replay engellenmeli
+
+    # 4. SSRF HTTP 302 yönlendirme kalkanı: genel URL'den 127.0.0.1'e yönlendirme engellenir
+    handler = pd._SafeRedirectHandler()
+    orig_req = urllib.request.Request("https://example.com/start")
+    with pytest.raises(urllib.error.URLError):
+        handler.redirect_request(orig_req, None, 302, "Found", {}, "http://127.0.0.1:27491/ping")
+
+    # 5. ys@yusasufhin.com Mac Port-443 Rölesi: config kaydı (0600) + canlı Mac rölesinden doğrudan mail teslimi
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    monkeypatch.setenv("BRIDGE_SECRET", "v29-sec")
+    monkeypatch.setenv("RENDER", "true")
+    for k in ("RESEND_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(main_mod, "get_secret_from_env", lambda k: "v29-sec" if k == "BRIDGE_SECRET" else None)
+
+    bridge_hub.reset()
+    try:
+        # Mac çevrimiçi olarak kalp atışı gönderir
+        client.post(
+            "/api/bridge/poll",
+            headers={"X-Fabrika-Bridge-Secret": "v29-sec"},
+            json={"stats": {"cpu": 10.0, "ram": 40.0, "smtp_ready": True}, "replies": []},
+        )
+        r_cfg = client.post(
+            "/api/contact/config",
+            headers=auth_headers,
+            json={"smtp_pass": "abcd efgh ijkl mnop", "to_email": "ys@yusasufhin.com"},
+        )
+        assert r_cfg.status_code == 200
+        assert ((tmp_path / ".mail_secrets.json").stat().st_mode & 0o777) == 0o600
+
+        # Mac arka plan iş parçacığı poll ile contact_email görevini alıp gerçek iletim onayı döner
+        def _mac_worker():
+            for _ in range(40):
+                time.sleep(0.03)
+                tasks = bridge_hub.handle_poll(
+                    stats={"cpu": 10.0, "ram": 40.0, "smtp_ready": True},
+                    replies=[],
+                )
+                for t in tasks:
+                    if t.get("kind") == "contact_email":
+                        assert t["payload"]["to_email"] == "ys@yusasufhin.com"
+                        bridge_hub.handle_poll(
+                            stats={"cpu": 10.0, "ram": 40.0, "smtp_ready": True},
+                            replies=[{"id": t["id"], "email_sent": True, "provider": "mac_gmail_relay"}],
+                        )
+                        return
+
+        t_worker = threading.Thread(target=_mac_worker, daemon=True)
+        t_worker.start()
+
+        r_contact = client.post("/api/contact", json={
+            "name": "Caner Kaya",
+            "email": "caner@firma.com",
+            "message": "Merhaba, doğrudan ys@yusasufhin.com adresine ulaşan teklif mesajıdır.",
+        })
+        t_worker.join(timeout=3.0)
+        assert r_contact.status_code == 200
+        dc = r_contact.json()
+        assert dc["email_sent"] is True
+        assert "ys@yusasufhin.com" in dc["message"]
+    finally:
+        bridge_hub.reset()
+
 
 
 

@@ -86,6 +86,8 @@ class MacBridgeHub:
                     "ram": stats.get("ram"),
                     "status": stats.get("status") or "online",
                     "desktop_app_open": bool(stats.get("desktop_app_open", False)),
+                    "smtp_ready": bool(stats.get("smtp_ready", False)),
+                    "telegram_ready": bool(stats.get("telegram_ready", False)),
                     "link_pool_count": stats.get("link_pool_count"),
                     "rea_score": stats.get("rea_score"),
                     "named_tunnel_active": bool(stats.get("named_tunnel_active", False)),
@@ -123,6 +125,10 @@ class MacBridgeHub:
                         "action": rep.get("action"),
                         "media": rep.get("media"),
                         "accepted_desktop": bool(rep.get("accepted_desktop", False)),
+                        "email_sent": bool(rep.get("email_sent", False)),
+                        "telegram_sent": bool(rep.get("telegram_sent", False)),
+                        "provider": rep.get("provider"),
+                        "error": rep.get("error"),
                         "timestamp": now,
                     }
                     self._completed_replies[cid] = kayit
@@ -188,6 +194,85 @@ class MacBridgeHub:
                 )
             ),
         }
+
+    def relay_contact_email(
+        self,
+        payload: Dict[str, Any],
+        *,
+        allow_offline_queue: bool = False,
+        timeout_sec: float = 12.0,
+    ) -> Dict[str, Any]:
+        """İletişim e-postasını canlı Mac köprüsüne iletir; Mac çevrimdışı ve SMTP ayarlıysa kuyruğa alır."""
+        cmd_id = f"mail_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+        task = {
+            "id": cmd_id,
+            "kind": "contact_email",
+            "payload": dict(payload),
+            "createdAt": int(time.time() * 1000),
+        }
+        if not self.is_online():
+            if allow_offline_queue and payload.get("smtp_pass"):
+                with self._lock:
+                    if len(self._pending_commands) >= MAX_PENDING_COMMANDS:
+                        self._pending_commands.pop(0)
+                    self._pending_commands.append(task)
+                return {
+                    "ok": True,
+                    "email_sent": False,
+                    "queued_for_mac": True,
+                    "provider": "mac_queue",
+                    "error": None,
+                }
+            return {"ok": False, "email_sent": False, "queued_for_mac": False, "error": "mac_offline"}
+
+        ev = threading.Event()
+        with self._lock:
+            if len(self._pending_commands) >= MAX_PENDING_COMMANDS:
+                self._pending_commands.pop(0)
+            self._pending_commands.append(task)
+            self._waiters[cmd_id] = ev
+
+        geldi = ev.wait(timeout=max(2.0, float(timeout_sec)))
+        with self._lock:
+            self._waiters.pop(cmd_id, None)
+            yanit = self._completed_replies.pop(cmd_id, None)
+
+        if geldi and yanit:
+            return {
+                "ok": bool(yanit.get("email_sent") or yanit.get("telegram_sent")),
+                "email_sent": bool(yanit.get("email_sent")),
+                "telegram_sent": bool(yanit.get("telegram_sent")),
+                "queued_for_mac": False,
+                "provider": yanit.get("provider") or "mac_gmail_relay",
+                "error": yanit.get("error"),
+            }
+        return {
+            "ok": False,
+            "email_sent": False,
+            "queued_for_mac": bool(payload.get("smtp_pass")),
+            "error": "Mac köprüsü zaman aşımı; mesaj kuyrukta bekliyor.",
+        }
+
+    def push_mail_config_to_mac(self, smtp_user: str, smtp_pass: str, smtp_host: str = "smtp.gmail.com", smtp_port: int = 587) -> bool:
+        """Yöneticinin girdiği SMTP ayarını canlı Mac köprüsündeki Persona/.env içine güvenli aktarır."""
+        if not self.is_online() or not smtp_pass:
+            return False
+        cmd_id = f"mcfg_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+        with self._lock:
+            if len(self._pending_commands) >= MAX_PENDING_COMMANDS:
+                self._pending_commands.pop(0)
+            self._pending_commands.append({
+                "id": cmd_id,
+                "kind": "save_mail_config",
+                "payload": {
+                    "smtp_host": smtp_host,
+                    "smtp_port": int(smtp_port),
+                    "smtp_user": smtp_user,
+                    "smtp_pass": smtp_pass,
+                },
+                "createdAt": int(time.time() * 1000),
+            })
+        return True
 
     def enqueue_ui_action(self, action: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Uzaktan UI eylemini (sağ panel, log/XAI, söz kes, soru kartı vb.) Mac kuyruğuna ekler."""
