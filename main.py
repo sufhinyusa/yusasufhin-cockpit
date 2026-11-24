@@ -4049,9 +4049,18 @@ async def tunnel_setup():
 # -----------------------------------------------------------------------------
 def _valid_bridge_secrets() -> List[str]:
     found: List[str] = []
-    for k in ("BRIDGE_SECRET", "ALANADISIFRE", "alanadisifre", "FABRIKA_GATEWAY_PASSWORD", "GATEWAY_PASSWORD", "alansifre"):
+    for k in (
+        "BRIDGE_SECRET",
+        "ALANADISIFRE",
+        "alanadisifre",
+        "FABRIKA_GATEWAY_PASSWORD",
+        "GATEWAY_PASSWORD",
+        "alansifre",
+        "GATEWAY_PIN",
+        "FABRIKA_GATEWAY_PIN",
+    ):
         val = get_secret_from_env(k)
-        if val and val not in found:
+        if val and val not in DISALLOWED_PINS and val not in found:
             found.append(val)
     return found
 

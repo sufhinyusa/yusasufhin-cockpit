@@ -9,7 +9,7 @@ Desteklenen ortam değişkenleri (öncelik sırasıyla):
   1. E-posta (HTTP 443 — Render dostu):
        RESEND_API_KEY        (ör. re_...)
        CONTACT_FROM_EMAIL    (opsiyonel, varsayılan: onboarding@resend.dev)
-       CONTACT_TO_EMAIL      (opsiyonel, varsayılan: sahin.yusuf@outlook.com)
+       CONTACT_TO_EMAIL      (opsiyonel, varsayılan: ys@yusasufhin.com)
   2. E-posta (SMTP — Gmail/Outlook/Brevo vb.):
        SMTP_HOST             (ör. smtp.gmail.com veya smtp-mail.outlook.com)
        SMTP_PORT             (varsayılan: 587)
@@ -35,7 +35,7 @@ import requests
 
 logger = logging.getLogger("Fabrika.ContactNotifier")
 
-DEFAULT_TO_EMAIL = "sahin.yusuf@outlook.com"
+DEFAULT_TO_EMAIL = "ys@yusasufhin.com"
 DEFAULT_FROM_EMAIL = "yusasufhin.com <onboarding@resend.dev>"
 
 
@@ -53,9 +53,14 @@ def notifier_status(get_env: Callable[[str], Optional[str]]) -> Dict[str, Any]:
         "telegram_configured": has_tg,
         "any_live_channel": has_resend or has_smtp or has_tg,
         "hint": (
-            "Canlı bildirim etkin."
+            f"Canlı bildirim etkin (hedef: {to_email})."
             if (has_resend or has_smtp or has_tg)
-            else "Canlı e-posta/bildirim için sunucu ortamına RESEND_API_KEY veya SMTP_HOST+SMTP_USER+SMTP_PASS veya TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID ekleyin."
+            else (
+                f"{to_email} adresine canlı mail için Render Environment'a RESEND_API_KEY "
+                "(HTTPS 443 — Render ücretsiz planda SMTP 25/465/587 kapalıdır) ve/veya "
+                "TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID ekleyin. "
+                "(Oracle/VPS üzerinde SMTP_HOST+SMTP_USER+SMTP_PASS da çalışır.)"
+            )
         ),
     }
 
@@ -114,6 +119,8 @@ def _send_via_smtp(
         f"E-posta  : {sender_email}\n\n"
         f"Mesaj:\n{message}\n"
     )
+    if "gmail" in host.lower():
+        password = password.replace(" ", "")
     ctx = ssl.create_default_context()
     if port == 465:
         with smtplib.SMTP_SSL(host, port, timeout=15, context=ctx) as server:

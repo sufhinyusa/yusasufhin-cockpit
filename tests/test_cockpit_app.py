@@ -1980,7 +1980,7 @@ def test_contact_notifier_email_inbox_and_mobile_fixed_nav(client, auth_headers,
     assert d1["email_sent"] is False
     assert d1["telegram_sent"] is False
     assert d1["delivery_channel"] == "inbox_only"
-    assert d1["mailto_fallback_url"].startswith("mailto:sahin.yusuf@outlook.com?")
+    assert d1["mailto_fallback_url"].startswith("mailto:ys@yusasufhin.com?")
 
     inbox = client.get("/api/contact/messages", headers=auth_headers)
     assert inbox.status_code == 200
@@ -2014,7 +2014,7 @@ def test_contact_notifier_email_inbox_and_mobile_fixed_nav(client, auth_headers,
     assert d2["email_sent"] is True
     assert d2["delivery_channel"] == "email"
     assert called["url"] == "https://api.resend.com/emails"
-    assert called["to"] == ["sahin.yusuf@outlook.com"]
+    assert called["to"] == ["ys@yusasufhin.com"]
 
     # 3. Mobil sabit üst menü, iOS safe-area ve mobil alt sekme çubuğu CSS/HTML'de doğrulanır
     css = (REPO_DIR / "static" / "site.css").read_text(encoding="utf-8")

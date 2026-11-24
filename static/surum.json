@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.24-mobile-mail-v25",
-  "ozellik": "fixed_mobile_nav_safe_area_bottom_tabbar_real_email_resend_smtp_telegram_inbox",
+  "surum": "2026.11.24-ys-mail-bridge-v26",
+  "ozellik": "default_to_ys_at_yusasufhin_com_and_mac_bridge_secret_parity",
   "kontrol": "gpu_worker_or_mac_bridge"
 }
