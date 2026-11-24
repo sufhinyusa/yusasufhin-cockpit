@@ -59,7 +59,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Worker-Key", "X-Fabrika-Bridge-Secret"],
 )
 
@@ -147,6 +147,8 @@ async def index_html():
 
 _NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
 
+@app.api_route("/panel", methods=["GET", "HEAD"])
+@app.api_route("/admin", methods=["GET", "HEAD"])
 @app.api_route("/studio", methods=["GET", "HEAD"])
 @app.api_route("/lab", methods=["GET", "HEAD"])
 @app.api_route("/lab.html", methods=["GET", "HEAD"])
@@ -193,6 +195,14 @@ async def get_fabrika_desktop_js():
 @app.api_route("/lab.js", methods=["GET", "HEAD"])
 async def get_lab_js():
     return FileResponse(STATIC_DIR / "lab.js", media_type="application/javascript", headers=_NO_CACHE)
+
+@app.api_route("/home_demo.js", methods=["GET", "HEAD"])
+async def get_home_demo_js():
+    return FileResponse(STATIC_DIR / "home_demo.js", media_type="application/javascript", headers=_NO_CACHE)
+
+@app.api_route("/admin_portal.js", methods=["GET", "HEAD"])
+async def get_admin_portal_js():
+    return FileResponse(STATIC_DIR / "admin_portal.js", media_type="application/javascript", headers=_NO_CACHE)
 
 @app.api_route("/fabrika_icon.svg", methods=["GET", "HEAD"])
 async def get_icon():
@@ -368,57 +378,152 @@ def get_worker_key() -> str:
     with _WORKER_KEY_LOCK:
         return _read_or_create_secret(DATA_DIR / ".worker_key", ("FABRIKA_WORKER_KEY",))
 
-def create_session(user: str = "Yusuf Şahin", prefix: str = "tok") -> str:
-    """24 saat TTL süreli yeni kriptografik ve sunucu yeniden başlamalarına dayanıklı oturum tokenı üretir."""
+def create_session(
+    user: str = "Yusuf Şahin",
+    prefix: str = "tok",
+    *,
+    username: str = "owner",
+    role: str = "admin",
+    sections: Optional[List[str]] = None,
+    token_version: int = 1,
+    is_owner: bool = True,
+) -> str:
+    """24 saat TTL süreli kriptografik ve sunucu yeniden başlamalarına dayanıklı oturum tokenı üretir."""
+    from user_store import VALID_SECTIONS, normalize_sections, normalize_username
+
     now = int(time.time())
     exp = int(now + int(SESSION_TTL_SEC))
-    sig_raw = f"{user}:{now}:{exp}"
-    sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
-    token = f"{prefix}_{now}_{exp}_{sig}"
+    uname = normalize_username(username) or "owner"
+    clean_role = "admin" if role == "admin" else "user"
+    clean_secs = normalize_sections(sections if sections is not None else VALID_SECTIONS, clean_role)
+
+    if uname == "owner":
+        sig_raw = f"{user}:{now}:{exp}"
+        sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
+        token = f"{prefix}_{now}_{exp}_{sig}"
+    else:
+        sig_raw = f"{uname}:{int(token_version)}:{now}:{exp}"
+        sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
+        token = f"toku_{uname}_{int(token_version)}_{now}_{exp}_{sig}"
+
     if len(ACTIVE_SESSIONS) >= MAX_ACTIVE_SESSIONS:
         oldest = sorted(ACTIVE_SESSIONS.keys(), key=lambda k: ACTIVE_SESSIONS[k].get("created_at", 0))[:64]
         for k in oldest:
             ACTIVE_SESSIONS.pop(k, None)
     ACTIVE_SESSIONS[token] = {
         "user": user,
+        "username": uname,
+        "display_name": user,
+        "role": clean_role,
+        "sections": clean_secs,
+        "token_version": int(token_version),
+        "is_owner": bool(is_owner and uname == "owner"),
         "created_at": now,
-        "expires_at": exp
+        "expires_at": exp,
     }
     return token
 
-def is_session_valid(token: Optional[str]) -> bool:
-    """Token'ın aktifliğini ve süresini kontrol eder; HMAC imzasını doğrular."""
+
+def revoke_user_sessions(username: str) -> None:
+    """Belirtilen kullanıcının bellekteki tüm aktif oturumlarını anında fesheder."""
+    from user_store import normalize_username
+
+    target = normalize_username(username)
+    stale = [tok for tok, sess in ACTIVE_SESSIONS.items() if sess.get("username") == target]
+    for tok in stale:
+        ACTIVE_SESSIONS.pop(tok, None)
+        if len(REVOKED_TOKENS) >= 4096:
+            REVOKED_TOKENS.clear()
+        REVOKED_TOKENS.add(tok)
+
+
+def resolve_session(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Token'ı doğrular ve güncel rol/bölüm bilgisiyle oturum kaydını döner."""
+    from user_store import UserStore, owner_identity
+
     if not token or token in REVOKED_TOKENS:
-        return False
+        return None
+
     # 1. Aktif bellek oturumu kontrolü
     if token in ACTIVE_SESSIONS:
         session = ACTIVE_SESSIONS[token]
         if time.time() > session.get("expires_at", 0):
-            del ACTIVE_SESSIONS[token]
-            return False
-        return True
+            ACTIVE_SESSIONS.pop(token, None)
+            return None
+        uname = session.get("username") or "owner"
+        if uname == "owner":
+            ident = owner_identity()
+            return {"token": token, **ident, "user": ident["display_name"]}
+        rec = UserStore(DATA_DIR).get_user(uname)
+        if not rec or not rec.get("active") or int(rec.get("token_version", 1)) != int(session.get("token_version", 1)):
+            ACTIVE_SESSIONS.pop(token, None)
+            REVOKED_TOKENS.add(token)
+            return None
+        session["role"] = rec["role"]
+        session["sections"] = rec["sections"]
+        session["display_name"] = rec["display_name"]
+        return {"token": token, **rec, "user": rec["display_name"]}
 
     # 2. Sunucu yeniden başlasa bile geçerli HMAC imza doğrulaması (24 saat)
     try:
         parts = token.split("_")
+        if len(parts) >= 6 and parts[0] == "toku":
+            uname = "_".join(parts[1:-4])
+            ver = int(parts[-4])
+            created_at = int(float(parts[-3]))
+            exp = int(float(parts[-2]))
+            sig = parts[-1]
+            if time.time() > exp or created_at < _TOKEN_MIN_CREATED_AT:
+                return None
+            sig_raw = f"{uname}:{ver}:{created_at}:{exp}"
+            expected_sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
+            if hmac.compare_digest(sig, expected_sig):
+                rec = UserStore(DATA_DIR).get_user(uname)
+                if not rec or not rec.get("active") or int(rec.get("token_version", 1)) != ver:
+                    return None
+                ACTIVE_SESSIONS[token] = {
+                    "user": rec["display_name"],
+                    "username": rec["username"],
+                    "display_name": rec["display_name"],
+                    "role": rec["role"],
+                    "sections": rec["sections"],
+                    "token_version": ver,
+                    "is_owner": False,
+                    "created_at": created_at,
+                    "expires_at": exp,
+                }
+                return {"token": token, **rec, "user": rec["display_name"]}
+
         if len(parts) >= 4 and parts[0] == "tok":
             created_at = int(float(parts[-3]))
             exp = int(float(parts[-2]))
             sig = parts[-1]
             if time.time() > exp or created_at < _TOKEN_MIN_CREATED_AT:
-                return False
+                return None
             sig_raw = f"Yusuf Şahin:{created_at}:{exp}"
             expected_sig = hmac.new(SESSION_SIGNING_SECRET.encode(), sig_raw.encode(), hashlib.sha256).hexdigest()[:24]
             if hmac.compare_digest(sig, expected_sig):
+                ident = owner_identity()
                 ACTIVE_SESSIONS[token] = {
-                    "user": "Yusuf Şahin",
+                    "user": ident["display_name"],
+                    "username": "owner",
+                    "display_name": ident["display_name"],
+                    "role": "admin",
+                    "sections": ident["sections"],
+                    "token_version": 1,
+                    "is_owner": True,
                     "created_at": created_at,
-                    "expires_at": exp
+                    "expires_at": exp,
                 }
-                return True
+                return {"token": token, **ident, "user": ident["display_name"]}
     except Exception:
         pass
-    return False
+    return None
+
+
+def is_session_valid(token: Optional[str]) -> bool:
+    """Token'ın aktifliğini ve süresini kontrol eder; HMAC imzasını doğrular."""
+    return resolve_session(token) is not None
 
 def get_secret_from_env(key_name: str) -> Optional[str]:
     """Ortam değişkenlerinden veya yerel yapılandırmadan anahtar okur."""
@@ -465,18 +570,49 @@ def get_valid_pins() -> List[str]:
             found.append(s)
     return found
 
-async def verify_auth(
+async def get_current_session(
     authorization: Optional[str] = Header(None),
-    token: Optional[str] = Query(None)
-) -> str:
-    """Durum değiştiren ve korumalı tüm uç noktalar için zorunlu token doğrulayıcı."""
+    token: Optional[str] = Query(None),
+) -> Dict[str, Any]:
+    """Geçerli oturum nesnesini (rol ve bölüm yetkileriyle) döner."""
     auth_tok = (authorization or "").replace("Bearer ", "").strip() or (token or "").strip()
-    if not auth_tok or not is_session_valid(auth_tok):
+    session = resolve_session(auth_tok)
+    if not session:
         raise HTTPException(
             status_code=401,
-            detail="Yetkilendirme gerekli (Token eksik, geçersiz veya oturum süresi dolmuş)."
+            detail="Yetkilendirme gerekli (Token eksik, geçersiz veya oturum süresi dolmuş).",
         )
-    return auth_tok
+    return session
+
+
+async def verify_auth(session: Dict[str, Any] = Depends(get_current_session)) -> str:
+    """Durum değiştiren ve korumalı tüm uç noktalar için zorunlu token doğrulayıcı."""
+    return str(session["token"])
+
+
+async def require_admin(session: Dict[str, Any] = Depends(get_current_session)) -> Dict[str, Any]:
+    """Yalnızca yönetici (`role == 'admin'`) hesaplarına izin verir."""
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem yalnızca yönetici hesapları içindir.")
+    return session
+
+
+def require_section(*allowed_sections: str):
+    """Belirtilen bölümlerden (fabrika, video, muzik) en az birine veya admin rolüne izin verir."""
+    wanted = {s.lower() for s in allowed_sections}
+
+    async def _dep(session: Dict[str, Any] = Depends(get_current_session)) -> Dict[str, Any]:
+        if session.get("role") == "admin":
+            return session
+        user_secs = {str(s).lower() for s in (session.get("sections") or [])}
+        if user_secs & wanted:
+            return session
+        raise HTTPException(
+            status_code=403,
+            detail=f"Bu bölüm için yetkiniz bulunmuyor (gerekli: {', '.join(sorted(wanted))}).",
+        )
+
+    return _dep
 
 # -----------------------------------------------------------------------------
 # 2b. GPU İŞÇİ KİMLİĞİ & İŞ DEPOSU (kilitli + atomik)
@@ -625,6 +761,8 @@ async def public_info():
 
 @app.post("/api/auth/login")
 async def login(req: Request):
+    from user_store import UserStore, owner_identity
+
     ip = get_client_ip(req)
     limited, wait_sec = is_rate_limited(ip)
     if limited:
@@ -634,11 +772,43 @@ async def login(req: Request):
         body = await req.json()
     except Exception:
         body = {}
+    username = str(body.get("username", "")).strip()
     password = str(body.get("password", "")).strip()
     if not password:
         record_failed_attempt(ip)
         return JSONResponse(status_code=400, content={"success": False, "message": "Parola boş olamaz."})
 
+    # 1. Kullanıcı adı belirtildiyse (kurucu dışındaki hesaplar) UserStore üzerinden doğrula
+    uname_low = username.lower()
+    is_owner_alias = uname_low in ("", "owner", "yusuf", "yusuf şahin", "yusuf sahin", "kurucu")
+    if uname_low:
+        user_rec = UserStore(DATA_DIR).authenticate(username, password)
+        if user_rec:
+            reset_failed_attempts(ip)
+            token = create_session(
+                user=user_rec["display_name"],
+                prefix="toku",
+                username=user_rec["username"],
+                role=user_rec["role"],
+                sections=user_rec["sections"],
+                token_version=user_rec["token_version"],
+                is_owner=False,
+            )
+            return {
+                "success": True,
+                "token": token,
+                "username": user_rec["username"],
+                "display_name": user_rec["display_name"],
+                "role": user_rec["role"],
+                "sections": user_rec["sections"],
+                "is_owner": False,
+                "message": "Giriş başarılı.",
+            }
+        if not is_owner_alias:
+            record_failed_attempt(ip)
+            return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz kullanıcı adı veya parola."})
+
+    # 2. Kurucu (owner) parolası doğrulaması
     valid_passwords = get_valid_passwords()
     if not valid_passwords:
         return JSONResponse(status_code=500, content={"success": False, "message": "Sunucuda yetkili parola yapılandırılmamış."})
@@ -647,14 +817,27 @@ async def login(req: Request):
     matched = any(hmac.compare_digest(pwd_bytes, str(vp).strip().encode("utf-8")) for vp in valid_passwords)
     if matched:
         reset_failed_attempts(ip)
-        token = create_session(user="Yusuf Şahin", prefix="tok")
-        return {"success": True, "token": token, "username": "Yusuf Şahin", "message": "Giriş başarılı."}
+        ident = owner_identity()
+        token = create_session(user=ident["display_name"], prefix="tok", username="owner", role="admin", is_owner=True)
+        return {
+            "success": True,
+            "token": token,
+            "username": "Yusuf Şahin",
+            "account_username": "owner",
+            "display_name": ident["display_name"],
+            "role": "admin",
+            "sections": ident["sections"],
+            "is_owner": True,
+            "message": "Giriş başarılı.",
+        }
 
     record_failed_attempt(ip)
-    return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz şifre."})
+    return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz kullanıcı adı veya parola."})
 
 @app.post("/api/auth/verify_pin")
 async def verify_pin(req: Request):
+    from user_store import owner_identity
+
     ip = get_client_ip(req)
     limited, wait_sec = is_rate_limited(ip)
     if limited:
@@ -677,8 +860,19 @@ async def verify_pin(req: Request):
     matched = any(hmac.compare_digest(pin_bytes, str(vp).strip().encode("utf-8")) for vp in valid_pins)
     if matched:
         reset_failed_attempts(ip)
-        token = create_session(user="Yusuf Şahin", prefix="tok_pin")
-        return {"success": True, "token": token, "username": "Yusuf Şahin", "message": "PIN doğrulandı."}
+        ident = owner_identity()
+        token = create_session(user=ident["display_name"], prefix="tok_pin", username="owner", role="admin", is_owner=True)
+        return {
+            "success": True,
+            "token": token,
+            "username": "Yusuf Şahin",
+            "account_username": "owner",
+            "display_name": ident["display_name"],
+            "role": "admin",
+            "sections": ident["sections"],
+            "is_owner": True,
+            "message": "PIN doğrulandı.",
+        }
 
     record_failed_attempt(ip)
     return JSONResponse(status_code=401, content={"success": False, "message": "Geçersiz PIN kodu."})
@@ -686,9 +880,18 @@ async def verify_pin(req: Request):
 @app.api_route("/api/auth/check", methods=["GET", "POST"])
 async def auth_check(authorization: Optional[str] = Header(None)):
     token = (authorization or "").replace("Bearer ", "").strip()
-    if token and is_session_valid(token):
-        return {"authenticated": True, "user": "Yusuf Şahin"}
-    return JSONResponse(status_code=401, content={"authenticated": False, "user": None})
+    sess = resolve_session(token) if token else None
+    if sess:
+        return {
+            "authenticated": True,
+            "user": sess["display_name"],
+            "username": sess["username"],
+            "display_name": sess["display_name"],
+            "role": sess["role"],
+            "sections": sess["sections"],
+            "is_owner": bool(sess.get("is_owner")),
+        }
+    return JSONResponse(status_code=401, content={"authenticated": False, "user": None, "role": None, "sections": []})
 
 @app.post("/api/auth/logout")
 async def logout(authorization: Optional[str] = Header(None)):
@@ -701,7 +904,7 @@ async def logout(authorization: Optional[str] = Header(None)):
     return {"success": True}
 
 @app.post("/api/auth/change_pin")
-async def change_pin(req: Request, token: str = Depends(verify_auth)):
+async def change_pin(req: Request, _admin: Dict[str, Any] = Depends(require_admin)):
     try:
         body = await req.json()
     except Exception:
@@ -828,7 +1031,8 @@ async def public_contact(req: Request):
         logger.warning("İletişim kaydı yazılamadı: %s", exc)
 
     if delivery["email_sent"]:
-        user_msg = f"Mesajınız doğrudan {delivery['to_email']} adresine iletildi. En kısa sürede dönüş yapılacaktır."
+        alici_str = ", ".join(delivery.get("recipients") or [delivery["to_email"]])
+        user_msg = f"Mesajınız doğrudan {alici_str} adresine iletildi. En kısa sürede dönüş yapılacaktır."
     elif delivery.get("email_queued_mac") or delivery["telegram_sent"]:
         user_msg = "Mesajınız iletildi ve bildirim kuyruğuna alındı. En kısa sürede e-posta üzerinden dönüş yapılacaktır."
     else:
@@ -844,12 +1048,13 @@ async def public_contact(req: Request):
         "telegram_sent": delivery["telegram_sent"],
         "notified": bool(delivery["email_sent"] or delivery.get("email_queued_mac") or delivery["telegram_sent"]),
         "delivery_channel": delivery["delivery_channel"],
+        "recipients": delivery.get("recipients") or [delivery["to_email"]],
         "mailto_fallback_url": delivery["mailto_fallback_url"],
         "message": user_msg,
     }
 
 
-@app.get("/api/contact/messages", dependencies=[Depends(verify_auth)])
+@app.get("/api/contact/messages", dependencies=[Depends(require_admin)])
 async def list_contact_messages(limit: int = Query(30)):
     """Yetkili yönetici için gelen iletişim mesajlarını ve bildirim kanalı durumunu döner."""
     from contact_notifier import make_layered_env_getter, notifier_status, read_contact_messages
@@ -871,10 +1076,102 @@ async def list_contact_messages(limit: int = Query(30)):
     }
 
 
-@app.post("/api/contact/config", dependencies=[Depends(verify_auth)])
+@app.get("/api/contact/recipients", dependencies=[Depends(require_admin)])
+async def list_contact_recipients():
+    """Siteden gelen e-postaları alacak kayıtlı alıcı adreslerini listeler."""
+    from contact_notifier import get_contact_recipients, make_layered_env_getter, notifier_status
+    from mac_bridge import bridge_hub
+
+    st = bridge_hub.get_status()
+    mac_stats = st.get("stats") or {}
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
+    recipients = get_contact_recipients(env_getter)
+    return {
+        "success": True,
+        "recipients": recipients,
+        "count": len(recipients),
+        "notifier": notifier_status(
+            env_getter,
+            mac_online=bool(st.get("online")),
+            mac_smtp_ready=bool(mac_stats.get("smtp_ready")),
+        ),
+    }
+
+
+@app.post("/api/contact/recipients", dependencies=[Depends(require_admin)])
+async def add_contact_recipient_route(req: Request):
+    """İletişim formundan gelen e-postalar için yeni alıcı adresi ekler."""
+    from contact_notifier import add_contact_recipient, make_layered_env_getter, notifier_status
+    from mac_bridge import bridge_hub
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    email = str(body.get("email") or "").strip()
+    try:
+        recipients = add_contact_recipient(DATA_DIR, email, get_secret_from_env)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    st = bridge_hub.get_status()
+    mac_stats = st.get("stats") or {}
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
+    return {
+        "success": True,
+        "recipients": recipients,
+        "notifier": notifier_status(
+            env_getter,
+            mac_online=bool(st.get("online")),
+            mac_smtp_ready=bool(mac_stats.get("smtp_ready")),
+        ),
+    }
+
+
+@app.delete("/api/contact/recipients", dependencies=[Depends(require_admin)])
+async def remove_contact_recipient_route(req: Request, email: Optional[str] = Query(None)):
+    """İletişim e-posta alıcı listesinden bir adresi çıkarır (en az bir alıcı korunur)."""
+    from contact_notifier import make_layered_env_getter, notifier_status, remove_contact_recipient
+    from mac_bridge import bridge_hub
+
+    target_email = (email or "").strip()
+    if not target_email:
+        try:
+            body = await req.json()
+            target_email = str(body.get("email") or "").strip()
+        except Exception:
+            target_email = ""
+    if not target_email:
+        raise HTTPException(status_code=400, detail="Silinecek e-posta adresi belirtilmedi.")
+    try:
+        recipients = remove_contact_recipient(DATA_DIR, target_email, get_secret_from_env)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    st = bridge_hub.get_status()
+    mac_stats = st.get("stats") or {}
+    env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
+    return {
+        "success": True,
+        "recipients": recipients,
+        "notifier": notifier_status(
+            env_getter,
+            mac_online=bool(st.get("online")),
+            mac_smtp_ready=bool(mac_stats.get("smtp_ready")),
+        ),
+    }
+
+
+@app.post("/api/contact/config", dependencies=[Depends(require_admin)])
 async def update_contact_mail_config(req: Request):
-    """Yöneticinin ys@yusasufhin.com uygulama şifresini veya Resend anahtarını 0600 izinle kaydeder ve Mac'e senkronlar."""
-    from contact_notifier import DEFAULT_TO_EMAIL, make_layered_env_getter, notifier_status, save_mail_config
+    """Yöneticinin uygulama şifresini, Resend anahtarını ve alıcılarını 0600 izinle kaydeder ve Mac'e senkronlar."""
+    from contact_notifier import (
+        DEFAULT_TO_EMAIL,
+        make_layered_env_getter,
+        notifier_status,
+        parse_recipient_list,
+        save_mail_config,
+    )
     from mac_bridge import bridge_hub
 
     try:
@@ -889,6 +1186,11 @@ async def update_contact_mail_config(req: Request):
     smtp_port = int(body.get("smtp_port") or 587)
 
     updates: Dict[str, Optional[str]] = {"CONTACT_TO_EMAIL": to_email}
+    if "recipients" in body:
+        cleaned_rcpt = parse_recipient_list(body.get("recipients"))
+        if cleaned_rcpt:
+            updates["CONTACT_RECIPIENTS"] = json.dumps(cleaned_rcpt)
+            updates["CONTACT_TO_EMAIL"] = cleaned_rcpt[0]
     if smtp_pass:
         updates["SMTP_HOST"] = smtp_host
         updates["SMTP_PORT"] = str(smtp_port)
@@ -908,9 +1210,9 @@ async def update_contact_mail_config(req: Request):
     }
 
 
-@app.post("/api/contact/test", dependencies=[Depends(verify_auth)])
+@app.post("/api/contact/test", dependencies=[Depends(require_admin)])
 async def send_test_contact_email():
-    """Yönetici için ys@yusasufhin.com adresine gerçek uçtan uca test e-postası gönderir."""
+    """Yönetici için kayıtlı tüm alıcı adreslerine gerçek uçtan uca test e-postası gönderir."""
     from contact_notifier import dispatch_contact_notification, make_layered_env_getter
     from mac_bridge import bridge_hub
 
@@ -925,6 +1227,180 @@ async def send_test_contact_email():
         )
     )
     return {"success": bool(res.get("email_sent")), **res}
+
+
+# -----------------------------------------------------------------------------
+# 3b. YÖNETİCİ & KULLANICI YÖNETİMİ (FABRİKA / VİDEO / MÜZİK BÖLÜM YETKİLERİ)
+# -----------------------------------------------------------------------------
+@app.get("/api/admin/users")
+async def admin_list_users(
+    section: Optional[str] = Query(None),
+    _admin: Dict[str, Any] = Depends(require_admin),
+):
+    from user_store import UserStore, owner_identity
+
+    store = UserStore(DATA_DIR)
+    users = store.list_users(section_filter=section)
+    return {
+        "success": True,
+        "owner": owner_identity(),
+        "users": users,
+        "count": len(users),
+    }
+
+
+@app.post("/api/admin/users")
+async def admin_create_user(req: Request, admin_sess: Dict[str, Any] = Depends(require_admin)):
+    from user_store import UserStore
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    try:
+        created = UserStore(DATA_DIR).create_user(
+            username=str(body.get("username") or ""),
+            password=str(body.get("password") or ""),
+            display_name=str(body.get("display_name") or ""),
+            role=str(body.get("role") or "user"),
+            sections=body.get("sections") if isinstance(body.get("sections"), list) else None,
+            created_by=str(admin_sess.get("username") or "owner"),
+        )
+        return {"success": True, "user": created}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.put("/api/admin/users/{username}")
+async def admin_update_user(username: str, req: Request, admin_sess: Dict[str, Any] = Depends(require_admin)):
+    from user_store import UserStore
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    try:
+        updated, should_revoke = UserStore(DATA_DIR).update_user(
+            username,
+            actor_username=str(admin_sess.get("username") or "owner"),
+            display_name=body.get("display_name") if "display_name" in body else None,
+            role=body.get("role") if "role" in body else None,
+            sections=body.get("sections") if "sections" in body else None,
+            active=body.get("active") if "active" in body else None,
+            password=str(body.get("password") or "") or None,
+        )
+        if should_revoke:
+            revoke_user_sessions(username)
+        return {"success": True, "user": updated, "sessions_revoked": should_revoke}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/admin/users/{username}")
+async def admin_delete_user(username: str, admin_sess: Dict[str, Any] = Depends(require_admin)):
+    from user_store import UserStore
+
+    try:
+        UserStore(DATA_DIR).delete_user(username, actor_username=str(admin_sess.get("username") or "owner"))
+        revoke_user_sessions(username)
+        return {"success": True, "deleted": username}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+# -----------------------------------------------------------------------------
+# 3c. ÇOKLU MODEL MÜZİK STÜDYOSU (LYRIA 3.5, ELEVENLABS, STABLE AUDIO, MUSICGEN)
+# -----------------------------------------------------------------------------
+@app.get("/api/music/models", dependencies=[Depends(require_section("muzik"))])
+async def api_music_models():
+    from mac_bridge import bridge_hub
+    from music_studio import list_music_models, make_music_env_getter
+
+    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
+    models = list_music_models(env_getter, mac_online=bridge_hub.is_online())
+    return {
+        "success": True,
+        "models": models,
+        "ready_count": sum(1 for m in models if m["ready"]),
+    }
+
+
+@app.post("/api/music/generate")
+async def api_music_generate(
+    req: Request,
+    session: Dict[str, Any] = Depends(require_section("muzik")),
+):
+    from mac_bridge import bridge_hub
+    from music_studio import make_music_env_getter, start_music_job
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
+    try:
+        job = start_music_job(
+            model_id=str(body.get("model_id") or "lyria-3.5").strip(),
+            prompt=str(body.get("prompt") or ""),
+            genre=str(body.get("genre") or ""),
+            mood=str(body.get("mood") or ""),
+            duration_sec=int(body.get("duration_sec") or 30),
+            instrumental=bool(body.get("instrumental", True)),
+            lyrics=str(body.get("lyrics") or ""),
+            created_by=str(session.get("username") or "owner"),
+            data_dir=DATA_DIR,
+            media_dir=MEDIA_DIR,
+            get_env=env_getter,
+            mac_dispatch_fn=lambda cmd: bridge_hub.enqueue_and_wait(cmd, timeout_sec=18.0),
+        )
+        return {"success": True, "job": job}
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/music/job/{job_id}", dependencies=[Depends(require_section("muzik"))])
+async def api_music_job(job_id: str):
+    from music_studio import get_music_job
+
+    jid = _validate_job_id(job_id)
+    job = get_music_job(jid)
+    if not job:
+        raise HTTPException(status_code=404, detail="Müzik işi bulunamadı.")
+    return {"success": True, "job": job}
+
+
+@app.get("/api/music/history", dependencies=[Depends(require_section("muzik"))])
+async def api_music_history(limit: int = Query(30)):
+    from music_studio import get_music_history
+
+    items = get_music_history(DATA_DIR, limit=limit)
+    return {"success": True, "items": items, "count": len(items)}
+
+
+@app.post("/api/music/config", dependencies=[Depends(require_admin)])
+async def api_music_config(req: Request):
+    """Müzik sağlayıcı API anahtarlarını atomik 0600 izinle kaydeder (yalnızca yönetici)."""
+    from mac_bridge import bridge_hub
+    from music_studio import ALLOWED_SECRET_KEYS, list_music_models, make_music_env_getter, save_music_secrets
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    updates = {k: body.get(k) for k in ALLOWED_SECRET_KEYS if k in body}
+    configured = save_music_secrets(DATA_DIR, updates)
+    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
+    return {
+        "success": True,
+        "configured": configured,
+        "models": list_music_models(env_getter, mac_online=bridge_hub.is_online()),
+    }
 
 @app.get("/api/system/stats", dependencies=[Depends(verify_auth)])
 async def get_system_stats():
@@ -980,7 +1456,7 @@ async def get_system_stats():
         }
     }
 
-@app.get("/api/links/pool", dependencies=[Depends(verify_auth)])
+@app.get("/api/links/pool", dependencies=[Depends(require_section("fabrika"))])
 async def get_links_pool(q: Optional[str] = None, category: Optional[str] = None):
     ls_path = DATA_DIR / "link_store.json"
     links = []
@@ -1038,7 +1514,7 @@ async def get_links_pool(q: Optional[str] = None, category: Optional[str] = None
 # -----------------------------------------------------------------------------
 # 4. KOVA LAB MODEL KATALOĞU & İNTERAKTİF STÜDYO
 # -----------------------------------------------------------------------------
-@app.get("/api/video/tesis", dependencies=[Depends(verify_auth)])
+@app.get("/api/video/tesis", dependencies=[Depends(require_section("video"))])
 async def get_video_tesis():
     """YZ video hattının canlı ortamda çalışabilirliğini raporlar.
 
@@ -1053,7 +1529,7 @@ async def get_video_tesis():
         return {"success": False, "hata": str(e)}
 
 
-@app.get("/api/lab/models", dependencies=[Depends(verify_auth)])
+@app.get("/api/lab/models", dependencies=[Depends(require_section("video"))])
 async def get_lab_models():
     models_file = DATA_DIR / "kova_lab_models.json"
     if models_file.exists():
@@ -1104,7 +1580,7 @@ def _mp4_oynatilabilir(yol: Path) -> bool:
             return False
 
 
-@app.get("/api/lab/history", dependencies=[Depends(verify_auth)])
+@app.get("/api/lab/history", dependencies=[Depends(require_section("video"))])
 async def get_lab_history(limit: int = Query(12)):
     """
     Üretilen videoların GERÇEK geçmişi (2026-11-10).
@@ -1233,7 +1709,7 @@ async def get_lab_history(limit: int = Query(12)):
     return {"items": items, "count": len(items)}
 
 
-@app.get("/api/lab/job/{job_id}", dependencies=[Depends(verify_auth)])
+@app.get("/api/lab/job/{job_id}", dependencies=[Depends(require_section("video"))])
 async def get_lab_job_status(job_id: str):
     """Tek bir GPU/stüdyo işinin güncel durumunu ve varsa önizleme/çıktı URL'sini döner."""
     jid = _validate_job_id(job_id)
@@ -1593,7 +2069,7 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
     return job
 
 
-@app.post("/api/lab/generate", dependencies=[Depends(verify_auth)])
+@app.post("/api/lab/generate", dependencies=[Depends(require_section("video"))])
 async def generate_lab_video(req: Request):
     """Kova Lab video/I2V/FLUX önizleme isteğini GERÇEK kuyruğa bağlar.
 
@@ -1937,7 +2413,7 @@ async def generate_lab_video(req: Request):
 # -----------------------------------------------------------------------------
 # 5. VİDEO OTOMASYON PRODÜKSİYONU (REMOTION / BLENDER / CANVAS)
 # -----------------------------------------------------------------------------
-@app.get("/api/studio/video/channels", dependencies=[Depends(verify_auth)])
+@app.get("/api/studio/video/channels", dependencies=[Depends(require_section("video"))])
 async def studio_channels():
     try:
         from studio_controller import VideoStudioController
@@ -1971,7 +2447,7 @@ async def studio_channels():
             }
         }
 
-@app.get("/api/studio/catalog", dependencies=[Depends(verify_auth)])
+@app.get("/api/studio/catalog", dependencies=[Depends(require_section("video"))])
 async def studio_full_catalog():
     """Tüm doğrulanmış görsel/I2V modellerini, tarzları, sesleri ve kayıtlı YouTube kanallarını döner."""
     from channels_manager import ChannelStore, get_full_catalog
@@ -1985,7 +2461,7 @@ async def studio_full_catalog():
     }
 
 
-@app.get("/api/channels", dependencies=[Depends(verify_auth)])
+@app.get("/api/channels", dependencies=[Depends(require_section("video"))])
 async def list_youtube_channels():
     from channels_manager import ChannelStore
 
@@ -1997,7 +2473,7 @@ async def list_youtube_channels():
     }
 
 
-@app.post("/api/channels", dependencies=[Depends(verify_auth)])
+@app.post("/api/channels", dependencies=[Depends(require_section("video"))])
 async def upsert_youtube_channel(req: Request):
     from channels_manager import ChannelStore
 
@@ -2012,7 +2488,7 @@ async def upsert_youtube_channel(req: Request):
         return JSONResponse(status_code=400, content={"success": False, "detail": str(e)})
 
 
-@app.delete("/api/channels/{channel_id}", dependencies=[Depends(verify_auth)])
+@app.delete("/api/channels/{channel_id}", dependencies=[Depends(require_section("video"))])
 async def delete_youtube_channel(channel_id: str):
     from channels_manager import ChannelStore
 
@@ -2030,7 +2506,7 @@ async def youtube_auth_status(channel_id: Optional[str] = Query(None)):
     return {"success": True, **store.get_youtube_status(channel_id), "channels": store.list_channels()}
 
 
-@app.post("/api/youtube/oauth-secret", dependencies=[Depends(verify_auth)])
+@app.post("/api/youtube/oauth-secret", dependencies=[Depends(require_admin)])
 async def youtube_upload_oauth_secret(req: Request):
     from channels_manager import ChannelStore
 
@@ -2066,7 +2542,7 @@ async def youtube_publish_job(job_id: str):
     return res
 
 
-@app.get("/api/youtube/oauth/start", dependencies=[Depends(verify_auth)])
+@app.get("/api/youtube/oauth/start", dependencies=[Depends(require_admin)])
 async def youtube_oauth_start(req: Request, channel_id: Optional[str] = Query(None)):
     """Google OAuth yetkilendirme bağlantısı üretir (client_secret.json varsa)."""
     from channels_manager import ChannelStore
@@ -2108,7 +2584,7 @@ async def youtube_oauth_callback(req: Request, code: Optional[str] = Query(None)
         return JSONResponse(status_code=400, content={"success": False, "detail": f"OAuth token alınamadı: {str(e)[:200]}"})
 
 
-@app.post("/api/studio/preview-image", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/preview-image", dependencies=[Depends(require_section("video"))])
 async def studio_preview_image(req: Request):
     """GPU worker beklemeden bulut FLUX.1-schnell (veya Pollinations) ile somut İngilizce sahne önizlemesi üretir."""
     from ai_video_montaj import preview_single_image
@@ -2177,7 +2653,7 @@ async def studio_preview_image(req: Request):
     }
 
 
-@app.post("/api/studio/storyboard", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/storyboard", dependencies=[Depends(require_section("video"))])
 async def studio_storyboard(req: Request):
     """Konudan çok sahneli (3–5 sahneli) anlatım + İngilizce görsel/hareket senaryosu planlar."""
     from channels_manager import compose_story_plan
@@ -2199,7 +2675,7 @@ async def studio_storyboard(req: Request):
     return {"success": True, **plan}
 
 
-@app.post("/api/studio/stitch-clips", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/stitch-clips", dependencies=[Depends(require_section("video"))])
 async def studio_stitch_clips(req: Request):
     """Birden fazla tamamlanmış I2V klip MP4'ünü birleştirip tam ses+altyazılı uzun video ve YouTube paketi üretir."""
     import shutil
@@ -2315,7 +2791,7 @@ async def studio_stitch_clips(req: Request):
     return {"success": True, "job": job}
 
 
-@app.post("/api/studio/video/generate", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/video/generate", dependencies=[Depends(require_section("video"))])
 async def studio_video_generate(req: Request):
     """
     Stüdyo video üretimi.
@@ -2773,7 +3249,7 @@ def _synthesize_audio_wav(action: str, params: Dict[str, Any], out_path: Path) -
     }
 
 
-@app.post("/api/audio/process", dependencies=[Depends(verify_auth)])
+@app.post("/api/audio/process", dependencies=[Depends(require_section("muzik", "video"))])
 async def audio_process(req: Request):
     try:
         body = await req.json()
@@ -2858,7 +3334,7 @@ async def audio_process(req: Request):
         }
 
 
-@app.get("/api/audio/history", dependencies=[Depends(verify_auth)])
+@app.get("/api/audio/history", dependencies=[Depends(require_section("muzik", "video"))])
 async def get_audio_history(limit: int = Query(12)):
     """Üretilen ses ve müzik dosyalarının gerçek geçmişi ve indirme bağlantıları."""
     items: List[Dict[str, Any]] = []
@@ -2985,7 +3461,7 @@ async def burc_listele():
     return {"success": True, "items": liste, "count": len(liste)}
 
 
-@app.post("/api/burc/video/generate", dependencies=[Depends(verify_auth)])
+@app.post("/api/burc/video/generate", dependencies=[Depends(require_section("video"))])
 async def burc_video_generate(req: Request):
     """Burç videosunu gerçek GPU kuyruğuna bağlar.
 
@@ -3286,7 +3762,7 @@ async def burc_video_generate(req: Request):
     }
 
 
-@app.get("/api/studio/queue", dependencies=[Depends(verify_auth)])
+@app.get("/api/studio/queue", dependencies=[Depends(require_section("video"))])
 async def get_studio_queue(status: str = "all", limit: int = 50):
     """GPU kuyruğunda bekleyen ve tamamlanan stüdyo işlerini döner."""
     _release_expired_claims()
@@ -3309,7 +3785,7 @@ async def get_studio_queue(status: str = "all", limit: int = 50):
     }
 
 
-@app.post("/api/studio/queue/{job_id}/instant-render", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/queue/{job_id}/instant-render", dependencies=[Depends(require_section("video"))])
 async def studio_queue_instant_render(job_id: str):
     """Kuyrukta bekleyen bir işi GPU işçisi beklemeden anında bulutta render eder."""
     jid = _validate_job_id(job_id)
@@ -3352,7 +3828,7 @@ async def studio_queue_instant_render(job_id: str):
     return {"success": True, "job_id": jid, "task": guncel, "job": guncel, "message": guncel.get("message")}
 
 
-@app.post("/api/studio/queue/{job_id}/requeue-gpu", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/queue/{job_id}/requeue-gpu", dependencies=[Depends(require_section("video"))])
 async def studio_queue_requeue_gpu(job_id: str):
     """Mevcut işi (veya onaylı önizlemesini) gerçek Wan2.1/LTX GPU kuyruğuna yükseltir."""
     jid = _validate_job_id(job_id)
@@ -3420,7 +3896,7 @@ async def studio_queue_requeue_gpu(job_id: str):
     return {"success": True, "job_id": jid, "task": guncel, "message": "İş GPU kuyruğuna yeniden alındı."}
 
 
-@app.post("/api/studio/queue/{job_id}/cancel", dependencies=[Depends(verify_auth)])
+@app.post("/api/studio/queue/{job_id}/cancel", dependencies=[Depends(require_section("video"))])
 async def studio_queue_cancel(job_id: str):
     """Kuyrukta bekleyen işi iptal eder."""
     jid = _validate_job_id(job_id)
@@ -3541,7 +4017,7 @@ async def gpu_status():
         }
     }
 
-@app.get("/api/gpu/worker-setup", dependencies=[Depends(verify_auth)])
+@app.get("/api/gpu/worker-setup", dependencies=[Depends(require_admin)])
 async def gpu_worker_setup(request: Request):
     """Oturum açmış kullanıcı için Kaggle/Colab işçi kurulum bilgisi (anahtar korumalı)."""
     temel = str(request.base_url).rstrip("/")
@@ -3564,7 +4040,7 @@ async def gpu_worker_setup(request: Request):
         ),
     }
 
-@app.post("/api/gpu/cluster/mode", dependencies=[Depends(verify_auth)])
+@app.post("/api/gpu/cluster/mode", dependencies=[Depends(require_admin)])
 async def gpu_mode(req: Request):
     global CURRENT_GPU_MODE
     body = await req.json()
@@ -4094,7 +4570,7 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
         )
     return JSONResponse(status_code=404, content={"detail": "Medya dosyası bulunamadı."})
 
-@app.post("/api/rea/scan", dependencies=[Depends(verify_auth)])
+@app.post("/api/rea/scan", dependencies=[Depends(require_section("fabrika"))])
 async def rea_scan(req: Request):
     """Gerçek Python AST + Desen Tabanlı Güvenlik Analizörü (`hedef`, `code`, `snippet`, `url`)."""
     from rea_analyzer import analyze_code
@@ -4135,7 +4611,7 @@ async def rea_scan(req: Request):
 
     return result
 
-@app.get("/api/rea/history", dependencies=[Depends(verify_auth)])
+@app.get("/api/rea/history", dependencies=[Depends(require_section("fabrika"))])
 async def rea_history():
     """Gerçek REA geçmişi (Kural 1 uyarınca sahte mock rakamlar kaldırılmıştır)."""
     scans_file = DATA_DIR / "rea_scans.json"
@@ -4182,7 +4658,7 @@ async def push_sub():
         detail="Web Push abonelikleri yapılandırılmadı (VAPID anahtarları tanımlı değil).",
     )
 
-@app.post("/api/tunnel/setup_domain", dependencies=[Depends(verify_auth)])
+@app.post("/api/tunnel/setup_domain", dependencies=[Depends(require_admin)])
 async def tunnel_setup():
     raise HTTPException(
         status_code=501,
@@ -4240,7 +4716,7 @@ async def mac_bridge_poll(
         await manager.broadcast(json.dumps({"type": "desktop_sync", "state": fresh_state}, ensure_ascii=False))
     return {"ok": True, "tasks": tasks}
 
-@app.post("/api/bridge/action", dependencies=[Depends(verify_auth)])
+@app.post("/api/bridge/action", dependencies=[Depends(require_section("fabrika"))])
 async def mac_bridge_action(req: Request):
     """Uzaktan UI eylemini (sağ panel, log/XAI, söz kes, soru kartı) Mac Fabrika'ya iletir."""
     from mac_bridge import bridge_hub
@@ -4254,14 +4730,14 @@ async def mac_bridge_action(req: Request):
     res = bridge_hub.enqueue_ui_action(action, payload)
     return {"success": bool(res.get("ok")), **res}
 
-@app.get("/api/bridge/status", dependencies=[Depends(verify_auth)])
+@app.get("/api/bridge/status", dependencies=[Depends(require_section("fabrika"))])
 async def mac_bridge_status():
     """Mac Fabrika bağlantısının anlık ve dürüst durumunu döner."""
     from mac_bridge import bridge_hub
 
     return {"success": True, **bridge_hub.get_status()}
 
-@app.post("/api/bridge/command", dependencies=[Depends(verify_auth)])
+@app.post("/api/bridge/command", dependencies=[Depends(require_section("fabrika"))])
 async def mac_bridge_command(req: Request):
     """Komutu canlı Mac Fabrika köprüsüne iletir; Mac çevrimdışıysa bekletmeden dürüstçe bildirir."""
     from mac_bridge import bridge_hub
@@ -4303,8 +4779,12 @@ manager = ConnectionManager()
 async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None)):
     from mac_bridge import bridge_hub
 
-    if not token or not is_session_valid(token):
+    sess = resolve_session(token) if token else None
+    if not sess:
         await websocket.close(code=4401)
+        return
+    if sess.get("role") != "admin" and "fabrika" not in (sess.get("sections") or []):
+        await websocket.close(code=4403)
         return
 
     await manager.connect(websocket)

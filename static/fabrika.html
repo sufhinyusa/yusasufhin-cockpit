@@ -20,7 +20,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (let name of names) {
-          if (name !== 'fabrika-pwa-v25-mobile') caches.delete(name);
+          if (name !== 'fabrika-pwa-v30-mobile') caches.delete(name);
         }
       });
     }
@@ -377,7 +377,7 @@
             <div class="fab-drawer-page" data-drawer-page="ayarlar">
               <div class="fab-settings-list">
                 <a class="fab-settings-btn" href="/lab.html">
-                  <span>🎬 Video, Ses &amp; YouTube Stüdyosu</span>
+                  <span>🏠 Yönetici Paneli (Fabrika / Video / Müzik &amp; Kullanıcılar)</span>
                   <span>→</span>
                 </a>
                 <button type="button" class="fab-settings-btn" id="btnOpenChangePin">
@@ -466,7 +466,11 @@
 
       <form class="credentials-login-box" id="loginCredentialsForm" autocomplete="on">
         <div class="cred-input-group">
-          <label for="inputLoginPassword">Yönetici Parolası</label>
+          <label for="inputLoginUsername">Kullanıcı Adı (Kurucu girişinde boş bırakabilirsiniz)</label>
+          <input type="text" id="inputLoginUsername" name="username" placeholder="Kurucu veya kullanıcı adı" autocomplete="username" class="cred-input">
+        </div>
+        <div class="cred-input-group">
+          <label for="inputLoginPassword">Parola</label>
           <div class="cred-pass-wrapper">
             <input type="password" id="inputLoginPassword" name="password" placeholder="••••••••••" autocomplete="current-password" class="cred-input" required>
             <button type="button" class="btn-toggle-pass" id="btnTogglePassVis" title="Şifreyi Göster/Gizle">👁️</button>
@@ -569,6 +573,6 @@
   </div>
 
   <script src="/fabrika_desktop.js?v=28"></script>
-  <script src="/app.js?v=11"></script>
+  <script src="/app.js?v=30"></script>
 </body>
 </html>

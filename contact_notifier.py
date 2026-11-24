@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-contact_notifier.py — ys@yusasufhin.com Doğrudan E-posta + Mac Köprü Rölesi + Telegram
-======================================================================================
+contact_notifier.py — Çoklu Alıcılı Doğrudan E-posta + Mac Köprü Rölesi + Telegram
+===================================================================================
 Kural 1 (Dürüstlük): Hiçbir kanal gerçekten iletmediyse `email_sent=True` dönmez.
 
 Desteklenen e-posta teslim kanalları (öncelik sırasıyla):
   1. Bulut HTTPS 443 (Resend API — Render ücretsiz planda 7/24 çalışır):
-       RESEND_API_KEY, CONTACT_FROM_EMAIL, CONTACT_TO_EMAIL (varsayılan: ys@yusasufhin.com)
+       RESEND_API_KEY, CONTACT_FROM_EMAIL, CONTACT_RECIPIENTS / CONTACT_TO_EMAIL
   2. Doğrudan SMTP (VPS / Oracle ARM veya yerel ortam):
-       SMTP_HOST (varsayılan: smtp.gmail.com), SMTP_PORT (587), SMTP_USER (ys@yusasufhin.com), SMTP_PASS
+       SMTP_HOST (varsayılan: smtp.gmail.com), SMTP_PORT (587), SMTP_USER, SMTP_PASS
   3. Mac Port-443 Köprüsü Üzerinden TLS 587 Gmail Rölesi + Çevrimdışı Kuyruk:
        Render ücretsiz planda port 587 engelli olduğu için mesajı HTTPS 443 köprüsüyle
-       Mac'e iletir; Mac doğrudan `smtp.gmail.com:587` üzerinden `ys@yusasufhin.com`
-       kutusuna gerçek e-postayı düşürür (Mac kapalıysa kuyruğa alır, açılınca otomatik yollar).
+       Mac'e iletir; Mac tüm kayıtlı alıcılara (`to_emails`) doğrudan TLS 587 ile yollar.
   4. Anlık Telegram Bildirimi (HTTPS 443):
        TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 """
@@ -21,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import smtplib
 import ssl
 import threading
@@ -28,7 +28,7 @@ import time
 import urllib.parse
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import requests
 
@@ -37,11 +37,64 @@ logger = logging.getLogger("Fabrika.ContactNotifier")
 DEFAULT_TO_EMAIL = "ys@yusasufhin.com"
 DEFAULT_FROM_EMAIL = "yusasufhin.com <onboarding@resend.dev>"
 MAIL_SECRETS_FILENAME = ".mail_secrets.json"
+R2_MAIL_SECRETS_KEY = "state/mail_secrets.json"
+MAX_RECIPIENTS = 10
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
 _MAIL_LOCK = threading.Lock()
+
+
+def normalize_email(raw: Any) -> str:
+    clean = re.sub(r"[\r\n\s]+", "", str(raw or "")).strip().lower()
+    return clean if EMAIL_RE.match(clean) else ""
+
+
+def parse_recipient_list(raw: Any) -> List[str]:
+    """Virgüllü string, JSON liste veya Python listesini geçerli tekil e-posta listesine çevirir."""
+    items: List[Any] = []
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped.startswith("["):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, list):
+                    items = parsed
+            except ValueError:
+                items = stripped.split(",")
+        else:
+            items = stripped.split(",")
+    elif isinstance(raw, (list, tuple, set)):
+        items = list(raw)
+
+    out: List[str] = []
+    for item in items:
+        addr = normalize_email(item)
+        if addr and addr not in out:
+            out.append(addr)
+        if len(out) >= MAX_RECIPIENTS:
+            break
+    return out
+
+
+def _sync_mail_config_from_r2(data_dir: Path) -> None:
+    yol = data_dir / MAIL_SECRETS_FILENAME
+    if yol.is_file():
+        return
+    try:
+        import cloud_storage
+
+        if cloud_storage.is_configured():
+            if cloud_storage.ensure_local(yol, key=R2_MAIL_SECRETS_KEY):
+                try:
+                    os.chmod(yol, 0o600)
+                except OSError:
+                    pass
+    except Exception:
+        pass
 
 
 def load_saved_mail_config(data_dir: Path) -> Dict[str, str]:
     """Yönetici panelinden kaydedilmiş (0600 izinli) e-posta ayarlarını okur."""
+    _sync_mail_config_from_r2(data_dir)
     yol = data_dir / MAIL_SECRETS_FILENAME
     if not yol.is_file():
         return {}
@@ -55,9 +108,10 @@ def load_saved_mail_config(data_dir: Path) -> Dict[str, str]:
 
 
 def save_mail_config(data_dir: Path, updates: Dict[str, Optional[str]]) -> Dict[str, str]:
-    """E-posta kimlik bilgilerini 0600 dosya izniyle atomik olarak kaydeder."""
+    """E-posta kimlik bilgilerini ve alıcı listesini 0600 dosya izniyle atomik kaydeder."""
     izinli = {
         "CONTACT_TO_EMAIL",
+        "CONTACT_RECIPIENTS",
         "CONTACT_FROM_EMAIL",
         "RESEND_API_KEY",
         "SMTP_HOST",
@@ -68,9 +122,7 @@ def save_mail_config(data_dir: Path, updates: Dict[str, Optional[str]]) -> Dict[
     with _MAIL_LOCK:
         mevcut = load_saved_mail_config(data_dir)
         for k, v in updates.items():
-            if k not in izinli:
-                continue
-            if v is None:
+            if k not in izinli or v is None:
                 continue
             temiz = str(v).strip()
             if temiz == "__CLEAR__":
@@ -85,6 +137,13 @@ def save_mail_config(data_dir: Path, updates: Dict[str, Optional[str]]) -> Dict[
         os.chmod(gecici, 0o600)
         os.replace(gecici, hedef)
         os.chmod(hedef, 0o600)
+        try:
+            import cloud_storage
+
+            if cloud_storage.is_configured():
+                cloud_storage.put_file(hedef, key=R2_MAIL_SECRETS_KEY, content_type="application/json")
+        except Exception:
+            pass
         return dict(mevcut)
 
 
@@ -103,14 +162,70 @@ def make_layered_env_getter(
     return _get
 
 
+def get_contact_recipients(get_env: Callable[[str], Optional[str]]) -> List[str]:
+    """Aktif alıcı e-posta listesini döner (en az bir geçerli adres, varsayılan ys@yusasufhin.com)."""
+    raw_list = get_env("CONTACT_RECIPIENTS")
+    recipients = parse_recipient_list(raw_list) if raw_list else []
+    if not recipients:
+        recipients = parse_recipient_list(get_env("CONTACT_TO_EMAIL"))
+    return recipients or [DEFAULT_TO_EMAIL]
+
+
+def save_contact_recipients(data_dir: Path, emails: Iterable[Any]) -> List[str]:
+    """Doğrulanmış alıcı listesini (1..MAX_RECIPIENTS) kaydeder."""
+    cleaned = parse_recipient_list(list(emails))
+    if not cleaned:
+        raise ValueError("En az bir geçerli alıcı e-posta adresi bulunmalıdır.")
+    save_mail_config(
+        data_dir,
+        {
+            "CONTACT_RECIPIENTS": json.dumps(cleaned),
+            "CONTACT_TO_EMAIL": cleaned[0],
+        },
+    )
+    return cleaned
+
+
+def add_contact_recipient(
+    data_dir: Path,
+    email: str,
+    base_get_env: Callable[[str], Optional[str]],
+) -> List[str]:
+    addr = normalize_email(email)
+    if not addr:
+        raise ValueError("Geçerli bir e-posta adresi girin (ör. ekip@alanadi.com).")
+    env_getter = make_layered_env_getter(data_dir, base_get_env)
+    current = get_contact_recipients(env_getter)
+    if addr in current:
+        return current
+    if len(current) >= MAX_RECIPIENTS:
+        raise ValueError(f"En fazla {MAX_RECIPIENTS} alıcı e-posta adresi eklenebilir.")
+    return save_contact_recipients(data_dir, current + [addr])
+
+
+def remove_contact_recipient(
+    data_dir: Path,
+    email: str,
+    base_get_env: Callable[[str], Optional[str]],
+) -> List[str]:
+    addr = normalize_email(email)
+    env_getter = make_layered_env_getter(data_dir, base_get_env)
+    current = get_contact_recipients(env_getter)
+    remaining = [r for r in current if r != addr]
+    if not remaining:
+        raise ValueError("Son alıcı e-posta adresi silinemez; en az bir alıcı kalmalıdır.")
+    return save_contact_recipients(data_dir, remaining)
+
+
 def notifier_status(
     get_env: Callable[[str], Optional[str]],
     *,
     mac_online: bool = False,
     mac_smtp_ready: bool = False,
 ) -> Dict[str, Any]:
-    """Aktif e-posta, Mac rölesi ve Telegram bildirim kanallarını dürüstçe raporlar."""
-    to_email = (get_env("CONTACT_TO_EMAIL") or DEFAULT_TO_EMAIL).strip()
+    """Aktif alıcıları, e-posta, Mac rölesi ve Telegram bildirim kanallarını dürüstçe raporlar."""
+    recipients = get_contact_recipients(get_env)
+    to_email = recipients[0]
     has_resend = bool(get_env("RESEND_API_KEY"))
     smtp_pass = get_env("SMTP_PASS")
     smtp_host = get_env("SMTP_HOST") or ("smtp.gmail.com" if smtp_pass else None)
@@ -129,17 +244,18 @@ def notifier_status(
         email_method = "none"
 
     email_ready = has_resend or has_smtp or has_mac_relay
+    alici_ozet = ", ".join(recipients)
     if email_ready:
-        hint = f"✅ Canlı e-posta aktif (hedef: {to_email} • kanal: {email_method})."
+        hint = f"✅ Canlı e-posta aktif (alıcılar: {alici_ozet} • kanal: {email_method})."
     else:
         hint = (
-            f"⚠️ {to_email} adresine doğrudan mail düşmesi için aşağıdaki kutuya "
-            "16 haneli Google Uygulama Şifrenizi (Mac köprüsü üzerinden doğrudan Gmail TLS 587 ile gönderir) "
-            "veya RESEND_API_KEY anahtarınızı girip Kaydet'e basın."
+            f"⚠️ {alici_ozet} adreslerine doğrudan mail düşmesi için 16 haneli Google Uygulama Şifrenizi "
+            "(Mac köprüsü üzerinden Gmail TLS 587 ile yollar) veya RESEND_API_KEY anahtarınızı girip Kaydet'e basın."
         )
 
     return {
         "to_email": to_email,
+        "recipients": recipients,
         "smtp_user": smtp_user or to_email,
         "smtp_host": smtp_host or "smtp.gmail.com",
         "email_configured": email_ready,
@@ -157,7 +273,7 @@ def notifier_status(
 def _send_via_resend(
     api_key: str,
     from_email: str,
-    to_email: str,
+    to_emails: List[str],
     name: str,
     sender_email: str,
     message: str,
@@ -170,7 +286,7 @@ def _send_via_resend(
         },
         json={
             "from": from_email,
-            "to": [to_email],
+            "to": list(to_emails),
             "reply_to": sender_email,
             "subject": f"[yusasufhin.com] Yeni İletişim Mesajı — {name}",
             "text": (
@@ -197,13 +313,17 @@ def send_via_smtp_direct(
     name: str,
     sender_email: str,
     message: str,
+    to_emails: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Doğrudan TLS/SSL SMTP üzerinden gerçek e-posta gönderir (Mac köprüsü ve VPS uyumlu)."""
+    """Doğrudan TLS/SSL SMTP üzerinden tek veya çoklu alıcıya gerçek e-posta gönderir."""
     clean_pass = password.replace(" ", "") if "gmail" in host.lower() else password
+    recipients = parse_recipient_list(to_emails) if to_emails else parse_recipient_list(to_email)
+    to_header = ", ".join(recipients) if recipients else to_email
+
     msg = EmailMessage()
     msg["Subject"] = f"[yusasufhin.com] Yeni İletişim Mesajı — {name}"
     msg["From"] = user
-    msg["To"] = to_email
+    msg["To"] = to_header
     msg["Reply-To"] = sender_email
     msg.set_content(
         f"Web sitenizden yeni bir mesaj geldi:\n\n"
@@ -268,8 +388,9 @@ def dispatch_contact_notification(
     get_env: Callable[[str], Optional[str]],
     mac_relay_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Resend -> Doğrudan SMTP -> Mac Port-443 Gmail Rölesi (+ Çevrimdışı Kuyruk) + Telegram ile gönderir."""
-    to_email = (get_env("CONTACT_TO_EMAIL") or DEFAULT_TO_EMAIL).strip()
+    """Resend -> Doğrudan SMTP -> Mac Port-443 Gmail Rölesi (+ Çevrimdışı Kuyruk) + Telegram ile tüm alıcılara yollar."""
+    recipients = get_contact_recipients(get_env)
+    to_email = recipients[0]
     from_email = (get_env("CONTACT_FROM_EMAIL") or DEFAULT_FROM_EMAIL).strip()
 
     email_sent = False
@@ -283,10 +404,10 @@ def dispatch_contact_notification(
     smtp_user = get_env("SMTP_USER") or (to_email if smtp_pass else None)
     smtp_port = int(get_env("SMTP_PORT") or 587)
 
-    # 1. Bulut HTTPS 443 (Resend)
+    # 1. Bulut HTTPS 443 (Resend — çoklu alıcı)
     if resend_key:
         try:
-            r = _send_via_resend(resend_key, from_email, to_email, name, sender_email, message)
+            r = _send_via_resend(resend_key, from_email, recipients, name, sender_email, message)
             email_sent = bool(r["ok"])
             email_provider = r["provider"]
             email_error = r["error"]
@@ -295,7 +416,7 @@ def dispatch_contact_notification(
             email_error = f"{type(exc).__name__}: {str(exc)[:140]}"
             logger.warning("[Contact] Resend gönderim hatası: %s", email_error)
 
-    # 2. Doğrudan SMTP (VPS/yerel ortamda çalışır; Render ücretsiz planda zaman aşımına düşerse 3. adıma geçer)
+    # 2. Doğrudan SMTP (VPS/yerel ortamda çalışır)
     if not email_sent and smtp_host and smtp_user and smtp_pass and not os.environ.get("RENDER"):
         try:
             r = send_via_smtp_direct(
@@ -304,6 +425,7 @@ def dispatch_contact_notification(
                 user=smtp_user,
                 password=smtp_pass,
                 to_email=to_email,
+                to_emails=recipients,
                 name=name,
                 sender_email=sender_email,
                 message=message,
@@ -316,12 +438,13 @@ def dispatch_contact_notification(
             email_error = f"{type(exc).__name__}: {str(exc)[:140]}"
             logger.warning("[Contact] Doğrudan SMTP hatası, Mac rölesi denenecek: %s", email_error)
 
-    # 3. Mac Port-443 Köprüsü Üzerinden TLS 587 Rölesi (Render port 587 engelini yasal HTTPS 443 ile aşar)
+    # 3. Mac Port-443 Köprüsü Üzerinden TLS 587 Rölesi (çoklu to_emails + geriye uyumlu to_email)
     telegram_sent = False
     telegram_error: Optional[str] = None
     if not email_sent and mac_relay_fn is not None:
         relay_payload: Dict[str, Any] = {
             "to_email": to_email,
+            "to_emails": recipients,
             "name": name,
             "sender_email": sender_email,
             "message": message,
@@ -347,7 +470,7 @@ def dispatch_contact_notification(
         except Exception as exc:
             logger.warning("[Contact] Mac röle çağrısı hatası: %s", exc)
 
-    # 4. Bulut Telegram Bildirimi (henüz Mac üzerinden gitmediyse)
+    # 4. Bulut Telegram Bildirimi
     tg_tok = get_env("TELEGRAM_BOT_TOKEN")
     tg_chat = get_env("TELEGRAM_CHAT_ID")
     if not telegram_sent and tg_tok and tg_chat:
@@ -381,6 +504,7 @@ def dispatch_contact_notification(
         "telegram_error": telegram_error,
         "delivery_channel": channel,
         "to_email": to_email,
+        "recipients": recipients,
         "mailto_fallback_url": build_mailto_fallback(to_email, name, sender_email, message),
         "timestamp": time.time(),
     }

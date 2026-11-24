@@ -1,15 +1,17 @@
-const CACHE_NAME = 'fabrika-pwa-v25-mobile';
+const CACHE_NAME = 'fabrika-pwa-v30-mobile';
 const ASSETS_TO_CACHE = [
   '/',
-  '/site.css?v=17',
-  '/site.js?v=16',
+  '/site.css?v=30',
+  '/site.js?v=30',
+  '/home_demo.js?v=30',
   '/fabrika.html',
   '/fabrika_desktop.css?v=28',
   '/fabrika_desktop.js?v=28',
   '/lab.html',
-  '/lab.js?v=25',
+  '/admin_portal.js?v=30',
+  '/lab.js?v=30',
   '/styles.css?v=9',
-  '/app.js?v=11',
+  '/app.js?v=30',
   '/manifest.json',
   '/fabrika_icon.svg'
 ];

@@ -259,7 +259,7 @@ async function submitCredentialsLogin(enrollBiometricAfter = false) {
   const passInp = document.getElementById('inputLoginPassword');
   const statusEl = document.getElementById('pinStatusMsg');
 
-  const username = userInp ? userInp.value.trim() : 'yusuf';
+  const username = userInp ? userInp.value.trim() : '';
   const password = passInp ? passInp.value.trim() : '';
 
   if (!password) {

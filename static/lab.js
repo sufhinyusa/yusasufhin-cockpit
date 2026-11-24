@@ -76,19 +76,21 @@
   if (loginForm) {
     loginForm.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var userInp = document.getElementById('labLoginUsername');
       var inp = document.getElementById('labLoginSecret');
       var err = document.getElementById('labLoginError');
       var btn = document.getElementById('labLoginSubmit');
+      var username = userInp ? userInp.value.trim() : '';
       var val = inp ? inp.value.trim() : '';
       if (!val) { if (err) err.textContent = 'Parola veya 6 haneli PIN girin.'; return; }
       if (err) err.textContent = '';
       if (btn) { btn.disabled = true; btn.textContent = 'Doğrulanıyor…'; }
 
-      var isPin = /^\d{6}$/.test(val);
+      var isPin = (!username && /^\d{6}$/.test(val));
       fetch(isPin ? '/api/auth/verify_pin' : '/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isPin ? { pin: val } : { password: val })
+        body: JSON.stringify(isPin ? { pin: val } : { username: username, password: val })
       })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
@@ -98,7 +100,13 @@
               localStorage.setItem('cockpit_token', res.d.token);
             } catch (e) { }
             if (inp) inp.value = '';
-            bootstrapStudio();
+            bootstrapStudio({
+              username: res.d.account_username || res.d.username || 'owner',
+              display_name: res.d.display_name || res.d.username || 'Yusuf Şahin',
+              role: res.d.role || 'admin',
+              sections: res.d.sections || ['fabrika', 'video', 'muzik'],
+              is_owner: Boolean(res.d.is_owner)
+            });
           } else {
             if (err) err.textContent = (res.d && (res.d.detail || res.d.message)) || 'Giriş başarısız.';
           }
@@ -118,30 +126,42 @@
     });
   }
 
-  /* ── SEKME GEÇİŞİ (5 NET SEKME) ─────────────────────────────────────── */
+  /* ── SEKME GEÇİŞİ (3-BUTON ANA PANEL + FABRİKA / VİDEO / MÜZİK) ─────── */
+  window.openSectionUsers = function (viewKey, slotId) {
+    window.switchStudioView(viewKey);
+    setTimeout(function () {
+      var el = document.getElementById(slotId);
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
   window.switchStudioView = function (viewKey) {
     var viewMap = {
+      hub: 'viewAdminHub',
       video: 'viewVideoStudio',
+      music: 'viewMusicStudio',
       audio: 'viewAudioStudio',
       channels: 'viewChannelsStudio',
       gpu: 'viewGpuStudio',
       mac: 'viewMacStudio'
     };
     var tabMap = {
+      hub: 'tabNavHub',
       video: 'tabNavVideo',
+      music: 'tabNavMusic',
       audio: 'tabNavAudio',
       channels: 'tabNavChannels',
       gpu: 'tabNavGpu',
       mac: 'tabNavMac'
     };
     var mobMap = {
+      hub: 'mobTabHub',
       video: 'mobTabVideo',
-      audio: 'mobTabAudio',
+      music: 'mobTabMusic',
       channels: 'mobTabChannels',
-      gpu: 'mobTabGpu',
       mac: 'mobTabMac'
     };
-    if (!viewMap[viewKey]) viewKey = 'video';
+    if (!viewMap[viewKey]) viewKey = 'hub';
     Object.keys(viewMap).forEach(function (k) {
       var vEl = document.getElementById(viewMap[k]);
       var tEl = document.getElementById(tabMap[k]);
@@ -160,10 +180,14 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    if (viewKey === 'video') {
+    if (viewKey === 'hub') {
+      if (window.refreshAllUserLists) window.refreshAllUserLists();
+    } else if (viewKey === 'video') {
       window.loadChannelsCatalog(false);
       window.loadStudioQueue();
       window.loadVideoHistory();
+    } else if (viewKey === 'music') {
+      if (window.loadMusicStudio) window.loadMusicStudio();
     } else if (viewKey === 'audio') {
       window.loadAudioHistory();
     } else if (viewKey === 'channels') {
@@ -174,6 +198,7 @@
       window.refreshMacBridgeStatus();
       window.refreshLabReaHistory();
       window.loadContactInbox();
+      if (window.loadContactRecipients) window.loadContactRecipients();
     }
   };
 
@@ -1101,20 +1126,25 @@
       .catch(function () { listEl.innerHTML = '<div class="site-empty">Mesajlar alınamadı.</div>'; });
   };
 
-  /* ── BAŞLATMA (ÖNCE AUTH KONTROLÜ) ──────────────────────────────────── */
-  function bootstrapStudio() {
+  /* ── BAŞLATMA (ÖNCE AUTH KONTROLÜ → 3-BUTON ANA PANEL) ─────────────── */
+  function bootstrapStudio(sess) {
     showAppShell();
     _bindUploadAndExtras();
     loadBurcCatalog();
-    window.refreshGpuStatus();
-    window.refreshMacBridgeStatus();
+    if (window.applySessionToStudio) window.applySessionToStudio(sess || {});
+    var role = (sess && sess.role) || 'admin';
+    var secs = (sess && Array.isArray(sess.sections)) ? sess.sections : ['fabrika', 'video', 'muzik'];
+    if (role === 'admin' || secs.indexOf('video') >= 0) window.refreshGpuStatus();
+    if (role === 'admin' || secs.indexOf('fabrika') >= 0) window.refreshMacBridgeStatus();
 
     var h = (window.location.hash || '').toLowerCase();
     if (h.indexOf('channel') >= 0 || h.indexOf('kanal') >= 0) window.switchStudioView('channels');
+    else if (h.indexOf('music') >= 0 || h.indexOf('muzik') >= 0) window.switchStudioView('music');
     else if (h.indexOf('audio') >= 0 || h.indexOf('ses') >= 0) window.switchStudioView('audio');
     else if (h.indexOf('gpu') >= 0) window.switchStudioView('gpu');
+    else if (h.indexOf('video') >= 0) window.switchStudioView('video');
     else if (h.indexOf('mac') >= 0 || h.indexOf('fabrika') >= 0) window.switchStudioView('mac');
-    else window.switchStudioView('video');
+    else window.switchStudioView('hub');
   }
 
   function init() {
@@ -1123,7 +1153,7 @@
     fetch('/api/auth/check', { headers: { Authorization: 'Bearer ' + tk } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
-        if (d && d.authenticated) bootstrapStudio();
+        if (d && d.authenticated) bootstrapStudio(d);
         else showAuthGate('');
       })
       .catch(function () { showAuthGate(''); });

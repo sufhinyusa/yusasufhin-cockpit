@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Yusuf Şahin — Yapay Zeka Çözümleri, Otomasyon &amp; Özel Yazılım</title>
-  <meta name="description" content="Yapay zeka destekli web uygulamaları, otonom iş akışı otomasyonları ve ihtiyaca özel Python/FastAPI yazılım çözümleri.">
+  <title>Yusuf Şahin — Fabrika Otonom Yapay Zeka Ekosistemi &amp; Özel Yazılım</title>
+  <meta name="description" content="Ekran kaydından işinizi öğrenip uygulama yazan, video/müzik/ses üreten, 5 kapılı kalite denetimli otonom yapay zeka sistemi Fabrika ve özel yazılım çözümleri.">
   <link rel="canonical" href="https://yusasufhin.com/">
 
   <!-- OpenGraph / Sosyal Paylaşım -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://yusasufhin.com/">
-  <meta property="og:title" content="Yusuf Şahin — Yapay Zeka &amp; Otomasyon Geliştirme">
-  <meta property="og:description" content="Web uygulamaları, otonom ajan sistemleri, video/ses üretim hatları ve ihtiyaca özel yazılım çözümleri.">
+  <meta property="og:title" content="Yusuf Şahin — Fabrika Otonom Yapay Zeka &amp; Otomasyon">
+  <meta property="og:description" content="Ekran kaydından iş öğrenip uygulama yazabilen, video &amp; müzik üreten, Port-443 uzaktan kontrollü otonom Fabrika ekosistemi.">
   <meta property="og:locale" content="tr_TR">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Yusuf Şahin — Yapay Zeka &amp; Otomasyon">
-  <meta name="twitter:description" content="Web uygulamaları, otomasyon sistemleri ve özel yazılım geliştirme.">
+  <meta name="twitter:title" content="Yusuf Şahin — Fabrika Yapay Zeka Ekosistemi">
+  <meta name="twitter:description" content="Ekran kaydından öğrenme, çoklu ajan meclisi, video/müzik/ses üretimi ve 5 kapılı güvenli teslim.">
 
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#07090e">
@@ -25,29 +25,33 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=17">
+  <link rel="stylesheet" href="/site.css?v=30">
 </head>
 <body class="site-body">
 
+  <!-- Fare Hareketine Duyarlı Sinirsel Alan + Işık Aura -->
+  <canvas class="home-reactive-canvas" id="homeReactiveCanvas" aria-hidden="true"></canvas>
+  <div class="home-cursor-aura" id="homeCursorAura" aria-hidden="true"></div>
   <div class="site-ambient" aria-hidden="true"></div>
 
   <nav class="site-nav" id="siteTopNav" aria-label="Ana gezinme">
     <div class="site-nav-inner">
       <a class="site-brand" href="/">
         <img src="/fabrika_icon.svg" alt="yusasufhin logosu">
-        <span>yusasufhin<span class="site-brand-sub" lang="en">AI &amp; Automation</span></span>
+        <span>yusasufhin<span class="site-brand-sub" lang="en">Fabrika AI Ecosystem</span></span>
       </a>
       <div class="site-nav-links">
-        <a href="#hizmetler">Hizmetler</a>
-        <a href="#projeler">Projeler</a>
-        <a href="#surec">Süreç</a>
+        <a href="#fabrika-vitrin">Canlı Arayüz</a>
+        <a href="#fabrika-ozellikler">Tüm Özellikler</a>
+        <a href="#projeler">Sistemler</a>
+        <a href="#surec">Nasıl Çalışır?</a>
         <a href="#iletisim">İletişim</a>
       </div>
       <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
         <a class="site-btn site-btn-ghost" id="studioQuickLink" href="/lab.html" hidden style="padding:8px 14px; font-size:0.84rem;">
-          Stüdyo →
+          Panel →
         </a>
-        <a class="site-btn site-btn-primary" href="#iletisim" style="padding:8px 16px; font-size:0.84rem;">
+        <a class="site-btn site-btn-primary magnetic-btn" href="#iletisim" style="padding:8px 16px; font-size:0.84rem;">
           İletişime Geç
         </a>
       </div>
@@ -56,82 +60,295 @@
 
   <div class="site-shell">
 
-    <header class="site-hero">
-      <span class="site-eyebrow">Yapay Zeka &amp; Yazılım Mühendisliği</span>
-      <h1>Fikirlerinizi <em>çalışan</em><br>ürün ve otomasyonlara dönüştürüyorum</h1>
+    <!-- 1. ETKİLEŞİMLİ HERO -->
+    <header class="site-hero home-hero-creative">
+      <span class="site-eyebrow">🏭 Fabrika — Otonom Yapay Zeka &amp; Yazılım Mühendisliği</span>
+      <h1>Ekran kaydından işinizi <em>öğrenen</em>,<br>uygulama, video ve müzik üreten Fabrika</h1>
       <p class="site-lead">
-        Tekrar eden iş akışlarını otonom sistemlere bağlıyorum; Python, FastAPI ve modern web
-        teknolojileriyle ölçeklenebilir, bakımı kolay uygulamalar ve üretim hatları geliştiriyorum.
+        <strong>Fabrika</strong>; ekranda yaptığınız işi <code>/takip</code> ile izleyip çalışan yazılıma dönüştüren,
+        çoklu ajan meclisiyle kod yazıp 5 mekanik kalite kapısından (G1–G5) geçiren, video/müzik/ses üretip
+        YouTube'a yükleyebilen ve telefonunuzdan Mac'inizi 1:1 kontrol ettiren kişisel yapay zeka ekosistemidir.
       </p>
       <div class="site-hero-actions">
-        <a class="site-btn site-btn-primary" href="#iletisim">Projeni Konuşalım</a>
-        <a class="site-btn site-btn-ghost" href="#projeler">Neler Geliştirdim?</a>
+        <a class="site-btn site-btn-primary magnetic-btn" href="#fabrika-vitrin">🌌 Arayüzü İzle</a>
+        <a class="site-btn site-btn-ghost magnetic-btn" href="#fabrika-ozellikler">✨ Tüm Özellikleri Keşfet</a>
+        <a class="site-btn site-btn-ghost magnetic-btn" href="#iletisim">✉️ Projeni Konuşalım</a>
+      </div>
+      <div class="home-stat-strip" aria-label="Fabrika temel yetenek özetleri">
+        <div class="home-stat-pill"><strong>230+</strong><span>Modüler Araç &amp; Eklenti</span></div>
+        <div class="home-stat-pill"><strong>8+ Ajan</strong><span>CEO · Mimar · KYS · Pythoner</span></div>
+        <div class="home-stat-pill"><strong>5 Kapı</strong><span>G1–G5 &amp; SHA-256 Mührü</span></div>
+        <div class="home-stat-pill"><strong>Port 443</strong><span>1:1 Uzak Masaüstü İkizi</span></div>
       </div>
     </header>
 
-    <section class="site-section" id="hizmetler">
+    <!-- 2. HAREKETLİ FABRİKA ARAYÜZ VİTRİNİ (TEMSİLİ CANLI REPLİKA) -->
+    <section class="site-section reveal-on-scroll" id="fabrika-vitrin">
       <div class="site-section-head">
-        <h2>Ne yapıyorum?</h2>
-        <p>Üç ana alanda uçtan uca, doğrulanmış teslim.</p>
+        <div>
+          <span class="site-eyebrow" style="margin-bottom:10px;">● Temsili Canlı Arayüz Animasyonu</span>
+          <h2>Fabrika Masaüstü Arayüzü İş Başında</h2>
+          <p>Fareyi pencere üzerinde gezdirerek 3B Galaksi Reaktörünü yönlendirin; aşağıdaki senaryolara tıklayarak Fabrika'nın gerçek yeteneklerini izleyin.</p>
+        </div>
+      </div>
+
+      <div class="demo-scene-tabs" role="group" aria-label="Fabrika demo senaryoları">
+        <button type="button" class="demo-scene-btn active" data-demo-scene="0" aria-pressed="true">🎥 Ekran Kaydından Uygulama Yaz</button>
+        <button type="button" class="demo-scene-btn" data-demo-scene="1" aria-pressed="false">🎬 Video + 🎵 Müzik + 🎙️ TTS</button>
+        <button type="button" class="demo-scene-btn" data-demo-scene="2" aria-pressed="false">🏥 Kod Hastanesi (MR) &amp; G1–G5</button>
+        <button type="button" class="demo-scene-btn" data-demo-scene="3" aria-pressed="false">🌐 Uzaktan Kontrol &amp; Meclis</button>
+      </div>
+
+      <div class="demo-fabrika-window" id="fabrikaShowcase">
+        <!-- Sol Sütun: Gerçek Fabrika AnaYuz Arayüz İkizi -->
+        <div class="demo-fab-left">
+          <div class="demo-fab-titlebar">
+            <div class="demo-tl-group" aria-hidden="true">
+              <span class="demo-tl r"></span>
+              <span class="demo-tl y"></span>
+              <span class="demo-tl g"></span>
+            </div>
+            <span class="demo-orb-pill" id="demoOrbBadge">🎥 /takip AKTİF • ÖĞRENME MODU</span>
+            <span class="demo-honest-tag">Temsili Animasyon</span>
+          </div>
+
+          <div class="demo-reactor-stage">
+            <canvas id="demoReactorCanvas"></canvas>
+            <div class="demo-reactor-caption">3B Holografik Reaktör · İmleci Takip Eder</div>
+          </div>
+
+          <div class="demo-ribbon">
+            <div class="demo-ribbon-track" id="demoRibbonText">
+              🎥 EKRAN KAYDI İZLENİYOR • MacOSAXListener + Ses Zaman Çizgisi • Mimar &amp; Pythoner Uygulama Yazıyor
+            </div>
+          </div>
+
+          <div class="demo-console">
+            <div class="demo-console-line user">
+              <span class="demo-sender-user">⌨️ Sen:</span>
+              <span id="demoTypedCmd">/takip fatura_aktarma</span><span class="demo-caret" aria-hidden="true"></span>
+            </div>
+            <div class="demo-console-line agent">
+              <span class="demo-sender-agent" id="demoAgentName">🐍 Pythoner + 📐 Mimar:</span>
+              <span id="demoAgentReply">İş akışı çözümleniyor…</span>
+            </div>
+            <div class="demo-log-box" id="demoLogLines"></div>
+          </div>
+        </div>
+
+        <!-- Sağ Sütun: Fabrika Kaymalı Sağ Panel İkizi -->
+        <aside class="demo-fab-right" aria-label="Fabrika sağ panel önizlemesi">
+          <div class="demo-right-head">
+            <span id="demoRightTitle">🧩 ÖĞRENİLEN İŞ AKIŞI → YAZILAN UYGULAMA</span>
+            <span class="demo-badge-live">✨ CANLI AKIŞ</span>
+          </div>
+          <div class="demo-facts-list" id="demoRightFacts"></div>
+          <pre class="demo-code-block" id="demoRightCode"></pre>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 3. TÜM FABRİKA ÖZELLİKLERİ KATALOĞU (KODDAN DOĞRULANMIŞ %100 GERÇEK) -->
+    <section class="site-section reveal-on-scroll" id="fabrika-ozellikler">
+      <div class="site-section-head">
+        <h2>Fabrika Neler Yapabiliyor? (Tam Özellik Rehberi)</h2>
+        <p>Her madde Fabrika çekirdeğindeki gerçek modüllerden derlenmiştir — kategoriye göre filtreleyebilirsiniz.</p>
+      </div>
+
+      <div class="demo-scene-tabs" role="group" aria-label="Özellik kategorileri">
+        <button type="button" class="demo-scene-btn active" data-feat-filter="all" aria-pressed="true">✨ Tümü (12)</button>
+        <button type="button" class="demo-scene-btn" data-feat-filter="ogrenme" aria-pressed="false">🎥 Öğrenme &amp; Otomasyon</button>
+        <button type="button" class="demo-scene-btn" data-feat-filter="medya" aria-pressed="false">🎬 Video · Müzik · Ses</button>
+        <button type="button" class="demo-scene-btn" data-feat-filter="ajan" aria-pressed="false">🏛️ Ajan Meclisi &amp; Hafıza</button>
+        <button type="button" class="demo-scene-btn" data-feat-filter="guvenlik" aria-pressed="false">🛡️ Güvenlik &amp; Kalite</button>
+        <button type="button" class="demo-scene-btn" data-feat-filter="uzak" aria-pressed="false">🌐 Uzaktan Kontrol</button>
       </div>
 
       <div class="site-grid">
-        <article class="site-card">
+        <article class="site-card tilt-card" data-feat-cat="ogrenme">
+          <div class="site-card-icon">🎥</div>
+          <h3>Ekran Kaydından İşi Öğrenip Uygulama Yazma</h3>
+          <p>
+            <code>/takip</code> komutuyla ekranınızı, fare tıklamalarınızı (<code>MacOSAXListener</code>), tarayıcı sekmelerini ve
+            sesli anlatımınızı kaydeder; tekrar ettiğiniz işi çözümleyip çalışan bağımsız uygulama veya Python aracı yazar.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">/takip Demonstrasyon</span>
+            <span class="site-tag">Otomatik Uygulama</span>
+            <span class="site-tag">macOS AX</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="medya">
+          <div class="site-card-icon">🎬</div>
+          <h3>Çoklu Model AI Video Üretim Hattı</h3>
+          <p>
+            Türkçe fikrinizi sinematik sahnelere böler; <strong>FLUX.2 / Z-Image / RealVisXL</strong> anahtar kare,
+            <strong>Wan 2.1/2.2 &amp; LTX-Video</strong> I2V canlandırma, çok sahneli MP4 kurgu ve Kaggle/Colab Dual-T4 GPU render sunar.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">FLUX.2 &amp; Wan 2.1</span>
+            <span class="site-tag">Hyperframes MP4</span>
+            <span class="site-tag">Kaggle GPU</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="medya">
+          <div class="site-card-icon">🎵</div>
+          <h3>Çoklu Model AI Müzik &amp; Nöral Seslendirme</h3>
+          <p>
+            <strong>Google Lyria 3.5</strong> (44.1 kHz stereo şarkı + vokal/söz), <strong>Lyria 3 Clip</strong>,
+            <strong>ElevenLabs Music</strong>, <strong>Stable Audio 2</strong>, <strong>Meta MusicGen</strong> ve
+            <strong>Google Gemini Nöral TTS</strong> ile uçtan uca ses &amp; müzik üretir.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Lyria 3.5</span>
+            <span class="site-tag">MusicGen &amp; Stable Audio</span>
+            <span class="site-tag">Gemini TTS</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="medya">
+          <div class="site-card-icon">📺</div>
+          <h3>Çoklu YouTube Kanal &amp; Yayın Otomasyonu</h3>
+          <p>
+            Her kanal için ayrı tarz, ses, oran (16:9 / 9:16 Shorts) ve gizlilik profili tanımlar;
+            OAuth2 (HMAC-CSRF korumalı) üzerinden doğrudan YouTube Data API v3 ile video yükler.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">YouTube API v3</span>
+            <span class="site-tag">SEO Paketi</span>
+            <span class="site-tag">Cloudflare R2</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="ajan">
+          <div class="site-card-icon">🏛️</div>
+          <h3>Çoklu Ajan Meclisi &amp; Münazara Konseyi</h3>
+          <p>
+            <strong>CEO, Mimar, KYS, İK, Sekreter</strong> yönetim kadrosu ile <strong>Yazılım (Pythoner/Xcoder),
+            Tasarım, Ar-Ge ve Yönetmen</strong> departmanları karmaşık görevlerde münazara ederek en doğru kararı verir.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Münazara Meclisi</span>
+            <span class="site-tag">Görev Dağıtımı</span>
+            <span class="site-tag">230+ Araç</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="guvenlik">
+          <div class="site-card-icon">🏥</div>
+          <h3>Kod Hastanesi (MR) &amp; 5 Kapılı Teslim (G1–G5)</h3>
+          <p>
+            Üretilen her kod; <strong>G1</strong> kural imzası, <strong>G2</strong> Gatekeeper güvenlik, <strong>G3</strong> üç kademeli AST/MR
+            sağlık taraması, <strong>G4</strong> pytest test çivileri ve <strong>G5</strong> sıfır çöp hijyeninden geçmeden kabul edilmez.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Python AST MR</span>
+            <span class="site-tag">5 Teslim Kapısı</span>
+            <span class="site-tag">Sıfır Sahte Kod</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="guvenlik">
+          <div class="site-card-icon">🔒</div>
+          <h3>SHA-256 Bütünlük Mührü &amp; Piknik Prensibi</h3>
+          <p>
+            Çekirdek dosyalar ve kurallar SHA-256 ile mühürlenir (<code>butunluk_muhuru.py</code>); izinsiz değişiklik otomatik onarılır.
+            <code>piknik_korumasi.py</code> test ve çalışma sonrası geride tek bayt çöp kalmasını mekanik olarak engeller.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">SHA-256 Mühür</span>
+            <span class="site-tag">0600 Kasa</span>
+            <span class="site-tag">Piknik Kilidi</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="uzak">
           <div class="site-card-icon">🌐</div>
-          <h3>Web Uygulamaları &amp; Vitrin</h3>
+          <h3>Port-443 Köprüsü &amp; 1:1 Uzak Masaüstü İkizi</h3>
           <p>
-            Hızlı açılan, mobil uyumlu ve temiz mimarili web siteleri ile yönetim panelleri.
-            Gereksiz ağırlık olmadan doğrudan hedefe odaklanan arayüzler.
+            Port yönlendirme veya statik IP gerektirmeden şifreli HTTPS Port-443 üzerinden Mac'teki Fabrika arayüzüne bağlanır;
+            3B Reaktör, Canlı Log, XAI ve Sağ Panel telefonunuzdan birebir senkron çalışır.
           </p>
           <div class="site-tags">
-            <span class="site-tag">Web Uygulaması</span>
-            <span class="site-tag">PWA</span>
-            <span class="site-tag">SEO</span>
+            <span class="site-tag">Port-443 Bridge</span>
+            <span class="site-tag">WebSocket</span>
+            <span class="site-tag">1:1 Canlı Ayna</span>
           </div>
         </article>
 
-        <article class="site-card">
-          <div class="site-card-icon">⚙️</div>
-          <h3>Otomasyon &amp; Ajan Sistemleri</h3>
+        <article class="site-card tilt-card" data-feat-cat="uzak">
+          <div class="site-card-icon">🎙️</div>
+          <h3>Jarvis Ses Protokolü &amp; Biyometrik Ses Tanıma</h3>
           <p>
-            Veri toplama, medya üretimi, raporlama, Telegram/API entegrasyonları ve
-            insan onaylı otonom iş akışları.
+            Gerçek zamanlı sesli komut (STT), akıcı sesli yanıt (TTS), <code>SesTanimaFiltresi</code> ile konuşmacı doğrulama
+            ve siz araya girdiğiniz anda asistanın sözünü kesen anlık <strong>Barge-in</strong> desteği.
           </p>
           <div class="site-tags">
-            <span class="site-tag">İş Akışı</span>
-            <span class="site-tag">API</span>
-            <span class="site-tag">Otomasyon</span>
+            <span class="site-tag">Jarvis Protokolü</span>
+            <span class="site-tag">Biyometrik Ses</span>
+            <span class="site-tag">Barge-in</span>
           </div>
         </article>
 
-        <article class="site-card">
-          <div class="site-card-icon">🧩</div>
-          <h3>İhtiyaca Özel Yazılım</h3>
+        <article class="site-card tilt-card" data-feat-cat="ogrenme">
+          <div class="site-card-icon">📚</div>
+          <h3>Telegram Link Havuzu &amp; GitHub Repo Entegratörü</h3>
           <p>
-            Hazır kalıpların yetmediği noktada kendi verinizle ve kendi kurallarınızla
-            çalışan masaüstü, arka uç ve hibrit bulut uygulamaları.
+            Telegram'dan gönderdiğiniz GitHub repolarını ve bağlantıları <code>LinkStore</code> + <code>RepoIntegrator</code> ile
+            okur, güvenlik ve kalite denetiminden geçirip Fabrika'ya yeni araç olarak kazandırır.
           </p>
           <div class="site-tags">
-            <span class="site-tag">Python</span>
-            <span class="site-tag">FastAPI</span>
-            <span class="site-tag">Veritabanı</span>
+            <span class="site-tag">Telegram Bot</span>
+            <span class="site-tag">LinkStore</span>
+            <span class="site-tag">RepoIntegrator</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="ajan">
+          <div class="site-card-icon">🧠</div>
+          <h3>Semantik Hafıza, Derin Uyku &amp; Yerel Rust/MLX</h3>
+          <p>
+            Qdrant semantik hafıza ve <strong>Derin Uyku İçselleştirme</strong> (<code>sleep_introspection.py</code>) ile retlerden
+            otomatik ders çıkarır. Apple Silicon yerel MLX/Ollama model yönlendirme ve <code>fabrika_dsp</code> Rust hızlandırması içerir.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">Qdrant Hafıza</span>
+            <span class="site-tag">Derin Uyku</span>
+            <span class="site-tag">Rust &amp; MLX</span>
+          </div>
+        </article>
+
+        <article class="site-card tilt-card" data-feat-cat="ogrenme">
+          <div class="site-card-icon">🎯</div>
+          <h3>Otonom Kariyer Avcısı &amp; ATS Analiz Motoru</h3>
+          <p>
+            İş ilanlarını ATS uyumluluğuna göre puanlar, başvuru formlarını ve engelleri sağ paneldeki canlı kariyer
+            panosunda izler; özgeçmiş ve başvuru süreçlerini düzenli biçimde takip eder.
+          </p>
+          <div class="site-tags">
+            <span class="site-tag">ATS Motoru</span>
+            <span class="site-tag">Canlı Panel</span>
+            <span class="site-tag">Kariyer Takibi</span>
           </div>
         </article>
       </div>
     </section>
 
-    <section class="site-section" id="projeler">
+    <!-- 4. ÜZERİNDE ÇALIŞTIĞIM SİSTEMLER (mevcut #projeler kimliği korunur) -->
+    <section class="site-section reveal-on-scroll" id="projeler">
       <div class="site-section-head">
-        <h2>Üzerinde Çalıştığım Sistemler</h2>
-        <p>Gerçek mimari problemleri çözen aktif üretim projeleri.</p>
+        <h2>Üzerinde Çalıştığım Sistemler &amp; Mimari</h2>
+        <p>Gerçek mühendislik problemlerini çözen aktif üretim projeleri.</p>
       </div>
 
       <div class="site-grid">
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">🏭</div>
           <h3>Fabrika — Otonom Ajan Ekosistemi</h3>
           <p>
-            Yerel bilgisayar ile bulut arasında Port-443 HTTPS köprüsüyle haberleşen,
+            Yerel bilgisayar ile bulut arasında Port-443 HTTPS köprüsüyle haberleşen, ekran kaydından iş öğrenen,
             AST kod kalite kapıları, test otomasyonu ve Telegram entegrasyonuna sahip yazılım asistanı.
           </p>
           <div class="site-tags">
@@ -141,72 +358,74 @@
           </div>
         </article>
 
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">🎬</div>
-          <h3>Hibrit GPU Video &amp; Ses Hattı</h3>
+          <h3>Hibrit GPU Video, Müzik &amp; Ses Stüdyosu</h3>
           <p>
-            İnce bulut kuyruğu ile isteğe bağlı Kaggle/Colab GPU işçilerini birleştiren,
-            görsel onaylı I2V video üretimi, nöral seslendirme (TTS) ve çoklu YouTube kanal otomasyonu.
+            İnce bulut kuyruğu ile Kaggle/Colab GPU işçilerini birleştiren, görsel onaylı I2V video üretimi,
+            Lyria 3.5 / MusicGen müzik besteleme, nöral TTS ve çoklu YouTube kanal otomasyonu.
           </p>
           <div class="site-tags">
             <span class="site-tag">FastAPI</span>
-            <span class="site-tag">GPU Worker</span>
+            <span class="site-tag">Lyria 3.5</span>
             <span class="site-tag">YouTube API v3</span>
           </div>
         </article>
 
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">🛠️</div>
-          <h3>Özel Masaüstü &amp; İş Takip Araçları</h3>
+          <h3>İhtiyaca Özel Masaüstü &amp; İş Takip Uygulamaları</h3>
           <p>
-            Kasa/borç takibi, içerik ve doküman işleme, yerel donanım entegrasyonu gibi
-            günlük operasyonları hızlandıran bağımsız yazılım paketleri.
+            Kasa/borç takibi, doküman ve fatura otomasyonu, yerel donanım entegrasyonu ve çok kullanıcılı
+            yönetim panelleri gibi günlük operasyonları hızlandıran bağımsız yazılım paketleri.
           </p>
           <div class="site-tags">
             <span class="site-tag">Masaüstü</span>
-            <span class="site-tag">Otomasyon</span>
-            <span class="site-tag">Açık Kaynak</span>
+            <span class="site-tag">RBAC Panel</span>
+            <span class="site-tag">Özel Yazılım</span>
           </div>
         </article>
       </div>
     </section>
 
-    <section class="site-section" id="surec">
+    <!-- 5. NASIL ÇALIŞIR? (EKRAN KAYDINDAN TESLİME 5 ADIM) -->
+    <section class="site-section reveal-on-scroll" id="surec">
       <div class="site-section-head">
-        <h2>Nasıl çalışır?</h2>
-        <p>Dört adımda net kapsam, sürprizsiz teslim.</p>
+        <h2>Ekran Kaydından Çalışan Ürüne: Nasıl Çalışır?</h2>
+        <p>Beş mekanik adımda gözlemlenebilir, doğrulanmış ve sürprizsiz üretim.</p>
       </div>
       <div class="site-grid site-grid-4">
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">01</div>
-          <h3>Keşif</h3>
-          <p>İhtiyacınızı ve mevcut iş akışınızı çıkarıyoruz. Neyi otomatikleştirmenin gerçek değer üreteceğini netleştiriyoruz.</p>
+          <h3>Göster veya Tarif Et</h3>
+          <p>İşi ekran kaydıyla (<code>/takip</code>) yapıp gösterin ya da Türkçe doğal dille / sesli komutla hedefi anlatın.</p>
         </article>
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">02</div>
-          <h3>Mimari</h3>
-          <p>Arayüz, veri modeli ve maliyet planı hazırlanır. Onayınız olmadan üretime geçilmez.</p>
+          <h3>Meclis Mimariyi Çıkarır</h3>
+          <p>Mimar ve CEO ajanları adımları, veri modelini ve araç planını çıkarır; gerekirse size anlık soru kartı sunar.</p>
         </article>
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">03</div>
-          <h3>Geliştirme</h3>
-          <p>Küçük, test edilebilir adımlarla geliştirilir; her parça gerçek senaryolarla doğrulanır.</p>
+          <h3>Üretim &amp; Medya Hattı</h3>
+          <p>Pythoner/Xcoder kodu yazar veya video/müzik/TTS modelleri görsel, beste ve kurguyu uçtan uca üretir.</p>
         </article>
-        <article class="site-card">
+        <article class="site-card tilt-card">
           <div class="site-card-icon">04</div>
-          <h3>Yayın &amp; Bakım</h3>
-          <p>Güvenli şekilde yayına alınır, izlenir ve ihtiyacınıza göre genişletilir.</p>
+          <h3>5 Kapılı Doğrulama (G1–G5)</h3>
+          <p>Gatekeeper güvenlik, MR AST kalite taraması, pytest çivileri ve SHA-256 bütünlük mührü eksiksiz çalıştırılır.</p>
         </article>
       </div>
     </section>
 
-    <section class="site-section" id="iletisim">
+    <!-- 6. İLETİŞİM FORMU (doğrudan kayıtlı alıcı e-postalarına + Telegram'a iletilir) -->
+    <section class="site-section reveal-on-scroll" id="iletisim">
       <div class="site-contact-grid">
-        <div class="site-card">
+        <div class="site-card tilt-card">
           <span class="site-eyebrow" style="margin-bottom:14px;">İletişim</span>
-          <h2 style="margin:0 0 12px; font-size:1.6rem; letter-spacing:-0.02em;">Bir fikriniz veya otomasyon ihtiyacınız mı var?</h2>
+          <h2 style="margin:0 0 12px; font-size:1.6rem; letter-spacing:-0.02em;">Fabrika'yı işinize uyarlamak veya özel proje geliştirmek ister misiniz?</h2>
           <p>
-            Kısa bir özet bırakın; kapsamı netleştirip gerçekçi bir teknik yol haritası ile dönüş yapayım.
+            Kısa bir özet bırakın; mesajınız doğrudan e-posta gelen kutuma düşsün ve gerçekçi bir teknik yol haritası ile dönüş yapayım.
           </p>
           <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
             <a class="site-btn site-btn-ghost" href="mailto:ys@yusasufhin.com" style="justify-content:flex-start;">
@@ -230,10 +449,10 @@
           </div>
           <div class="site-field">
             <label for="contactMsg">Proje / İhtiyaç Özeti</label>
-            <textarea id="contactMsg" name="message" class="site-textarea" rows="4" required placeholder="Ne yapmak istediğinizi kısaca anlatın..."></textarea>
+            <textarea id="contactMsg" name="message" class="site-textarea" rows="4" required placeholder="Otomasyon, uygulama, video/müzik hattı veya danışmanlık talebinizi yazın..."></textarea>
           </div>
           <p class="site-contact-status" id="contactStatus" role="status" aria-live="polite"></p>
-          <button class="site-btn site-btn-primary site-btn-block" id="contactSubmitBtn" type="submit">
+          <button class="site-btn site-btn-primary site-btn-block magnetic-btn" id="contactSubmitBtn" type="submit">
             Mesajı Gönder
           </button>
         </form>
@@ -242,26 +461,32 @@
 
     <footer class="site-footer">
       <div>
-        <strong>yusasufhin.com</strong> · © 2026 Yusuf Şahin — Yapay Zeka &amp; Otomasyon
+        <strong>yusasufhin.com</strong> · © 2026 Yusuf Şahin — Fabrika Yapay Zeka &amp; Otomasyon
       </div>
       <div class="site-footer-links">
         <a href="https://github.com/sufhinyusa" target="_blank" rel="noopener">GitHub</a>
         <a href="mailto:ys@yusasufhin.com">E-posta</a>
-        <button class="site-link-btn" id="openGateBtn" type="button">Yönetici Girişi</button>
+        <button class="site-link-btn" id="openGateBtn" type="button">Yönetici / Kullanıcı Girişi</button>
       </div>
     </footer>
 
   </div>
 
-  <!-- YÖNETİCİ GİRİŞ KAPISI (yalnızca talep edildiğinde açılır; ilk açılışta asla siteyi kapatmaz) -->
+  <!-- YÖNETİCİ & KULLANICI GİRİŞ KAPISI (yalnızca talep edildiğinde açılır; ilk açılışta asla siteyi kapatmaz) -->
   <div class="site-gate" id="siteGate" hidden>
     <form class="site-gate-card" id="siteGateForm" autocomplete="on">
       <img class="site-gate-logo" src="/fabrika_icon.svg" alt="yusasufhin">
-      <h2>Stüdyo &amp; Kokpit Girişi</h2>
-      <p class="site-gate-sub">Yönetici şifreniz veya 6 haneli PIN kodunuzla devam edin.</p>
+      <h2>Fabrika &amp; Stüdyo Girişi</h2>
+      <p class="site-gate-sub">Kurucu PIN/parolanızla veya tanımlı kullanıcı hesabınızla devam edin.</p>
 
       <div class="site-field">
-        <label for="sitePass">Parola veya PIN</label>
+        <label for="siteUsername">Kullanıcı Adı (Kurucu girişinde boş bırakın)</label>
+        <input type="text" id="siteUsername" name="username" autocomplete="username"
+               placeholder="Boş (Kurucu) veya kullanıcı adı">
+      </div>
+
+      <div class="site-field">
+        <label for="sitePass">Parola veya 6 Haneli PIN</label>
         <input type="password" id="sitePass" name="password" autocomplete="current-password"
                placeholder="••••••••" required>
       </div>
@@ -269,7 +494,7 @@
       <p class="site-gate-error" id="siteGateError" role="alert"></p>
 
       <button class="site-btn site-btn-primary site-btn-block" id="siteGateSubmit" type="submit">
-        Stüdyoya Gir
+        Panele Gir
       </button>
       <button class="site-btn site-btn-ghost site-btn-block" id="siteGateCancel" type="button"
               style="margin-top: 10px;">
@@ -284,6 +509,7 @@
     <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=16"></script>
+  <script src="/site.js?v=30"></script>
+  <script src="/home_demo.js?v=30"></script>
 </body>
 </html>

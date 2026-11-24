@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=17">
+  <link rel="stylesheet" href="/site.css?v=30">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v25-mobile') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v30-mobile') caches.delete(names[i]);
         }
       });
     }
@@ -37,9 +37,14 @@
     <form class="site-gate-card" id="labLoginForm" autocomplete="on">
       <img class="site-gate-logo" src="/fabrika_icon.svg" alt="yusasufhin">
       <h2>Stüdyo &amp; Kokpit Girişi</h2>
-      <p class="site-gate-sub">Devam etmek için yönetici parolanızı veya 6 haneli PIN kodunuzu girin.</p>
+      <p class="site-gate-sub">Kurucu PIN/parolanızla veya tanımlı kullanıcı hesabınızla devam edin.</p>
       <div class="site-field">
-        <label for="labLoginSecret">Parola veya PIN</label>
+        <label for="labLoginUsername">Kullanıcı Adı (Kurucu girişinde boş bırakın)</label>
+        <input type="text" id="labLoginUsername" name="username" autocomplete="username"
+               placeholder="Boş (Kurucu) veya kullanıcı adı">
+      </div>
+      <div class="site-field">
+        <label for="labLoginSecret">Parola veya 6 Haneli PIN</label>
         <input type="password" id="labLoginSecret" name="password" autocomplete="current-password"
                placeholder="••••••••" required>
       </div>
@@ -63,7 +68,8 @@
           <span>yusasufhin<span class="site-brand-sub" lang="en">Studio &amp; Mac Bridge</span></span>
         </a>
         <div style="display:flex; align-items:center; gap:6px; margin-left:auto; flex-wrap:wrap;">
-          <a class="site-btn site-btn-primary" href="/fabrika" style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">🏭 Fabrika UI</a>
+          <span id="topUserRoleBadge" class="site-badge">Oturum</span>
+          <a class="site-btn site-btn-primary" id="topFabrikaUiLink" href="/fabrika" style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">🏭 Fabrika UI</a>
           <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪ Mac</span>
           <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU: 0</span>
           <a class="site-btn site-btn-ghost" href="/" style="padding:7px 12px; font-size:0.78rem;">← Vitrin</a>
@@ -72,38 +78,116 @@
       </div>
     </nav>
 
-    <header style="padding: 20px 0 12px;">
-      <h1 style="margin:0 0 6px; font-size: clamp(1.45rem, 3.2vw, 2rem); letter-spacing:-0.025em;">
-        Üretim Stüdyosu &amp; Uzaktan Kontrol
-      </h1>
-      <p style="margin:0; color:var(--site-text-dim); font-size:0.88rem;">
-        Video üretimi, Gemini TTS seslendirme, YouTube kanal yükleme, Kaggle/Colab GPU işçisi ve canlı Mac Fabrika köprüsü.
-      </p>
+    <header style="padding: 20px 0 12px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h1 style="margin:0 0 6px; font-size: clamp(1.45rem, 3.2vw, 2rem); letter-spacing:-0.025em;">
+          Yönetim &amp; Üretim Kokpiti
+        </h1>
+        <p style="margin:0; color:var(--site-text-dim); font-size:0.88rem;">
+          Fabrika, Video ve Müzik modülleri · Bölüm bazlı kullanıcı/yönetici yönetimi · Çoklu e-posta alıcıları.
+        </p>
+      </div>
+      <span id="hubUsersCountBadge" class="site-badge" data-admin-only="1" hidden>👥 Hesaplar</span>
     </header>
 
-    <!-- 5 NET, GERÇEK SEKME (Sıfır kırpılma, sıfır sahte sekme) -->
+    <!-- ANA YÖNETİM SEKMELERİ (Yönetici 3 ana butonla başlar; kullanıcı yalnız yetkili bölümleri görür) -->
     <div class="site-master-nav" role="tablist">
-      <button type="button" class="site-nav-pill active" id="tabNavVideo" onclick="switchStudioView('video')">
-        🎬 Video Stüdyosu
-      </button>
-      <button type="button" class="site-nav-pill" id="tabNavAudio" onclick="switchStudioView('audio')">
-        🎵 Seslendirme (TTS)
-      </button>
-      <button type="button" class="site-nav-pill" id="tabNavChannels" onclick="switchStudioView('channels')">
-        📺 YouTube Kanallarım
-      </button>
-      <button type="button" class="site-nav-pill" id="tabNavGpu" onclick="switchStudioView('gpu')">
-        ⚡ GPU İşçisi (Kaggle / Colab)
+      <button type="button" class="site-nav-pill active" id="tabNavHub" onclick="switchStudioView('hub')">
+        🏠 Ana Panel
       </button>
       <button type="button" class="site-nav-pill" id="tabNavMac" onclick="switchStudioView('mac')">
-        💻 Mac Fabrika &amp; Araçlar
+        🏭 Fabrika
+      </button>
+      <button type="button" class="site-nav-pill" id="tabNavVideo" onclick="switchStudioView('video')">
+        🎬 Video
+      </button>
+      <button type="button" class="site-nav-pill" id="tabNavMusic" onclick="switchStudioView('music')">
+        🎵 Müzik
+      </button>
+      <button type="button" class="site-nav-pill" id="tabNavAudio" onclick="switchStudioView('audio')">
+        🎙️ Seslendirme (TTS)
+      </button>
+      <button type="button" class="site-nav-pill" id="tabNavChannels" onclick="switchStudioView('channels')">
+        📺 YouTube
+      </button>
+      <button type="button" class="site-nav-pill" id="tabNavGpu" onclick="switchStudioView('gpu')">
+        ⚡ GPU
       </button>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 0. YÖNETİCİ KARŞILAMA MERKEZİ: 3 BÜYÜK BUTON (FABRİKA / VİDEO / MÜZİK) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <section id="viewAdminHub" class="site-studio-view">
+      <div class="site-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 18px; margin-top: 8px;">
+
+        <article class="site-card" id="hubCardFabrika" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(45,212,191,0.34);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:2.2rem;">🏭</span>
+            <span class="site-badge site-badge-free">Port-443 Canlı</span>
+          </div>
+          <h2 style="margin:0; font-size:1.45rem;">Fabrika</h2>
+          <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
+            Mac bilgisayarınızdaki Fabrika masaüstü ikizi, 3D Reaktör, Ajan Meclisi, REA Kod Hastanesi, çoklu e-posta alıcıları ve Fabrika kullanıcı yönetimi.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('mac')">
+              🏭 Fabrika Bölümünü Aç →
+            </button>
+            <div style="display:flex; gap:8px;">
+              <a class="site-btn site-btn-ghost" href="/fabrika" style="flex:1; font-size:0.8rem; padding:8px; text-decoration:none; text-align:center;">🖥️ 1:1 Masaüstü</a>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('mac', 'fabrikaUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="site-card" id="hubCardVideo" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(139,92,246,0.34);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:2.2rem;">🎬</span>
+            <span class="site-badge">FLUX.2 · Wan 2.1 · LTX</span>
+          </div>
+          <h2 style="margin:0; font-size:1.45rem;">Video</h2>
+          <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
+            Çoklu görsel/I2V video modelleri, çok sahneli MP4 kurgu, Kaggle/Colab GPU işçisi, YouTube kanal otomasyonu ve Video kullanıcı yönetimi.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('video')">
+              🎬 Video Stüdyosunu Aç →
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('channels')" style="flex:1; font-size:0.8rem; padding:8px;">📺 Kanallar</button>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('video', 'videoUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="site-card" id="hubCardMuzik" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(56,189,248,0.34);">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:2.2rem;">🎵</span>
+            <span class="site-badge">Lyria 3.5 · MusicGen</span>
+          </div>
+          <h2 style="margin:0; font-size:1.45rem;">Müzik</h2>
+          <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
+            Google Lyria 3.5, Lyria 3 Clip, ElevenLabs Music, Stable Audio 2, Meta MusicGen, Gemini TTS seslendirme ve Müzik kullanıcı yönetimi.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('music')">
+              🎵 Müzik Stüdyosunu Aç →
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('audio')" style="flex:1; font-size:0.8rem; padding:8px;">🎙️ TTS Ses</button>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('music', 'muzikUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
     <!-- 1. TEKLEŞTİRİLMİŞ VİDEO STÜDYOSU (Genel + Burç + I2V + Kuyruk)     -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <section id="viewVideoStudio" class="site-studio-view">
+    <section id="viewVideoStudio" class="site-studio-view" hidden>
       <div class="site-studio-grid">
 
         <div class="site-card site-studio-form-card">
@@ -368,6 +452,141 @@
           <div class="site-empty">Videolar yükleniyor…</div>
         </div>
       </section>
+
+      <!-- VİDEO BÖLÜMÜ KULLANICI / YÖNETİCİ EKLEME ALANI (Yalnızca Yönetici) -->
+      <div id="videoUsersSlot" data-admin-only="1" hidden></div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1b. ÇOKLU MODEL MÜZİK STÜDYOSU (LYRIA 3.5, ELEVENLABS, MUSICGEN)   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <section id="viewMusicStudio" class="site-studio-view" hidden>
+      <div class="site-studio-grid">
+        <div class="site-card site-studio-form-card">
+          <div class="site-studio-header">
+            <div>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Çoklu Model Müzik Stüdyosu</h2>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
+                Google Lyria 3.5, Lyria 3 Clip, ElevenLabs Music, Stable Audio 2, Meta MusicGen ve Mac yerel hattıyla gerçek müzik üretin.
+              </p>
+            </div>
+            <span class="site-badge" id="musicReadyCountBadge">Modeller yükleniyor…</span>
+          </div>
+
+          <form id="musicStudioForm" onsubmit="handleMusicGenerateSubmit(event)">
+            <div class="site-field">
+              <label for="musicModelSelect">1. Müzik Üretim Modeli</label>
+              <select id="musicModelSelect" class="site-select">
+                <option value="lyria-3.5">Google Lyria 3.5 (Tam Şarkı)</option>
+              </select>
+            </div>
+
+            <div class="site-studio-row-3">
+              <div class="site-field">
+                <label for="musicGenreSelect">Tarz / Tür</label>
+                <select id="musicGenreSelect" class="site-select">
+                  <option value="Cinematic Orchestral">🎻 Sinematik Orkestra</option>
+                  <option value="Synthwave Electronic">⚡ Synthwave / Elektronik</option>
+                  <option value="Lo-Fi Chillhop">☕ Lo-Fi / Chill</option>
+                  <option value="Turkish Anatolian Acoustic">🪕 Anadolu / Etnik</option>
+                  <option value="Ambient Atmospheric">🌌 Ambient / Kozmik</option>
+                  <option value="Modern Pop">🎤 Modern Pop</option>
+                </select>
+              </div>
+              <div class="site-field">
+                <label for="musicMoodSelect">Atmosfer</label>
+                <select id="musicMoodSelect" class="site-select">
+                  <option value="Epic and inspiring">🔥 Epik &amp; İlham Verici</option>
+                  <option value="Calm and focused">🌊 Sakin &amp; Odaklı</option>
+                  <option value="Mysterious and deep">🔮 Gizemli &amp; Derin</option>
+                  <option value="Energetic and upbeat">🚀 Enerjik &amp; Dinamik</option>
+                </select>
+              </div>
+              <div class="site-field">
+                <label for="musicDurationSelect">Hedef Süre</label>
+                <select id="musicDurationSelect" class="site-select">
+                  <option value="15">15 sn</option>
+                  <option value="30" selected>30 sn</option>
+                  <option value="60">60 sn</option>
+                  <option value="120">2 dk</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="site-field">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                <label for="musicPromptInput" style="margin:0;">Müzik Tarifi (Prompt)</label>
+                <div class="site-prompt-chips">
+                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Solo piyano ile başlayıp yaylılarla yükselen epik sinematik teknoloji tanıtım müziği')">🎻 Tanıtım</button>
+                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Gece kod yazarken dinlenecek sıcak analog synth ve hafif yağmur eşlikli lo-fi ritim')">☕ Lo-Fi</button>
+                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Ney ve modern elektronik bas sentezini birleştiren mistik gece atmosferi')">🪕 Etnik</button>
+                </div>
+              </div>
+              <textarea id="musicPromptInput" class="site-textarea" rows="3" placeholder="Enstrümanları, tempoyu ve duyguyu tarif edin..."></textarea>
+            </div>
+
+            <div class="site-field">
+              <label style="display:inline-flex; align-items:center; gap:8px; margin:0 0 8px; text-transform:none; letter-spacing:0; cursor:pointer; font-size:0.84rem;">
+                <input id="musicVocalsCheck" type="checkbox" style="width:auto; accent-color:var(--site-accent);">
+                <span>Vokal / Şarkı Sözü Ekle (Lyria 3.5 &amp; ElevenLabs destekler)</span>
+              </label>
+              <textarea id="musicLyricsInput" class="site-textarea" rows="2" placeholder="Opsiyonel şarkı sözleri (boş bırakırsanız model enstrümantal veya özgün söz üretir)..."></textarea>
+            </div>
+
+            <button type="submit" class="site-btn site-btn-primary site-btn-block" id="startMusicBtn">
+              🎼 Gerçek Müzik Üret
+            </button>
+          </form>
+        </div>
+
+        <div class="site-card site-studio-player-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0; font-size:1.08rem;">🎧 Müzik Oynatıcı &amp; Model Durumu</h3>
+            <span class="site-badge" id="musicTaskBadge">Hazır</span>
+          </div>
+          <div class="site-video-stage" id="musicStageArea" style="min-height:130px; margin-bottom:12px;">
+            <div style="text-align:center; padding:16px;">
+              <span style="font-size:2rem; display:block; margin-bottom:6px;">🎼</span>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen müzik dosyası ve indirme bağlantısı burada açılır.</p>
+            </div>
+          </div>
+          <div class="site-hud-box" id="musicOutputHud" style="margin-bottom:14px; white-space:pre-wrap;">
+            Sahte ses üretilmez: yalnızca API anahtarı tanımlı veya canlı Mac bağlantılı modeller çalışır.
+          </div>
+
+          <h4 style="margin:0 0 8px; font-size:0.9rem;">📋 Desteklenen Müzik Modelleri</h4>
+          <div id="musicModelsStatusGrid" style="display:grid; grid-template-columns:1fr; gap:8px;">
+            <div class="site-empty">Modeller kontrol ediliyor…</div>
+          </div>
+
+          <details data-admin-only="1" hidden style="margin-top:14px; border:1px solid var(--site-border-strong); border-radius:10px; padding:10px 12px;">
+            <summary style="cursor:pointer; font-weight:600; font-size:0.84rem;">🔑 Yönetici: Müzik Model API Anahtarlarını Kaydet (0600)</summary>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px; margin-top:10px;">
+              <input id="musicKeyGemini" type="password" class="site-input" placeholder="GEMINI_API_KEY (Lyria 3.5)" autocomplete="off">
+              <input id="musicKeyElevenlabs" type="password" class="site-input" placeholder="ELEVENLABS_API_KEY" autocomplete="off">
+              <input id="musicKeyStability" type="password" class="site-input" placeholder="STABILITY_API_KEY (Stable Audio 2)" autocomplete="off">
+              <input id="musicKeyReplicate" type="password" class="site-input" placeholder="REPLICATE_API_TOKEN (MusicGen)" autocomplete="off">
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+              <button type="button" class="site-btn site-btn-primary" onclick="saveMusicApiKeys()" style="padding:7px 14px; font-size:0.8rem;">💾 Anahtarları Kaydet</button>
+              <span id="musicKeySaveStatus" style="font-size:0.78rem; color:var(--site-text-dim);"></span>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <section style="padding-top:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h2 style="margin:0; font-size:1.15rem;">📥 Üretilen Müzik Parçaları</h2>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadMusicHistory()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+        </div>
+        <div id="studioMusicHistoryGrid" class="site-model-grid">
+          <div class="site-empty">Müzik arşivi yükleniyor…</div>
+        </div>
+      </section>
+
+      <!-- MÜZİK BÖLÜMÜ KULLANICI / YÖNETİCİ EKLEME ALANI (Yalnızca Yönetici) -->
+      <div id="muzikUsersSlot" data-admin-only="1" hidden></div>
     </section>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
@@ -710,25 +929,39 @@
         </div>
       </div>
 
-      <!-- GELEN İLETİŞİM MESAJLARI & E-POSTA BİLDİRİM DURUMU -->
-      <section style="padding-top:24px;">
+      <!-- FABRİKA BÖLÜMÜ KULLANICI / YÖNETİCİ EKLEME ALANI (Yalnızca Yönetici) -->
+      <div id="fabrikaUsersSlot" data-admin-only="1" hidden></div>
+
+      <!-- GELEN İLETİŞİM MESAJLARI, ÇOKLU ALICI ADRESLERİ & E-POSTA BİLDİRİM DURUMU (Yalnızca Yönetici) -->
+      <section style="padding-top:24px;" data-admin-only="1" hidden>
         <div class="site-card">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
             <div>
-              <h3 style="margin:0 0 4px; font-size:1.08rem;">📩 Siteden Gelen İletişim Mesajları</h3>
+              <h3 style="margin:0 0 4px; font-size:1.08rem;">📩 Siteden Gelen İletişim Mesajları &amp; Alıcı Adresleri</h3>
               <p id="contactNotifierHint" style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">Bildirim kanalı kontrol ediliyor…</p>
             </div>
             <button type="button" class="site-btn site-btn-ghost" onclick="loadContactInbox()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
           </div>
 
+          <!-- ÇOKLU E-POSTA ALICI YÖNETİMİ -->
+          <div style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:12px; background:color-mix(in srgb, var(--site-accent-3) 5%, transparent);">
+            <strong style="font-size:0.88rem; display:block; margin-bottom:6px;">📬 Mesajların Gönderileceği Alıcı E-posta Adresleri (en fazla 10)</strong>
+            <div id="contactRecipientsChips" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;"></div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <input id="newRecipientEmailInput" type="email" class="site-input" placeholder="Yeni alıcı e-posta (ör. ekip@yusasufhin.com)" style="flex:1; min-width:220px;">
+              <button type="button" class="site-btn site-btn-primary" onclick="handleAddContactRecipient()" style="padding:8px 14px; font-size:0.8rem;">➕ Alıcı Ekle</button>
+            </div>
+            <p id="recipientStatusMsg" style="margin:6px 0 0; font-size:0.78rem; color:var(--site-text-dim);" aria-live="polite"></p>
+          </div>
+
           <!-- ys@yusasufhin.com Doğrudan E-posta Kurulum & Test Kartı -->
           <div style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:14px; background:color-mix(in srgb, var(--site-accent) 5%, transparent);">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-              <strong style="font-size:0.88rem;">✉️ ys@yusasufhin.com Doğrudan E-posta Bağlantısı</strong>
+              <strong style="font-size:0.88rem;">✉️ Doğrudan E-posta Gönderim Bağlantısı (Gmail TLS 587 / Resend)</strong>
               <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="font-size:0.78rem; color:var(--site-accent);">🔑 Google Uygulama Şifresi Al →</a>
             </div>
             <p style="margin:0 0 10px; font-size:0.79rem; color:var(--site-text-dim);">
-              Google hesabınızdan (<code>ys@yusasufhin.com</code>) 16 haneli Uygulama Şifresini girin (Mac köprüsü üzerinden doğrudan Gmail TLS 587 ile yollar, üçüncü parti hesap gerekmez) <strong>veya</strong> Mac kapalıyken de 7/24 gitmesi için ücretsiz <code>RESEND_API_KEY</code> girin.
+              Google hesabınızdan (<code>ys@yusasufhin.com</code>) 16 haneli Uygulama Şifresini girin (Mac köprüsü üzerinden tüm alıcılara doğrudan Gmail TLS 587 ile yollar) <strong>veya</strong> Mac kapalıyken de 7/24 gitmesi için ücretsiz <code>RESEND_API_KEY</code> girin.
             </p>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom:10px;">
               <input id="mailCfgAppPass" type="password" class="site-input" placeholder="ys@yusasufhin.com 16 haneli Uygulama Şifresi" autocomplete="off">
@@ -736,7 +969,7 @@
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
               <button type="button" class="site-btn site-btn-primary" onclick="saveContactMailConfig()" style="padding:7px 14px; font-size:0.8rem;">💾 Kaydet ve Bağla</button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="sendTestContactMail()" style="padding:7px 14px; font-size:0.8rem;">📨 ys@yusasufhin.com'a Test Maili Gönder</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="sendTestContactMail()" style="padding:7px 14px; font-size:0.8rem;">📨 Tüm Alıcılara Test Maili Gönder</button>
               <span id="mailCfgStatusText" style="font-size:0.79rem; color:var(--site-text-dim);"></span>
             </div>
           </div>
@@ -752,11 +985,11 @@
 
   <!-- MOBİL SABİT ALT SEKME ÇUBUĞU (Aşağı kaydırınca da tek dokunuşla sekme geçişi) -->
   <nav class="site-mobile-tabbar" id="labMobileTabbar" aria-label="Mobil stüdyo sekmeleri" hidden>
-    <button type="button" id="mobTabVideo" class="active" onclick="switchStudioView('video')"><span class="tab-ico">🎬</span>Video</button>
-    <button type="button" id="mobTabAudio" onclick="switchStudioView('audio')"><span class="tab-ico">🎵</span>Ses</button>
-    <button type="button" id="mobTabChannels" onclick="switchStudioView('channels')"><span class="tab-ico">📺</span>YouTube</button>
-    <button type="button" id="mobTabGpu" onclick="switchStudioView('gpu')"><span class="tab-ico">⚡</span>GPU</button>
-    <button type="button" id="mobTabMac" onclick="switchStudioView('mac')"><span class="tab-ico">💻</span>Mac</button>
+    <button type="button" id="mobTabHub" class="active" onclick="switchStudioView('hub')"><span class="tab-ico">🏠</span>Panel</button>
+    <button type="button" id="mobTabMac" onclick="switchStudioView('mac')"><span class="tab-ico">🏭</span>Fabrika</button>
+    <button type="button" id="mobTabVideo" onclick="switchStudioView('video')"><span class="tab-ico">🎬</span>Video</button>
+    <button type="button" id="mobTabMusic" onclick="switchStudioView('music')"><span class="tab-ico">🎵</span>Müzik</button>
+    <button type="button" id="mobTabChannels" onclick="switchStudioView('channels')"><span class="tab-ico">📺</span>YT</button>
   </nav>
 
   <!-- Tema (Açık / Koyu) -->
@@ -765,7 +998,8 @@
     <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=16"></script>
-  <script src="/lab.js?v=25"></script>
+  <script src="/site.js?v=30"></script>
+  <script src="/admin_portal.js?v=30"></script>
+  <script src="/lab.js?v=30"></script>
 </body>
 </html>

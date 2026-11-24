@@ -52,6 +52,8 @@
   if (form) {
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var userEl = document.getElementById('siteUsername');
+      var usernameVal = userEl ? userEl.value.trim() : '';
       var secretVal = passInput ? passInput.value.trim() : '';
       if (!secretVal) {
         if (errorBox) errorBox.textContent = 'Lütfen parola veya PIN girin.';
@@ -60,9 +62,9 @@
       if (errorBox) errorBox.textContent = '';
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Doğrulanıyor…'; }
 
-      var isPin = /^\d{6}$/.test(secretVal);
+      var isPin = (!usernameVal && /^\d{6}$/.test(secretVal));
       var endpoint = isPin ? '/api/auth/verify_pin' : '/api/auth/login';
-      var bodyPayload = isPin ? { pin: secretVal } : { password: secretVal };
+      var bodyPayload = isPin ? { pin: secretVal } : { username: usernameVal, password: secretVal };
 
       fetch(endpoint, {
         method: 'POST',
