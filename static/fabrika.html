@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>yusasufhin.com — Fabrika AI Komuta Merkezi</title>
-  
+  <title>KOMUTA MERKEZİ — Fabrika Uzaktan Arayüz | yusasufhin.com</title>
+
   <!-- PWA Meta Tags -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#07090e">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fabrika">
@@ -15,6 +15,7 @@
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
   <link rel="stylesheet" href="/styles.css?v=9">
+  <link rel="stylesheet" href="/fabrika_desktop.css?v=27">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
@@ -30,373 +31,409 @@
     }
   </script>
 </head>
-<body>
-  <!-- Link #103 (Canvas UI & Paper Shaders) Canlı Sinirsel Arka Plan Kanvası -->
-  <canvas id="bgShaderCanvas" class="bg-shader-canvas"></canvas>
+<body class="fabrika-desktop-body">
 
-  <div class="app-container">
-    
-    <!-- Sol Sidebar (Personel Listesi & Sistem Durumu) -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <div class="brand">
-          <img src="/fabrika_icon.svg" alt="Fabrika">
-          <div>
-            <h1>FABRİKA HUD</h1>
-            <span>YUSASUFHIN.COM</span>
-          </div>
-        </div>
-        <div class="sidebar-header-right">
-          <div class="system-pill" id="connPill">
-            <span class="dot online" id="connStatusDot"></span>
-            <span id="connStatusText">Hazır</span>
-          </div>
-          <button class="sidebar-close-btn" id="btnCloseSidebar" aria-label="Menüyü Kapat">✕</button>
-        </div>
-      </div>
+  <!-- Mobil Sağ Çekmece Karartma Katmanı -->
+  <div class="fab-drawer-backdrop" id="fabDrawerBackdrop"></div>
 
-      <!-- Oil UI (Link #164) 3-Yönlü Canlı Tema Seçici -->
-      <div class="sidebar-theme-switcher">
-        <div class="section-label" style="margin-bottom: 6px;">🎨 Oil UI Tema Motoru (#164)</div>
-        <div class="theme-pills" id="sidebarThemePills">
-          <button type="button" class="theme-pill active" data-set-theme="cyber_hud">🌌 Cyber</button>
-          <button type="button" class="theme-pill" data-set-theme="jiro_glass">💎 Jiro</button>
-          <button type="button" class="theme-pill" data-set-theme="minimal_gold">🏛️ Minimal</button>
-        </div>
-      </div>
+  <!-- ANA PENCERE SAHNESİ (Core/ui/anayuz.py AnaYuz Web İkizi) -->
+  <div class="fab-stage">
+    <div class="fab-window" id="fabWindow">
 
-      <div class="roster-section">
-        <div class="section-label">🏛️ Meclis Personelleri</div>
-        
-        <div class="person-item active" data-agent-prompt="CEO stratejik durum değerlendirmesi yap">
-          <div class="person-avatar">
-            👑
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">CEO <span>Onay</span></div>
-            <div class="person-role">Strateji &amp; Nihai Karar</div>
-          </div>
-        </div>
+      <!-- ================================================================ -->
+      <!-- SOL SÜTUN: ActiveGorsel.left_widget (600px Sabit Masaüstü Sütunu) -->
+      <!-- ================================================================ -->
+      <section class="fab-left-col" aria-label="Fabrika Ana Ekran">
 
-        <div class="person-item" data-agent-prompt="Baş Mimar sistem ve tünel mimarisini denetle">
-          <div class="person-avatar">
-            📐
-            <span class="status-dot online"></span>
+        <!-- 0. Üst Bar: HoverTitleBar (sol) + CenterButtonGorsel (orta) + HoverFlowBar (sağ) -->
+        <header class="fab-titlebar">
+          <div class="fab-traffic-lights">
+            <button type="button" class="fab-tl-btn fab-tl-close" id="btnTlClose" title="Ana Sayfaya Dön (/)"></button>
+            <button type="button" class="fab-tl-btn fab-tl-min" id="btnTlMin" title="Video / YouTube Stüdyosuna Geç (/lab.html)"></button>
+            <button type="button" class="fab-tl-btn fab-tl-max" id="btnTlMax" title="Sağ Paneli Aç / Kapat (⌘B)"></button>
+            <span class="fab-remote-pill">UZAKTAN • 443</span>
           </div>
-          <div class="person-info">
-            <div class="person-name">Baş Mimar <span>LHH</span></div>
-            <div class="person-role">Sistem, Ağ &amp; Protokol</div>
-          </div>
-        </div>
 
-        <div class="person-item" data-agent-prompt="bu dosyanın güvenliğini denetle rea analizi yap">
-          <div class="person-avatar">
-            🏥
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">KYS Direktörü <span>MR</span></div>
-            <div class="person-role">Kod Hastanesi &amp; REA Denetim</div>
-          </div>
-        </div>
-
-        <div class="person-item" data-agent-prompt="link havuzu raporu hazırla bana gönder">
-          <div class="person-avatar">
-            🔍
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">Araştırmacı <span>Ar-Ge</span></div>
-            <div class="person-role">229 Link Havuzu &amp; İstihbarat</div>
-          </div>
-        </div>
-
-        <div class="person-item" data-agent-prompt="Apple Silicon MLX ve iOS durumunu kontrol et">
-          <div class="person-avatar">
-            🍏
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">Xcoder <span>Apple</span></div>
-            <div class="person-role">IPA, Mach-O &amp; Sideload</div>
-          </div>
-        </div>
-
-        <div class="person-item" data-agent-prompt="Pythoner aktif araç ve sandbox sağlık durumunu raporla">
-          <div class="person-avatar">
-            🐍
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">Pythoner <span>Yazılım</span></div>
-            <div class="person-role">Backend &amp; Sandbox Motoru</div>
-          </div>
-        </div>
-
-        <div class="person-item" data-agent-prompt="Sekreter günlük özet ve bildirim durumunu paylaş">
-          <div class="person-avatar">
-            📋
-            <span class="status-dot online"></span>
-          </div>
-          <div class="person-info">
-            <div class="person-name">Sekreter <span>JEV</span></div>
-            <div class="person-role">İletişim &amp; Bildirim Hattı</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <a class="btn-push" href="/lab.html" style="text-decoration:none; text-align:center;">
-          <span>🎬</span> Video, Ses &amp; YouTube Stüdyosu
-        </a>
-        <button class="btn-sidebar-sec" id="btnOpenLinkPoolSidebar">
-          <span>📚</span> Ar-Ge Link Havuzu
-        </button>
-        <button class="btn-sidebar-sec" id="btnOpenChangePin">
-          <span>🔑</span> PIN Kodunu Değiştir
-        </button>
-        <a class="btn-sidebar-sec" href="/" style="text-decoration:none; text-align:center;">
-          <span>←</span> Ana Sayfaya Dön
-        </a>
-      </div>
-    </aside>
-
-    <!-- Mobil Kenar Çubuğu Karartma Katmanı -->
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-
-    <!-- Ana Sohbet ve Bento Komuta Alanı -->
-    <main class="chat-container">
-      <header class="chat-header">
-        <div class="header-meta">
-          <button class="menu-toggle" id="menuToggle" aria-label="Menü">☰</button>
-          <div class="chat-title">
-            <h2>Fabrika Komuta Ağı <span class="domain-live-badge">yusasufhin.com</span></h2>
-            <p id="channelSub">Zero-Trust Şifreli Kanal • Oil UI &amp; Jiro Build Mimarisi</p>
-          </div>
-        </div>
-        <div class="header-actions">
-          <button class="header-btn cmd-k-btn" id="btnOpenCmdPalette" title="Komut Paleti (⌘K)">
-            <span>⌘K</span> <span class="hide-mobile">Komutlar</span>
+          <button type="button" class="fab-center-orb state-sleeping" id="btnCenterOrb" title="Durum / EQ Modu Geçişi">
+            🌙 UYKUDA
           </button>
-          <button class="header-btn" id="btnOpenLinkPoolHeader" style="background: rgba(121, 40, 202, 0.18); border-color: rgba(121, 40, 202, 0.45); color: #e9d5ff; font-weight: 600;">
-            📚 <span class="hide-mobile">Link Havuzu</span>
-          </button>
-          <button class="header-btn" id="btnOpenRea" style="background: rgba(0, 242, 254, 0.15); border-color: rgba(0, 242, 254, 0.4); color: var(--accent-cyan); font-weight: 600;">
-            🛡️ <span class="hide-mobile">REA Radarı</span>
-          </button>
-          <div class="header-stat-group">
-            <button class="header-btn stat-btn" id="sysCpu">CPU: %--</button>
-            <button class="header-btn stat-btn" id="sysRam">RAM: %--</button>
-          </div>
-          <button class="header-btn" id="btnToggleBento" title="Bento Panelini Gizle/Göster">⊞</button>
-          <button class="header-btn" id="btnLockApp" title="Sistemi Kilitle" style="background: rgba(255, 75, 43, 0.12); border-color: rgba(255, 75, 43, 0.35); color: #ff5252; font-weight: 600;">🔒 Kilitle</button>
-        </div>
-      </header>
 
-      <!-- Bento Komuta Panosu -->
-      <section class="bento-dashboard" id="bentoDashboard">
-        <div class="bento-card spotlight-card" id="bentoCardDomain">
-          <div class="bento-card-top">
-            <span class="bento-tag">💻 MAC FABRİKA KÖPRÜSÜ</span>
-            <span class="bento-status-dot" id="bentoTunnelDot"></span>
+          <!-- HoverFlowBar: 👤 profil, ➕ kadro, ⚙️ ayarlar, 🧠 canlı log + ◧ sağ panel -->
+          <div class="fab-flow-bar">
+            <button type="button" class="fab-icon-btn" id="btnFlowUser" title="Sistem Raporu &amp; Mac Telemetrisi">👤</button>
+            <button type="button" class="fab-icon-btn" id="btnFlowAdd" title="Meclis Kadrosu &amp; Departmanlar">➕</button>
+            <button type="button" class="fab-icon-btn" id="btnFlowSettings" title="Ayarlar, PIN &amp; Oturum">⚙️</button>
+            <button type="button" class="fab-icon-btn" id="btnFlowBrain" title="Canlı Log / XAI Aşama Akışı (Reaktör ↔ Log)">🧠</button>
+            <button type="button" class="fab-icon-btn" id="btnToggleRightPanel" title="Sağ Paneli Aç / Kapat (⌘B)">◧</button>
           </div>
-          <div class="bento-main-val" id="bentoDomainTitle">Kontrol Ediliyor</div>
-          <div class="bento-sub-row">
-            <span id="bentoTunnelSub">Port 443 HTTPS Köprüsü</span>
-            <a href="/lab.html#mac" class="bento-mini-btn" style="text-decoration:none;">Stüdyo →</a>
-          </div>
-        </div>
+        </header>
 
-        <div class="bento-card spotlight-card" id="bentoCardLinkPool" style="cursor: pointer;">
-          <div class="bento-card-top">
-            <span class="bento-tag">📚 AR-GE LİNK HAVUZU</span>
-            <span class="bento-badge-purple">Canlı</span>
+        <!-- 1. ÜST PANEL (UstPanelGorsel: Hata Şeridi + 3D Galaksi Reaktör / Log / XAI / Kod / EQ) -->
+        <section class="fab-ust-panel" id="ustPanel" aria-label="Üst Panel">
+          <!-- KaliciHataSeridi -->
+          <div class="fab-error-strip" id="fabErrorStrip" hidden>
+            <span id="fabErrorStripText">⚠️ Bağlantı bekleniyor...</span>
+            <button type="button" class="fab-error-strip-close" id="btnFabErrorClose" aria-label="Uyarıyı kapat">✕</button>
           </div>
-          <div class="bento-main-val"><span id="bentoLinkCount">—</span> <small>Proje</small></div>
-          <div class="bento-sub-row">
-            <span>Arama &amp; Filtreleme</span>
-            <span class="bento-link-arrow">Keşfet →</span>
-          </div>
-        </div>
 
-        <div class="bento-card spotlight-card" id="bentoCardRea" style="cursor: pointer;">
-          <div class="bento-card-top">
-            <span class="bento-tag">🛡️ REA GÜVENLİK (AST)</span>
-            <span class="bento-badge-green">Python AST</span>
-          </div>
-          <div class="bento-main-val"><span id="bentoReaScore">—</span><small>/100</small></div>
-          <div class="bento-sub-row">
-            <span id="bentoReaScansText">Kod Güvenlik Taraması</span>
-            <span class="bento-link-arrow">Denetle →</span>
-          </div>
-        </div>
-
-        <div class="bento-card spotlight-card">
-          <div class="bento-card-top">
-            <span class="bento-tag">📊 MAC TELEMETRİSİ</span>
-            <span class="bento-badge-cyan" id="bentoMemLabel">Port 443</span>
-          </div>
-          <div class="bento-bars">
-            <div class="bento-bar-row">
-              <span>CPU</span>
-              <div class="bento-progress"><div class="bento-progress-fill" id="bentoCpuBar" style="width: 0%;"></div></div>
-              <span id="bentoCpuVal">—</span>
+          <div class="fab-ust-stage" id="ustPanelStage" title="Log/XAI modunda çift tıklayarak görünüm değiştirin">
+            <!-- Katman A: 3D Holografik Galaksi Reaktör (ReaktorGorsel) -->
+            <div class="fab-ust-layer active" id="ustLayerReaktor">
+              <canvas id="reaktorCanvas"></canvas>
+              <div class="fab-reaktor-hud">
+                <span class="dot" id="connStatusDot"></span>
+                <span id="connStatusText">Bağlanıyor...</span>
+              </div>
             </div>
-            <div class="bento-bar-row">
-              <span>RAM</span>
-              <div class="bento-progress"><div class="bento-progress-fill purple" id="bentoRamBar" style="width: 0%;"></div></div>
-              <span id="bentoRamVal">—</span>
+
+            <!-- Katman B: Canlı Log / Aşama Akışı (log_viewer) -->
+            <div class="fab-ust-layer fab-log-layer" id="ustLayerLog">
+              <div class="fab-layer-toolbar">
+                <span>📜 CANLI LOG &amp; AŞAMA AKIŞI (Çift Tık: XAI)</span>
+                <div class="fab-mini-actions">
+                  <button type="button" class="fab-mini-btn" id="btnCopyLogs">📋 Kopyala</button>
+                  <button type="button" class="fab-mini-btn" id="btnClearLogs">🧹 Temizle</button>
+                </div>
+              </div>
+              <div class="fab-log-scroll" id="ustLogScroll"></div>
+            </div>
+
+            <!-- Katman C: XAI Görsel Durum Paneli (XAIViewer) -->
+            <div class="fab-ust-layer fab-xai-layer" id="ustLayerXai">
+              <div class="fab-xai-header">
+                <span class="fab-xai-title">🧠 AÇIKLANABİLİR YAPAY ZEKA (XAI) &amp; KÖPRÜ KOŞUMU</span>
+                <span class="fab-xai-hint">Çift Tık: Loglara Dön</span>
+              </div>
+              <div class="fab-xai-flow">
+                <div class="fab-xai-node active" data-xai-step="0">📥 1. Girdi</div>
+                <span class="fab-xai-arrow">⟶</span>
+                <div class="fab-xai-node" data-xai-step="1">⚡ 2. Port-443</div>
+                <span class="fab-xai-arrow">⟶</span>
+                <div class="fab-xai-node" data-xai-step="2">🎯 3. Ayrıştırıcı</div>
+                <span class="fab-xai-arrow">⟶</span>
+                <div class="fab-xai-node" data-xai-step="3">🤖 4. Mac Fabrika</div>
+                <span class="fab-xai-arrow">⟶</span>
+                <div class="fab-xai-node" data-xai-step="4">🛡️ 5. Yanıt</div>
+              </div>
+              <div class="fab-xai-telemetry">
+                <div class="fab-xai-stat"><span>MAC KÖPRÜ</span><strong id="xaiMacStatus">—</strong></div>
+                <div class="fab-xai-stat"><span>CPU</span><strong id="xaiCpuVal">—</strong></div>
+                <div class="fab-xai-stat"><span>RAM</span><strong id="xaiRamVal">—</strong></div>
+                <div class="fab-xai-stat"><span>LİNK HAVUZU</span><strong id="xaiPoolVal">—</strong></div>
+              </div>
+              <div class="fab-xai-detail" id="xaiDetailText">Durum makinesi hazır.</div>
+            </div>
+
+            <!-- Katman D: Kod Görüntüleyici (code_viewer) -->
+            <div class="fab-ust-layer fab-code-layer" id="ustLayerCode">
+              <div class="fab-layer-toolbar">
+                <span id="ustCodeLabel">💻 KOD GÖRÜNTÜLEYİCİ</span>
+                <button type="button" class="fab-mini-btn" id="btnPopCodeToDrawer">◧ Sağ Panelde Aç</button>
+              </div>
+              <pre class="fab-code-pre" id="ustCodePre">// Mimar / Pythoner veya REA çıktıları burada canlı görünür.</pre>
+            </div>
+
+            <!-- Katman E: EQ Görüntüleyici (eq_view) -->
+            <div class="fab-ust-layer" id="ustLayerEq">
+              <canvas id="eqCanvas"></canvas>
+            </div>
+
+            <!-- Üst Panel Hızlı Mod Seçici -->
+            <div class="fab-ust-mode-pills" role="tablist" aria-label="Üst panel görünümü">
+              <button type="button" class="fab-ust-pill active" data-ust-mode="reaktor" title="3D Galaksi Reaktör">🌌</button>
+              <button type="button" class="fab-ust-pill" data-ust-mode="log" title="Canlı Log Akışı">📜</button>
+              <button type="button" class="fab-ust-pill" data-ust-mode="xai" title="XAI Ajan Koşumu">🧠</button>
+              <button type="button" class="fab-ust-pill" data-ust-mode="code" title="Kod Görüntüleyici">💻</button>
+              <button type="button" class="fab-ust-pill" data-ust-mode="eq" title="EQ Spektrum">🎵</button>
             </div>
           </div>
+        </section>
+
+        <!-- 2. KAYAN ŞERİT (SeritGorsel) -->
+        <div class="fab-serit" aria-label="Canlı Durum Şeridi">
+          <div class="fab-serit-track" id="fabSeritTrack">
+            🏭 FABRİKA UZAKTAN KOMUTA MERKEZİ  •  PORT-443 HTTPS KÖPRÜSÜ  •  BAĞLANTI KONTROL EDİLİYOR...
+          </div>
         </div>
+
+        <!-- 3. ALT PANEL (AltPanelGorsel: TextAreaGorsel + Hızlı Çipler + ChatInputEdit + Mic + Hoparlör) -->
+        <main class="fab-alt-panel" aria-label="Alt Panel Sohbet Konsolu">
+          <div class="fab-console" id="messagesBox">
+            <div class="fab-msg-line">
+              <span class="fab-msg-prefix" style="color:#38bdf8;">Sistem:</span>
+              <span class="fab-msg-body">
+                <strong>Fabrika Uzaktan Masaüstü Arayüzü</strong> hazır. Üst panelde 3D Reaktör / <code>🧠</code> Log / XAI, sağda açılır <code>◧</code> Bilgi &amp; Kadro Paneli çalışır. Video ve YouTube üretimi için <a href="/lab.html" style="color:#00ffcc;">Stüdyo</a>ya geçebilirsiniz.
+              </span>
+            </div>
+          </div>
+
+          <!-- Kompakt Hızlı Komut Çubuğu -->
+          <div class="fab-quick-row">
+            <button type="button" class="fab-quick-chip chip" data-prompt="açık uygulamalar ve pencereler neler">💻 Pencereler</button>
+            <button type="button" class="fab-quick-chip chip" data-prompt="ekran görüntüsü al">📸 Ekran</button>
+            <button type="button" class="fab-quick-chip" id="chipOpenLinkPool">📚 Havuz</button>
+            <button type="button" class="fab-quick-chip" id="btnOpenRea">🛡️ REA</button>
+            <button type="button" class="fab-quick-chip chip" data-prompt="link havuzu raporu hazırla bana gönder">📊 Rapor</button>
+            <button type="button" class="fab-quick-chip" id="btnOpenCmdPalette">⌘K</button>
+            <a class="fab-quick-chip" href="/lab.html">🎬 Stüdyo</a>
+          </div>
+
+          <!-- Alt Giriş Barı: ChatInputEdit + Gönder + MicButtonGorsel + HoparlorButtonGorsel -->
+          <footer class="fab-input-bar">
+            <textarea id="chatInput" class="fab-chat-input" rows="1" placeholder="Yazarak sohbet et veya '#CEO' komutu gir..." autocomplete="off"></textarea>
+            <button type="button" class="fab-action-sq fab-btn-send" id="btnSend" title="Gönder (Enter)" aria-label="Gönder">➤</button>
+            <button type="button" class="fab-action-sq fab-btn-mic" id="btnMic" title="Mikrofon (Sesli Komut — tr-TR)" aria-label="Mikrofon">🎤</button>
+            <button type="button" class="fab-action-sq fab-btn-speaker" id="btnSpeaker" title="Sesli Yanıt (Hoparlör)" aria-label="Hoparlör">🔇</button>
+          </footer>
+        </main>
       </section>
 
-      <!-- Mesaj Akışı -->
-      <div class="messages-box" id="messagesBox">
-        <div class="msg-row agent">
-          <div class="msg-bubble">
-            <div class="msg-header">
-              <span>💻 Mac Fabrika Köprüsü</span>
-              <span class="msg-time">Şimdi</span>
+      <!-- ================================================================ -->
+      <!-- SAĞ PANEL: SagPanelGorsel (#rightDrawer — 0px <-> 600px Kaymalı)  -->
+      <!-- ================================================================ -->
+      <aside class="fab-right-drawer" id="rightDrawer" aria-label="Sağ Panel">
+        <div class="fab-drawer-inner">
+          <!-- Sağ Panel Üst Başlık + ✨ YENİLENDİ Rozeti -->
+          <div class="fab-drawer-header">
+            <h2 class="fab-drawer-title" id="drawerPanelTitle">🏛️ ORGANİZASYON &amp; MECLİS KADROSU</h2>
+            <span class="fab-badge-updated" id="drawerBadgeUpdated" hidden>✨ YENİLENDİ</span>
+          </div>
+
+          <!-- Sağ Panel Görünüm Sekmeleri -->
+          <div class="fab-drawer-tabs" role="tablist">
+            <button type="button" class="fab-drawer-tab active" data-drawer-tab="kadro">🏛️ Kadro</button>
+            <button type="button" class="fab-drawer-tab" data-drawer-tab="rapor">📊 Rapor</button>
+            <button type="button" class="fab-drawer-tab" data-drawer-tab="havuz">📚 Havuz</button>
+            <button type="button" class="fab-drawer-tab" data-drawer-tab="rea">🛡️ REA</button>
+            <button type="button" class="fab-drawer-tab" data-drawer-tab="kod">💻 Kod</button>
+            <button type="button" class="fab-drawer-tab" data-drawer-tab="ayarlar">⚙️ Ayarlar</button>
+          </div>
+
+          <!-- İçerik Yığını (QStackedWidget ikizi) -->
+          <div class="fab-drawer-stack">
+
+            <!-- Sayfa 0: Yönetim Kadrosu & Departmanlar (SagPanelGorsel Sayfa 2) -->
+            <div class="fab-drawer-page active" data-drawer-page="kadro">
+              <div class="fab-org-section-title core">YÖNETİM KADROSU</div>
+              <button type="button" class="fab-org-card active" data-agent-tag="#CEO" data-agent-prompt="#CEO stratejik durum değerlendirmesi yap...">
+                <div>
+                  <div class="fab-org-name" style="color:#00FFCC;">👑 CEO</div>
+                  <div class="fab-org-role">Strateji &amp; Nihai Karar</div>
+                </div>
+                <span class="fab-org-badge">Hazır</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#Mimar" data-agent-prompt="#Mimar sistem ve tünel mimarisini denetle...">
+                <div>
+                  <div class="fab-org-name" style="color:#FF6B6B;">📐 Mimar</div>
+                  <div class="fab-org-role">Sistem, Ağ &amp; Protokol</div>
+                </div>
+                <span class="fab-org-badge">Hazır</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#IK" data-agent-prompt="#IK departman ve ajan yapılandırmasını gözden geçir...">
+                <div>
+                  <div class="fab-org-name" style="color:#4ECDC4;">🧑‍🤝‍🧑 İnsan Kaynakları</div>
+                  <div class="fab-org-role">Kadro &amp; Ajan Organizasyonu</div>
+                </div>
+                <span class="fab-org-badge">Hazır</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#KYS" data-agent-prompt="#KYS bu dosyanın güvenliğini denetle rea analizi yap...">
+                <div>
+                  <div class="fab-org-name" style="color:#FFE66D;">🏥 Kalite Yönetimi (KYS)</div>
+                  <div class="fab-org-role">Kod Hastanesi &amp; MR Denetim</div>
+                </div>
+                <span class="fab-org-badge">Hazır</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#Sekreter" data-agent-prompt="#Sekreter günlük özet ve bildirim durumunu paylaş...">
+                <div>
+                  <div class="fab-org-name" style="color:#c084fc;">📋 Sekreter</div>
+                  <div class="fab-org-role">İletişim, İletişim Kutusu &amp; JEV</div>
+                </div>
+                <span class="fab-org-badge">Hazır</span>
+              </button>
+
+              <div class="fab-org-section-title dept">DEPARTMANLAR</div>
+              <button type="button" class="fab-org-card" data-agent-tag="#Araştırmacı" data-agent-prompt="link havuzu raporu hazırla bana gönder">
+                <div>
+                  <div class="fab-org-name" style="color:#60A5FA;">🔍 Ar-Ge / Araştırmacı</div>
+                  <div class="fab-org-role">Link Havuzu &amp; İstihbarat</div>
+                </div>
+                <span class="fab-org-badge" id="bentoLinkCount">—</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#Pythoner" data-agent-prompt="#Pythoner aktif araç ve sandbox durumunu raporla">
+                <div>
+                  <div class="fab-org-name" style="color:#34D399;">🐍 Yazılım / Pythoner</div>
+                  <div class="fab-org-role">Backend, Araçlar &amp; Test</div>
+                </div>
+                <span class="fab-org-badge">Aktif</span>
+              </button>
+              <button type="button" class="fab-org-card" data-agent-tag="#Xcoder" data-agent-prompt="#Xcoder Apple Silicon MLX ve macOS durumunu kontrol et">
+                <div>
+                  <div class="fab-org-name" style="color:#A78BFA;">🍏 Apple / Xcoder</div>
+                  <div class="fab-org-role">MLX, macOS &amp; iOS</div>
+                </div>
+                <span class="fab-org-badge">macOS</span>
+              </button>
             </div>
-            <div class="msg-content">
-              <strong>yusasufhin.com — Fabrika Komuta Merkezi</strong> hazır. Bilgisayarınızda Fabrika açık olduğunda komutlarınız Port-443 HTTPS köprüsü üzerinden doğrudan Mac'inizde çalışır. Video, seslendirme ve YouTube işlemleri için <a href="/lab.html" style="color:var(--accent-cyan);">Stüdyo</a> sayfasına geçebilirsiniz.
+
+            <!-- Sayfa 1: Bilgi & Rapor Paneli + Canlı Mac Telemetrisi (SagPanelGorsel Sayfa 0) -->
+            <div class="fab-drawer-page" data-drawer-page="rapor">
+              <div class="fab-tele-grid">
+                <div class="fab-tele-card">
+                  <div class="fab-tele-label">MAC KÖPRÜSÜ</div>
+                  <div class="fab-tele-val" id="bentoDomainTitle">Kontrol Ediliyor</div>
+                  <div style="font-size:10px; color:#94a3b8; margin-top:3px;" id="bentoTunnelSub">Port 443 HTTPS</div>
+                </div>
+                <div class="fab-tele-card">
+                  <div class="fab-tele-label">REA ORT. SKOR</div>
+                  <div class="fab-tele-val"><span id="bentoReaScore">—</span><small style="font-size:11px; color:#64748b;">/100</small></div>
+                  <div style="font-size:10px; color:#94a3b8; margin-top:3px;">Python AST Tarayıcı</div>
+                </div>
+                <div class="fab-tele-card">
+                  <div class="fab-tele-label">MAC CPU (<span id="sysCpu">CPU: %--</span>)</div>
+                  <div class="fab-tele-val" id="bentoCpuVal">—</div>
+                  <div class="fab-bar-track"><div class="fab-bar-fill" id="bentoCpuBar"></div></div>
+                </div>
+                <div class="fab-tele-card">
+                  <div class="fab-tele-label">MAC RAM (<span id="sysRam">RAM: %--</span>)</div>
+                  <div class="fab-tele-val" id="bentoRamVal">—</div>
+                  <div class="fab-bar-track"><div class="fab-bar-fill purple" id="bentoRamBar"></div></div>
+                </div>
+              </div>
+
+              <div class="fab-report-browser" id="drawerReportBrowser">
+                <p style="margin:0; color:#94a3b8;">
+                  Mac Fabrika'dan dönen ekran görüntüleri, REA denetim raporları ve uzun çıktılar masaüstündeki gibi burada otomatik açılır.
+                </p>
+              </div>
             </div>
+
+            <!-- Sayfa 2: Ar-Ge Link Havuzu (Sağ Panel Havuz Modu) -->
+            <div class="fab-drawer-page" data-drawer-page="havuz">
+              <div class="link-pool-controls">
+                <input type="text" id="linkPoolSearchInput" placeholder="Projeler içinde ara (örn: Oil UI, jiro, ses, ajan, güvenlik)..." class="cred-input">
+                <div class="link-cat-tabs" id="linkCatTabs">
+                  <button type="button" class="link-cat-btn active" data-cat="all">Tümü</button>
+                  <button type="button" class="link-cat-btn" data-cat="tasarim_ui">🎨 UI</button>
+                  <button type="button" class="link-cat-btn" data-cat="ajan_mimari">🤖 Ajan</button>
+                  <button type="button" class="link-cat-btn" data-cat="guvenlik">🛡️ Güvenlik</button>
+                  <button type="button" class="link-cat-btn" data-cat="medya_ses">🎙️ Medya</button>
+                </div>
+              </div>
+              <div class="link-pool-grid" id="linkPoolGrid">
+                <p class="placeholder-text">Projeler yükleniyor...</p>
+              </div>
+            </div>
+
+            <!-- Sayfa 3: REA Kod Hastanesi (Python AST Güvenlik Tarayıcı) -->
+            <div class="fab-drawer-page" data-drawer-page="rea">
+              <div class="rea-stats-grid">
+                <div class="rea-stat-card">
+                  <div class="stat-val" id="reaTotalScans">0</div>
+                  <div class="stat-lbl">Tarama</div>
+                </div>
+                <div class="rea-stat-card">
+                  <div class="stat-val" id="reaAvgScore">—</div>
+                  <div class="stat-lbl">Ort. Skor</div>
+                </div>
+                <div class="rea-stat-card">
+                  <div class="stat-val" id="reaRepeats">0</div>
+                  <div class="stat-lbl">Tekrar</div>
+                </div>
+              </div>
+
+              <div class="rea-scanner-section">
+                <label for="reaInput">Python Kodu veya Paket Yolu (Gerçek ast.parse):</label>
+                <textarea id="reaInput" rows="4" placeholder="Analiz edilecek Python kodunu yapıştırın..."></textarea>
+                <div class="scanner-actions">
+                  <select id="reaPersonaSelect">
+                    <option value="kys">KYS (Kod Hastanesi / MR)</option>
+                    <option value="mimar">Mimar (Zero-Trust)</option>
+                    <option value="yazilimci">Yazılımcı (Patch / Fix)</option>
+                    <option value="arastirmaci">Araştırmacı (CVE)</option>
+                    <option value="ceo">CEO (Risk Özeti)</option>
+                  </select>
+                  <button type="button" class="btn-scan" id="btnRunReaScan">🚀 Tara</button>
+                </div>
+              </div>
+
+              <div class="rea-results-box" id="reaResultBox">
+                <p class="placeholder-text">Henüz tarama yapılmadı. Kod yapıştırıp "Tara"ya basın.</p>
+              </div>
+            </div>
+
+            <!-- Sayfa 4: Kod Önizleme & Editör (SagPanelGorsel Sayfa 1) -->
+            <div class="fab-drawer-page" data-drawer-page="kod">
+              <textarea id="drawerCodeEditor" class="fab-code-editor" placeholder="Ajanların ürettiği kodlar veya sistem çıktıları buraya düşer. İsterseniz buraya kod yapıştırıp aşağıdaki düğmeyle doğrudan REA AST taramasına gönderebilirsiniz..."></textarea>
+            </div>
+
+            <!-- Sayfa 5: Ayarlar, PIN & Oturum -->
+            <div class="fab-drawer-page" data-drawer-page="ayarlar">
+              <div class="fab-settings-list">
+                <a class="fab-settings-btn" href="/lab.html">
+                  <span>🎬 Video, Ses &amp; YouTube Stüdyosu</span>
+                  <span>→</span>
+                </a>
+                <button type="button" class="fab-settings-btn" id="btnOpenChangePin">
+                  <span>🔑 6 Haneli PIN Kodunu Değiştir</span>
+                  <span>→</span>
+                </button>
+                <button type="button" class="fab-settings-btn" id="btnEnablePush">
+                  <span>🔔 Web Push Bildirimlerini Aç</span>
+                  <span>→</span>
+                </button>
+                <a class="fab-settings-btn" href="/">
+                  <span>← Ana Vitrin Sayfasına Dön</span>
+                  <span>/</span>
+                </a>
+                <button type="button" class="fab-settings-btn danger" id="btnLockApp">
+                  <span>🔒 Oturumu Kilitle ve Çıkış Yap</span>
+                  <span>✕</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Sağ Panel Alt Aksiyon Barı (SagPanelGorsel Seagate RightDrawer Stili) -->
+          <div class="fab-drawer-footer">
+            <button type="button" class="fab-drawer-btn save" id="btnDrawerSave">💾 KAYDET</button>
+            <button type="button" class="fab-drawer-btn close" id="btnDrawerClose">KAPAT</button>
           </div>
         </div>
-      </div>
+      </aside>
 
-      <!-- Hızlı Aksiyon Çipleri -->
-      <div class="quick-chips">
-        <button class="chip" id="chipOpenLinkPool">📚 229 Link Havuzunu Aç</button>
-        <button class="chip" data-prompt="bu dosyanın güvenliğini denetle rea analizi yap">🛡️ REA Güvenlik Taraması</button>
-        <button class="chip" data-prompt="ekran görüntüsü al">📸 Ekran Görüntüsü</button>
-        <button class="chip" data-prompt="açık uygulamalar ve pencereler neler">💻 Açık Pencereler</button>
-        <button class="chip" data-prompt="link havuzu raporu hazırla bana gönder">📊 Link Havuzu Raporu</button>
-        <button class="chip" data-prompt="müziği kapat">🎵 Müziği Kapat</button>
-      </div>
-
-      <!-- Giriş Çubuğu -->
-      <footer class="input-bar">
-        <input type="text" id="chatInput" placeholder="Ajanlara talimat verin veya soru sorun... (Hızlı menü için ⌘K)" autocomplete="off">
-        <button class="btn-icon btn-send" id="btnSend" aria-label="Gönder">➤</button>
-      </footer>
-    </main>
-  </div>
-
-  <!-- 📚 Link Havuzu Gezgini Modalı (Data/link_store.json — 229 Proje) -->
-  <div class="modal-overlay" id="linkPoolModal" style="display: none;">
-    <div class="modal-content" style="max-width: 820px;">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span>📚</span>
-          <h3>Fabrika Ar-Ge Link Havuzu Vitrin &amp; Keşif Motoru</h3>
-        </div>
-        <button class="modal-close" id="btnCloseLinkPool">✕</button>
-      </div>
-
-      <div class="link-pool-controls">
-        <input type="text" id="linkPoolSearchInput" placeholder="229 proje içinde ara (örn: Oil UI, jiro, ses, ajan, güvenlik, 3D)..." class="cred-input">
-        <div class="link-cat-tabs" id="linkCatTabs">
-          <button type="button" class="link-cat-btn active" data-cat="all">Tümü (229)</button>
-          <button type="button" class="link-cat-btn" data-cat="tasarim_ui">🎨 Tasarım &amp; UI</button>
-          <button type="button" class="link-cat-btn" data-cat="ajan_mimari">🤖 Ajan &amp; Mimari</button>
-          <button type="button" class="link-cat-btn" data-cat="guvenlik">🛡️ Siber Güvenlik</button>
-          <button type="button" class="link-cat-btn" data-cat="medya_ses">🎙️ Ses &amp; Görsel</button>
-        </div>
-      </div>
-
-      <div class="link-pool-grid" id="linkPoolGrid">
-        <p class="placeholder-text">Projeler yükleniyor...</p>
-      </div>
     </div>
   </div>
 
-  <!-- ⌘K Spotlight Komut Paleti Modalı (Link #173 jiro.build & #66 PilotDeck) -->
+  <!-- ⌘K Spotlight Komut Paleti Modalı -->
   <div class="modal-overlay" id="cmdPaletteModal" style="display: none;">
     <div class="cmd-palette-box">
       <div class="cmd-search-bar">
         <span>⌘</span>
-        <input type="text" id="cmdPaletteInput" placeholder="Komut çalıştır, tema değiştir veya ajan çağır..." autocomplete="off">
-        <button class="modal-close" id="btnCloseCmdPalette">ESC</button>
+        <input type="text" id="cmdPaletteInput" placeholder="Komut çalıştır, üst/sağ paneli değiştir veya ajan çağır..." autocomplete="off">
+        <button type="button" class="modal-close" id="btnCloseCmdPalette">ESC</button>
       </div>
       <div class="cmd-list" id="cmdPaletteList">
         <button type="button" class="cmd-item" data-cmd="open_link_pool">
-          <span>📚 Ar-Ge Link Havuzunu Aç (229 Proje)</span>
+          <span>📚 Sağ Panelde Ar-Ge Link Havuzunu Aç</span>
           <kbd>Havuz</kbd>
         </button>
-        <button type="button" class="cmd-item" data-cmd="setup_cloudflare">
-          <span>☁️ yusasufhin.com Cloudflare Tünelini Otomatik Bağla (Alancf)</span>
-          <kbd>DNS</kbd>
-        </button>
         <button type="button" class="cmd-item" data-cmd="open_rea">
-          <span>🛡️ REA Siber Güvenlik ve AST Kod Taraması Başlat</span>
+          <span>🛡️ Sağ Panelde REA AST Kod Taraması Aç</span>
           <kbd>REA</kbd>
         </button>
-        <button type="button" class="cmd-item" data-cmd="theme_cyber">
-          <span>🌌 Tema Değiştir: Cyber HUD (Koyu Siber)</span>
-          <kbd>Oil UI</kbd>
-        </button>
-        <button type="button" class="cmd-item" data-cmd="theme_jiro">
-          <span>💎 Tema Değiştir: Jiro Glass (Derin İndigo &amp; Cam)</span>
-          <kbd>Oil UI</kbd>
-        </button>
-        <button type="button" class="cmd-item" data-cmd="theme_minimal">
-          <span>🏛️ Tema Değiştir: Minimal Luxury (Altın &amp; Kontrast)</span>
-          <kbd>Oil UI</kbd>
-        </button>
         <button type="button" class="cmd-item" data-cmd="screenshot">
-          <span>📸 Mac Ekran Görüntüsü Al ve Sohbete Gönder</span>
-          <kbd>Araç</kbd>
+          <span>📸 Mac Ekran Görüntüsü Al</span>
+          <kbd>Mac</kbd>
         </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- REA Güvenlik Radarı Modalı -->
-  <div class="modal-overlay" id="reaModal" style="display: none;">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="modal-title">
-          <span>🛡️</span>
-          <h3>Fabrika REA Güvenlik Radarı &amp; Hafızası</h3>
-        </div>
-        <button class="modal-close" id="btnCloseRea">✕</button>
-      </div>
-
-      <div class="rea-stats-grid">
-        <div class="rea-stat-card">
-          <div class="stat-val" id="reaTotalScans">0</div>
-          <div class="stat-lbl">Toplam Tarama</div>
-        </div>
-        <div class="rea-stat-card">
-          <div class="stat-val" id="reaAvgScore">100</div>
-          <div class="stat-lbl">Ortalama Skor</div>
-        </div>
-        <div class="rea-stat-card">
-          <div class="stat-val" id="reaRepeats">0</div>
-          <div class="stat-lbl">Tekrarlayan Zafiyet</div>
-        </div>
-      </div>
-
-      <div class="rea-scanner-section">
-        <label for="reaInput">Canlı Kod veya Paket Yolu Analizi:</label>
-        <textarea id="reaInput" rows="4" placeholder="Analiz edilecek Python kodu, manifest veya dosya yolunu yapıştırın..."></textarea>
-        <div class="scanner-actions">
-          <select id="reaPersonaSelect">
-            <option value="kys">KYS (Kod Hastanesi / MR)</option>
-            <option value="mimar">Mimar (Zero-Trust / DFD)</option>
-            <option value="yazilimci">Yazılımcı (Patch / Fix)</option>
-            <option value="arastirmaci">Araştırmacı (CVE / NVD)</option>
-            <option value="ceo">CEO (Risk Özeti)</option>
-          </select>
-          <button class="btn-scan" id="btnRunReaScan">🚀 Anında Tara</button>
-        </div>
-      </div>
-
-      <div class="rea-results-box" id="reaResultBox">
-        <p class="placeholder-text">Henüz tarama yapılmadı. Yukarıdaki kutuya kod yapıştırıp "Anında Tara"ya basın veya sistem hafızasındaki geçmişi inceleyin.</p>
+        <button type="button" class="cmd-item" data-cmd="toggle_log">
+          <span>🧠 Üst Panelde Canlı Log / Reaktör Geçişi</span>
+          <kbd>Log</kbd>
+        </button>
+        <button type="button" class="cmd-item" data-cmd="open_xai">
+          <span>⚡ Üst Panelde XAI Durum Çizgesini Göster</span>
+          <kbd>XAI</kbd>
+        </button>
       </div>
     </div>
   </div>
@@ -408,21 +445,18 @@
         <div class="pin-shield-glow">
           <img src="/fabrika_icon.svg" alt="Fabrika" class="pin-logo">
         </div>
-        <h2>FABRİKA HUD</h2>
-        <span class="pin-security-badge">🌐 yusasufhin.com • Yönetici Girişi</span>
+        <h2>KOMUTA MERKEZİ</h2>
+        <span class="pin-security-badge">🌐 yusasufhin.com • Uzaktan Fabrika</span>
         <p id="authSubtitleText">Yönetici parolanız veya 6 haneli PIN kodunuzla giriş yapın</p>
       </div>
 
-      <!-- Giriş Yöntemi Sekmeleri -->
       <div class="auth-mode-tabs" id="authModeTabs">
         <button type="button" class="auth-tab-btn active" id="tabBtnPassword" data-mode="password">🔑 Yönetici Parolası</button>
         <button type="button" class="auth-tab-btn" id="tabBtnPin" data-mode="pin">🔢 6 Haneli PIN</button>
       </div>
 
-      <!-- Hata veya Bilgilendirme Mesajı -->
       <div class="pin-status-msg" id="pinStatusMsg"></div>
 
-      <!-- 1. Parola Giriş Paneli -->
       <form class="credentials-login-box" id="loginCredentialsForm" autocomplete="on">
         <div class="cred-input-group">
           <label for="inputLoginPassword">Yönetici Parolası</label>
@@ -432,11 +466,10 @@
           </div>
         </div>
         <button type="submit" class="btn-cred-submit" id="btnSubmitCredentials">
-          <span>🚀</span> Sisteme Giriş Yap
+          <span>🚀</span> Komuta Merkezine Gir
         </button>
       </form>
 
-      <!-- 2. 6 Haneli PIN Giriş Paneli -->
       <div class="pin-mode-container" id="pinModeContainer" style="display: none;">
         <div class="pin-indicators" id="pinIndicators">
           <span class="pin-dot" data-index="0"></span>
@@ -519,7 +552,7 @@
         </div>
         <div class="lightbox-actions">
           <a id="lightboxDownloadBtn" href="#" download="ekran.png" class="btn-lightbox-action" title="İndir">⬇️ İndir</a>
-          <button class="modal-close" id="btnCloseLightbox">✕</button>
+          <button type="button" class="modal-close" id="btnCloseLightbox">✕</button>
         </div>
       </div>
       <div class="lightbox-body">
@@ -528,6 +561,7 @@
     </div>
   </div>
 
-  <script src="/app.js?v=9"></script>
+  <script src="/fabrika_desktop.js?v=27"></script>
+  <script src="/app.js?v=10"></script>
 </body>
 </html>

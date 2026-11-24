@@ -2026,6 +2026,63 @@ def test_contact_notifier_email_inbox_and_mobile_fixed_nav(client, auth_headers,
     assert 'id="contactInboxList"' in lab_html
 
 
+def test_remote_fabrika_desktop_twin_ui_panels_and_routes(client):
+    """Uzaktan Fabrika arayüzü (v27): Üst/Alt/Sağ panel, 3D Reaktör, XAI ve rotalar eksiksiz olmalı."""
+    for path, mime_part in (
+        ("/fabrika", "text/html"),
+        ("/fabrika.html", "text/html"),
+        ("/fabrika_desktop.css", "text/css"),
+        ("/fabrika_desktop.js", "javascript"),
+    ):
+        resp = client.get(path)
+        assert resp.status_code == 200, f"{path} beklenmedik durum döndü: {resp.status_code}"
+        assert mime_part in resp.headers.get("content-type", "")
+        assert "no-cache" in resp.headers.get("cache-control", "")
+
+    fab_html = (REPO_DIR / "static" / "fabrika.html").read_text(encoding="utf-8")
+    for token in (
+        'id="fabWindow"',
+        'id="ustPanel"',
+        'id="reaktorCanvas"',
+        'id="ustLayerLog"',
+        'id="ustLayerXai"',
+        'id="ustLayerCode"',
+        'id="ustLayerEq"',
+        'id="fabErrorStrip"',
+        'id="fabSeritTrack"',
+        'id="btnCenterOrb"',
+        'id="btnFlowUser"',
+        'id="btnFlowAdd"',
+        'id="btnFlowSettings"',
+        'id="btnFlowBrain"',
+        'id="messagesBox"',
+        'class="fab-console"',
+        'id="chatInput"',
+        'id="btnMic"',
+        'id="btnSpeaker"',
+        'id="rightDrawer"',
+        'id="drawerPanelTitle"',
+        'id="drawerBadgeUpdated"',
+        'id="btnDrawerClose"',
+        'data-drawer-page="kadro"',
+        'data-drawer-page="rapor"',
+        'data-drawer-page="havuz"',
+        'data-drawer-page="rea"',
+        'data-drawer-page="kod"',
+        'data-drawer-page="ayarlar"',
+    ):
+        assert token in fab_html, f"fabrika.html içinde eksik masaüstü bileşeni: {token}"
+
+    desk_js = (REPO_DIR / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
+    assert "const numNodes = 450;" in desk_js
+    assert "#00FFCC" in desk_js and "#FF6B6B" in desk_js and "#FFE66D" in desk_js
+    assert "window.FabrikaDesktop" in desk_js
+
+    lab_html = (REPO_DIR / "static" / "lab.html").read_text(encoding="utf-8")
+    assert 'href="/fabrika"' in lab_html
+
+
+
 
 
 

@@ -168,6 +168,10 @@ async def get_site_css():
 async def get_styles_css():
     return FileResponse(STATIC_DIR / "styles.css", media_type="text/css", headers=_NO_CACHE)
 
+@app.api_route("/fabrika_desktop.css", methods=["GET", "HEAD"])
+async def get_fabrika_desktop_css():
+    return FileResponse(STATIC_DIR / "fabrika_desktop.css", media_type="text/css", headers=_NO_CACHE)
+
 @app.api_route("/site.js", methods=["GET", "HEAD"])
 async def get_site_js():
     return FileResponse(STATIC_DIR / "site.js", media_type="application/javascript", headers=_NO_CACHE)
@@ -175,6 +179,10 @@ async def get_site_js():
 @app.api_route("/app.js", methods=["GET", "HEAD"])
 async def get_app_js():
     return FileResponse(STATIC_DIR / "app.js", media_type="application/javascript", headers=_NO_CACHE)
+
+@app.api_route("/fabrika_desktop.js", methods=["GET", "HEAD"])
+async def get_fabrika_desktop_js():
+    return FileResponse(STATIC_DIR / "fabrika_desktop.js", media_type="application/javascript", headers=_NO_CACHE)
 
 @app.api_route("/lab.js", methods=["GET", "HEAD"])
 async def get_lab_js():

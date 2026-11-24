@@ -792,8 +792,12 @@ function initWebSocket() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    updateConnectionStatus('Bağlandı (Zero-Trust Korumalı)', 'online');
+    updateConnectionStatus('Bağlandı (Port 443)', 'online');
     reconnectInterval = 2000;
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.clearPersistentError('ws_down');
+      window.FabrikaDesktop.appendLog('🟢 WebSocket kanalı bağlandı (Zero-Trust Korumalı).', 'ok');
+    }
   };
 
   ws.onmessage = (event) => {
@@ -806,11 +810,15 @@ function initWebSocket() {
   };
 
   ws.onclose = (event) => {
-    if (event.code === 4001) {
+    if (event.code === 4001 || event.code === 4401) {
       logout(false);
       return;
     }
     updateConnectionStatus('Koptu, yeniden deneniyor...', 'busy');
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.showPersistentError('ws_down', 'Canlı WebSocket bağlantısı koptu — yeniden bağlanılıyor...');
+      window.FabrikaDesktop.appendLog('⚠️ WebSocket koptu, yeniden bağlanılıyor...', 'warn');
+    }
     setTimeout(initWebSocket, reconnectInterval);
     reconnectInterval = Math.min(reconnectInterval * 1.5, 15000);
   };
@@ -841,6 +849,10 @@ function sendMessage() {
 
   appendMessage('user', 'Siz', text);
   input.value = '';
+  if (window.FabrikaDesktop) {
+    window.FabrikaDesktop.autoResizeChatInput(input);
+    window.FabrikaDesktop.onCommandSent(text);
+  }
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'user_message', text: text }));
@@ -851,24 +863,26 @@ function sendMessage() {
 
 function handleIncomingMessage(msg) {
   if (msg.type === 'agent_reply') {
-    appendMessage('agent', msg.sender || 'Mac Fabrika', msg.text, msg.action, msg.media);
+    const sender = msg.sender || 'Mac Fabrika';
+    appendMessage('agent', sender, msg.text, msg.action, msg.media);
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.onReplyReceived(sender, msg.text, msg.action, msg.media);
+    }
   } else if (msg.type === 'system_alert' || msg.type === 'system_notice') {
-    appendMessage('agent', msg.sender || '⚡ Sistem', msg.text);
+    const sender = msg.sender || 'Sistem';
+    appendMessage('agent', sender, msg.text);
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.appendLog(`${sender}: ${msg.text}`, 'info');
+      window.FabrikaDesktop.pulseReactor(0.5, 500);
+    }
   }
 }
 
 function appendMessage(role, sender, text, action = null, media = null) {
   const box = document.getElementById('messagesBox');
-  const row = document.createElement('div');
-  row.className = `msg-row ${role}`;
-
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-
+  if (!box) return;
   const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let headerHtml = `<div class="msg-header"><span>${escapeHtml(sender)}</span><span class="msg-time">${timeStr}</span></div>`;
-  
-  let formatted = formatMarkdown(text);
+  const formatted = formatMarkdown(text);
 
   let mediaHtml = '';
   if (media && media.type === 'image' && media.url) {
@@ -883,12 +897,36 @@ function appendMessage(role, sender, text, action = null, media = null) {
     }
   }
 
+  // Masaüstü Fabrika (TextAreaLogic) konsol biçimi
+  if (box.classList.contains('fab-console')) {
+    const line = document.createElement('div');
+    line.className = 'fab-msg-line';
+    const prefixLabel = role === 'user' ? '⌨️ Sen:' : `${escapeHtml(sender)}:`;
+    const prefixColor = role === 'user'
+      ? '#FFFFFF'
+      : (window.FabrikaDesktop ? window.FabrikaDesktop.resolveAgentColor(sender) : '#00FFCC');
+    const bodyCls = role === 'user' ? 'fab-msg-body user-body' : 'fab-msg-body';
+    line.innerHTML = `<span class="fab-msg-prefix" style="color:${prefixColor};">${prefixLabel}</span><span class="${bodyCls}">${formatted}</span><span class="fab-msg-time">${timeStr}</span>${mediaHtml}`;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+
+  const row = document.createElement('div');
+  row.className = `msg-row ${role}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  const headerHtml = `<div class="msg-header"><span>${escapeHtml(sender)}</span><span class="msg-time">${timeStr}</span></div>`;
   bubble.innerHTML = `${headerHtml}<div class="msg-content">${formatted}</div>${mediaHtml}`;
   row.appendChild(bubble);
   box.appendChild(row);
-
   box.scrollTop = box.scrollHeight;
 }
+
+window.sendMessage = sendMessage;
+window.appendMessage = appendMessage;
+window.formatMarkdown = formatMarkdown;
 
 function renderMediaCard(url, fileName, fullPath) {
   const safeName = escapeHtml(fileName || 'gorsel.png');
@@ -1044,6 +1082,11 @@ function initLinkPoolExplorer() {
   const searchInp = document.getElementById('linkPoolSearchInput');
 
   function openPool() {
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.openRightPanel('havuz');
+      if (searchInp) setTimeout(() => searchInp.focus(), 180);
+      return;
+    }
     if (modal) {
       modal.style.display = 'flex';
       loadLinkPoolItems();
@@ -1130,12 +1173,16 @@ async function loadLinkPoolItems() {
 window.sendLinkToAgent = function(linkId, linkTitle) {
   const modal = document.getElementById('linkPoolModal');
   if (modal) modal.style.display = 'none';
+  if (window.FabrikaDesktop && window.innerWidth <= 960) {
+    window.FabrikaDesktop.closeRightPanel();
+  }
   const input = document.getElementById('chatInput');
   if (input) {
     input.value = `Link #${linkId} (${linkTitle}) projesini incele ve link havuzu raporu hazırla`;
     sendMessage();
   }
 };
+window.loadLinkPoolItems = loadLinkPoolItems;
 
 // 7.9 ⌘K Komut Paleti (Link #173 jiro.build)
 function initCommandPalette() {
@@ -1184,13 +1231,25 @@ function initCommandPalette() {
       const cmd = item.getAttribute('data-cmd');
       closeCmd();
       if (cmd === 'open_link_pool') {
-        const m = document.getElementById('linkPoolModal');
-        if (m) { m.style.display = 'flex'; loadLinkPoolItems(); }
+        if (window.FabrikaDesktop) {
+          window.FabrikaDesktop.openRightPanel('havuz');
+        } else {
+          const m = document.getElementById('linkPoolModal');
+          if (m) { m.style.display = 'flex'; loadLinkPoolItems(); }
+        }
       } else if (cmd === 'setup_cloudflare') {
         triggerAutomatedCloudflareSetup();
       } else if (cmd === 'open_rea') {
-        const m = document.getElementById('reaModal');
-        if (m) { m.style.display = 'flex'; fetchReaHistory(); }
+        if (window.FabrikaDesktop) {
+          window.FabrikaDesktop.openRightPanel('rea');
+        } else {
+          const m = document.getElementById('reaModal');
+          if (m) { m.style.display = 'flex'; fetchReaHistory(); }
+        }
+      } else if (cmd === 'toggle_log') {
+        if (window.FabrikaDesktop) window.FabrikaDesktop.toggleLogViewer();
+      } else if (cmd === 'open_xai') {
+        if (window.FabrikaDesktop) window.FabrikaDesktop.setTopMode('xai');
       } else if (cmd === 'theme_cyber') {
         applyOilTheme('cyber_hud');
       } else if (cmd === 'theme_jiro') {
@@ -1216,9 +1275,14 @@ function filterCmdItems(query) {
 // 8. UI Etkinlikleri
 function initUIEvents() {
   const input = document.getElementById('chatInput');
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendMessage();
-  });
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+  }
 
   const sendBtn = document.getElementById('btnSend');
   if (sendBtn) sendBtn.addEventListener('click', sendMessage);
@@ -1323,6 +1387,10 @@ function initUIEvents() {
   const btnRunReaScan = document.getElementById('btnRunReaScan');
 
   function openReaModal() {
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.openRightPanel('rea');
+      return;
+    }
     if (reaModal) {
       reaModal.style.display = 'flex';
       fetchReaHistory();
@@ -1448,5 +1516,9 @@ async function fetchSystemStats() {
     if (domTitle) domTitle.textContent = macOn ? 'Mac Çevrimiçi' : 'Mac Çevrimdışı';
     if (dot) dot.className = macOn ? 'bento-status-dot online' : 'bento-status-dot';
     if (subEl) subEl.textContent = macOn ? '🟢 Port 443 HTTPS Köprüsü Aktif' : '⚪ Bilgisayar kapalı / bekleniyor';
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.onMacStats(data);
+    }
   } catch (e) {}
 }
+window.fetchReaHistory = fetchReaHistory;

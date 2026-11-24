@@ -4,10 +4,12 @@ const ASSETS_TO_CACHE = [
   '/site.css?v=17',
   '/site.js?v=16',
   '/fabrika.html',
+  '/fabrika_desktop.css?v=27',
+  '/fabrika_desktop.js?v=27',
   '/lab.html',
   '/lab.js?v=25',
   '/styles.css?v=9',
-  '/app.js?v=9',
+  '/app.js?v=10',
   '/manifest.json',
   '/fabrika_icon.svg'
 ];
