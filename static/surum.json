@@ -1,5 +1,5 @@
 {
-  "surum": "2026.11.24-clean-v24",
-  "ozellik": "auth_hardening_mac_port443_bridge_http_youtube_v3_r2_ast_rea_clean_ui",
+  "surum": "2026.11.24-mobile-mail-v25",
+  "ozellik": "fixed_mobile_nav_safe_area_bottom_tabbar_real_email_resend_smtp_telegram_inbox",
   "kontrol": "gpu_worker_or_mac_bridge"
 }

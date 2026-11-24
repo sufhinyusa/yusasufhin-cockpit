@@ -699,7 +699,9 @@ CONTACT_RATE: Dict[str, List[float]] = {}
 
 @app.post("/api/contact")
 async def public_contact(req: Request):
-    """Genel vitrin sitesinden gelen proje/iletişim taleplerini doğrular ve kaydeder."""
+    """Genel vitrin iletişim formu: gerçek e-posta (Resend/SMTP) + Telegram + gelen kutusu."""
+    from contact_notifier import dispatch_contact_notification
+
     ip = get_client_ip(req)
     now = time.time()
     recent = [t for t in CONTACT_RATE.get(ip, []) if now - t < 300.0]
@@ -718,12 +720,24 @@ async def public_contact(req: Request):
     recent.append(now)
     CONTACT_RATE[ip] = recent
 
+    delivery = await run_in_threadpool(
+        lambda: dispatch_contact_notification(
+            name=name,
+            sender_email=email,
+            message=message,
+            get_env=get_secret_from_env,
+        )
+    )
+
     record = {
         "timestamp": now,
         "name": name,
         "email": email,
         "message": message,
         "ip": ip,
+        "email_sent": delivery["email_sent"],
+        "telegram_sent": delivery["telegram_sent"],
+        "delivery_channel": delivery["delivery_channel"],
     }
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -732,25 +746,36 @@ async def public_contact(req: Request):
     except OSError as exc:
         logger.warning("İletişim kaydı yazılamadı: %s", exc)
 
-    tg_notified = False
-    tg_tok = get_secret_from_env("TELEGRAM_BOT_TOKEN")
-    tg_chat = get_secret_from_env("TELEGRAM_CHAT_ID")
-    if tg_tok and tg_chat:
-        try:
-            import requests as _req
-            r_tg = _req.post(
-                f"https://api.telegram.org/bot{tg_tok}/sendMessage",
-                json={"chat_id": tg_chat, "text": f"📩 yusasufhin.com İletişim\nAd: {name}\nE-posta: {email}\n\n{message[:1200]}"},
-                timeout=8,
-            )
-            tg_notified = bool(r_tg.ok)
-        except Exception:
-            tg_notified = False
+    if delivery["email_sent"] or delivery["telegram_sent"]:
+        user_msg = "Mesajınız iletildi. En kısa sürede e-posta üzerinden dönüş yapılacaktır."
+    else:
+        user_msg = (
+            "Mesajınız site gelen kutusuna kaydedildi (sunucuda otomatik e-posta/SMTP aktarımı henüz bağlı değil). "
+            "Hızlı yanıt için doğrudan e-posta uygulamasıyla da gönderebilirsiniz."
+        )
 
     return {
         "success": True,
-        "notified": tg_notified,
-        "message": "Mesajınız alındı. En kısa sürede e-posta üzerinden dönüş yapılacaktır.",
+        "email_sent": delivery["email_sent"],
+        "telegram_sent": delivery["telegram_sent"],
+        "notified": bool(delivery["email_sent"] or delivery["telegram_sent"]),
+        "delivery_channel": delivery["delivery_channel"],
+        "mailto_fallback_url": delivery["mailto_fallback_url"],
+        "message": user_msg,
+    }
+
+
+@app.get("/api/contact/messages", dependencies=[Depends(verify_auth)])
+async def list_contact_messages(limit: int = Query(30)):
+    """Yetkili yönetici için gelen iletişim mesajlarını ve bildirim kanalı durumunu döner."""
+    from contact_notifier import notifier_status, read_contact_messages
+
+    items = read_contact_messages(DATA_DIR, limit=limit)
+    return {
+        "success": True,
+        "count": len(items),
+        "items": items,
+        "notifier": notifier_status(get_secret_from_env),
     }
 
 @app.get("/api/system/stats", dependencies=[Depends(verify_auth)])

@@ -1564,13 +1564,13 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=24" in sw_txt
-        assert "/lab.js?v=24" in lab_txt
-        assert "/site.css?v=16" in idx_txt and "/site.css?v=16" in lab_txt
+        assert "/lab.js?v=25" in sw_txt
+        assert "/lab.js?v=25" in lab_txt
+        assert "/site.css?v=17" in idx_txt and "/site.css?v=17" in lab_txt
         assert "/styles.css?v=9" in fab_txt
-        assert "fabrika-pwa-v24-clean" in sw_txt
-        assert "fabrika-pwa-v24-clean" in lab_txt
-        assert "fabrika-pwa-v24-clean" in fab_txt
+        assert "fabrika-pwa-v25-mobile" in sw_txt
+        assert "fabrika-pwa-v25-mobile" in lab_txt
+        assert "fabrika-pwa-v25-mobile" in fab_txt
         assert "♈ Burç" not in lab_txt and "♈ Astroloji" not in lab_txt
         lab_js = (Path(__file__).resolve().parent.parent / "static" / "lab.js").read_text(encoding="utf-8")
         assert "'♈ <strong>'" not in lab_js
@@ -1955,6 +1955,75 @@ def test_public_homepage_clean_html_seo_and_contact_form(client):
     })
     assert good.status_code == 200
     assert good.json()["success"] is True
+
+
+def test_contact_notifier_email_inbox_and_mobile_fixed_nav(client, auth_headers, monkeypatch):
+    """İletişim formu e-posta/Telegram durumunu dürüstçe raporlar, gelen kutusuna yazar ve mobil sabit bar mevcuttur."""
+    import contact_notifier as cn
+
+    # Yetkisiz gelen kutusu reddedilmeli
+    assert client.get("/api/contact/messages").status_code == 401
+
+    # 1. Hiçbir canlı kanal tanımlı değilken dürüstçe inbox_only + mailto fallback döner
+    for k in ("RESEND_API_KEY", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(main, "get_secret_from_env", lambda k: os.environ.get(k))
+    main.CONTACT_RATE.clear()
+
+    r1 = client.post("/api/contact", json={
+        "name": "Ayşe Yılmaz",
+        "email": "ayse@example.com",
+        "message": "Kurumsal otomasyon sistemi hakkında görüşmek istiyorum.",
+    })
+    assert r1.status_code == 200
+    d1 = r1.json()
+    assert d1["email_sent"] is False
+    assert d1["telegram_sent"] is False
+    assert d1["delivery_channel"] == "inbox_only"
+    assert d1["mailto_fallback_url"].startswith("mailto:sahin.yusuf@outlook.com?")
+
+    inbox = client.get("/api/contact/messages", headers=auth_headers)
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] >= 1
+    assert inbox.json()["items"][0]["name"] == "Ayşe Yılmaz"
+    assert inbox.json()["notifier"]["any_live_channel"] is False
+
+    # 2. RESEND_API_KEY tanımlıysa gerçek HTTP e-posta gönderimi yapılır
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_123456")
+
+    class FakeResendResp:
+        ok = True
+        status_code = 200
+        text = '{"id":"email_1"}'
+
+    called = {"url": None, "to": None}
+
+    def fake_post(url, **kw):
+        called["url"] = url
+        called["to"] = (kw.get("json") or {}).get("to")
+        return FakeResendResp()
+
+    monkeypatch.setattr(cn.requests, "post", fake_post)
+    r2 = client.post("/api/contact", json={
+        "name": "Mehmet Demir",
+        "email": "mehmet@example.com",
+        "message": "Video otomasyon projesi için teklif almak istiyorum.",
+    })
+    assert r2.status_code == 200
+    d2 = r2.json()
+    assert d2["email_sent"] is True
+    assert d2["delivery_channel"] == "email"
+    assert called["url"] == "https://api.resend.com/emails"
+    assert called["to"] == ["sahin.yusuf@outlook.com"]
+
+    # 3. Mobil sabit üst menü, iOS safe-area ve mobil alt sekme çubuğu CSS/HTML'de doğrulanır
+    css = (REPO_DIR / "static" / "site.css").read_text(encoding="utf-8")
+    assert "position: fixed;" in css
+    assert "env(safe-area-inset-top)" in css
+    assert ".site-mobile-tabbar" in css
+    lab_html = (REPO_DIR / "static" / "lab.html").read_text(encoding="utf-8")
+    assert 'id="labMobileTabbar"' in lab_html
+    assert 'id="contactInboxList"' in lab_html
 
 
 

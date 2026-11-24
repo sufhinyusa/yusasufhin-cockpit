@@ -25,15 +25,14 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=16">
+  <link rel="stylesheet" href="/site.css?v=17">
 </head>
 <body class="site-body">
 
   <div class="site-ambient" aria-hidden="true"></div>
 
-  <div class="site-shell">
-
-    <nav class="site-nav" aria-label="Ana gezinme">
+  <nav class="site-nav" id="siteTopNav" aria-label="Ana gezinme">
+    <div class="site-nav-inner">
       <a class="site-brand" href="/">
         <img src="/fabrika_icon.svg" alt="yusasufhin logosu">
         <span>yusasufhin<span class="site-brand-sub" lang="en">AI &amp; Automation</span></span>
@@ -44,15 +43,18 @@
         <a href="#surec">Süreç</a>
         <a href="#iletisim">İletişim</a>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <a class="site-btn site-btn-ghost" id="studioQuickLink" href="/lab.html" hidden style="padding:9px 15px; font-size:0.84rem;">
+      <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+        <a class="site-btn site-btn-ghost" id="studioQuickLink" href="/lab.html" hidden style="padding:8px 14px; font-size:0.84rem;">
           Stüdyo →
         </a>
-        <a class="site-btn site-btn-primary" href="#iletisim" style="padding:9px 18px; font-size:0.86rem;">
+        <a class="site-btn site-btn-primary" href="#iletisim" style="padding:8px 16px; font-size:0.84rem;">
           İletişime Geç
         </a>
       </div>
-    </nav>
+    </div>
+  </nav>
+
+  <div class="site-shell">
 
     <header class="site-hero">
       <span class="site-eyebrow">Yapay Zeka &amp; Yazılım Mühendisliği</span>
@@ -282,6 +284,6 @@
     <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=15"></script>
+  <script src="/site.js?v=16"></script>
 </body>
 </html>

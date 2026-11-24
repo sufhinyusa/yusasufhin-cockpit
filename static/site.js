@@ -153,8 +153,19 @@
           if (res.ok && res.body && res.body.success) {
             contactForm.reset();
             if (contactStatus) {
-              contactStatus.textContent = '✅ ' + (res.body.message || 'Mesajınız iletildi.');
               contactStatus.style.color = 'var(--site-accent)';
+              contactStatus.textContent = '';
+              var txt = document.createTextNode((res.body.notified ? '✅ ' : 'ℹ️ ') + (res.body.message || 'Mesajınız kaydedildi.'));
+              contactStatus.appendChild(txt);
+              if (!res.body.notified && res.body.mailto_fallback_url) {
+                var br = document.createElement('br');
+                var a = document.createElement('a');
+                a.href = res.body.mailto_fallback_url;
+                a.textContent = '✉️ E-posta Uygulamasıyla Hemen Gönder →';
+                a.style.cssText = 'display:inline-block; margin-top:8px; color:var(--site-accent); font-weight:700; text-decoration:underline;';
+                contactStatus.appendChild(br);
+                contactStatus.appendChild(a);
+              }
             }
           } else {
             if (contactStatus) {
@@ -197,6 +208,20 @@
   var savedTheme = 'cyber';
   try { savedTheme = localStorage.getItem(THEME_KEY) || 'cyber'; } catch (e) { savedTheme = 'cyber'; }
   applyTheme(savedTheme);
+
+  /* ── Sabit üst bar yüksekliğini her ekranda piksel-tam eşitle ───────── */
+  function syncNavOffset() {
+    var nav = document.querySelector('.site-nav');
+    if (nav && nav.offsetHeight > 0) {
+      document.documentElement.style.setProperty('--site-nav-offset', (nav.offsetHeight + 8) + 'px');
+    }
+  }
+  syncNavOffset();
+  window.addEventListener('resize', syncNavOffset);
+  window.addEventListener('orientationchange', function () { setTimeout(syncNavOffset, 150); });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', syncNavOffset);
+  }
 
   if (gate) {
     checkOptionalSession();

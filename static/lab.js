@@ -30,8 +30,10 @@
   function showAuthGate(msg) {
     var gate = document.getElementById('labAuthGate');
     var shell = document.getElementById('labAppShell');
+    var mobBar = document.getElementById('labMobileTabbar');
     var err = document.getElementById('labLoginError');
     if (shell) shell.hidden = true;
+    if (mobBar) mobBar.hidden = true;
     if (gate) gate.hidden = false;
     if (err && msg) err.textContent = msg;
     var inp = document.getElementById('labLoginSecret');
@@ -41,8 +43,14 @@
   function showAppShell() {
     var gate = document.getElementById('labAuthGate');
     var shell = document.getElementById('labAppShell');
+    var mobBar = document.getElementById('labMobileTabbar');
     if (gate) gate.hidden = true;
     if (shell) shell.hidden = false;
+    if (mobBar) mobBar.hidden = false;
+    var nav = document.getElementById('labTopNav');
+    if (nav && nav.offsetHeight > 0) {
+      document.documentElement.style.setProperty('--site-nav-offset', (nav.offsetHeight + 8) + 'px');
+    }
   }
 
   window.authFetch = function (url, opts) {
@@ -126,16 +134,31 @@
       gpu: 'tabNavGpu',
       mac: 'tabNavMac'
     };
+    var mobMap = {
+      video: 'mobTabVideo',
+      audio: 'mobTabAudio',
+      channels: 'mobTabChannels',
+      gpu: 'mobTabGpu',
+      mac: 'mobTabMac'
+    };
     if (!viewMap[viewKey]) viewKey = 'video';
     Object.keys(viewMap).forEach(function (k) {
       var vEl = document.getElementById(viewMap[k]);
       var tEl = document.getElementById(tabMap[k]);
+      var mEl = document.getElementById(mobMap[k]);
       if (vEl) vEl.hidden = (k !== viewKey);
       if (tEl) {
         if (k === viewKey) tEl.classList.add('active');
         else tEl.classList.remove('active');
       }
+      if (mEl) {
+        if (k === viewKey) mEl.classList.add('active');
+        else mEl.classList.remove('active');
+      }
     });
+    if (window.innerWidth <= 820 && window.scrollTo) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     if (viewKey === 'video') {
       window.loadChannelsCatalog(false);
@@ -150,6 +173,7 @@
     } else if (viewKey === 'mac') {
       window.refreshMacBridgeStatus();
       window.refreshLabReaHistory();
+      window.loadContactInbox();
     }
   };
 
@@ -994,6 +1018,41 @@
         window.refreshLabReaHistory();
       })
       .catch(function (err) { if (hud) hud.textContent = 'Hata: ' + err.message; });
+  };
+
+  window.loadContactInbox = function () {
+    var listEl = document.getElementById('contactInboxList');
+    var hintEl = document.getElementById('contactNotifierHint');
+    if (!listEl) return;
+    window.authFetch('/api/contact/messages?limit=30')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var nf = d.notifier || {};
+        if (hintEl) {
+          hintEl.textContent = nf.any_live_channel
+            ? ('🟢 Bildirim aktif — E-posta: ' + (nf.email_configured ? nf.email_method : 'kapalı') + ' · Telegram: ' + (nf.telegram_configured ? 'açık' : 'kapalı'))
+            : ('⚠️ ' + (nf.hint || 'Otomatik e-posta/Telegram bağlı değil.'));
+        }
+        var items = Array.isArray(d.items) ? d.items : [];
+        if (!items.length) {
+          listEl.innerHTML = '<div class="site-empty">Henüz iletişim formundan gelen mesaj yok.</div>';
+          return;
+        }
+        listEl.innerHTML = items.map(function (m) {
+          var tarih = m.timestamp ? new Date(Number(m.timestamp) * 1000).toLocaleString('tr-TR') : '';
+          var badges = (m.email_sent ? '📧 Mail gitti ' : '') + (m.telegram_sent ? '📲 Telegram gitti' : (!m.email_sent ? '📥 Yalnızca gelen kutusu' : ''));
+          return '<article style="border:1px solid var(--site-border); border-radius:10px; padding:12px; background:color-mix(in srgb, var(--site-bg-soft) 72%, transparent);">' +
+            '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">' +
+            '<strong>' + esc(m.name || 'Ziyaretçi') + '</strong>' +
+            '<span style="font-size:0.74rem; color:var(--site-text-faint);">' + esc(tarih) + ' · ' + esc(badges.trim()) + '</span></div>' +
+            '<div style="font-size:0.8rem; color:var(--site-accent); margin-bottom:6px;">' + esc(m.email || '') + '</div>' +
+            '<p style="margin:0 0 8px; font-size:0.84rem; white-space:pre-wrap;">' + esc(m.message || '') + '</p>' +
+            (m.email ? '<a class="site-chip-btn" style="text-decoration:none;" href="mailto:' + esc(m.email) + '?subject=' + encodeURIComponent('Re: yusasufhin.com mesajınız') + '">✉️ Yanıtla</a>' : '') +
+            '</article>';
+        }).join('');
+      })
+      .catch(function () { listEl.innerHTML = '<div class="site-empty">Mesajlar alınamadı.</div>'; });
   };
 
   /* ── BAŞLATMA (ÖNCE AUTH KONTROLÜ) ──────────────────────────────────── */

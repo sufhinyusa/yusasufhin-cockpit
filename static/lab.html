@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=16">
+  <link rel="stylesheet" href="/site.css?v=17">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v24-clean') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v25-mobile') caches.delete(names[i]);
         }
       });
     }
@@ -28,7 +28,7 @@
     }
   </script>
 </head>
-<body class="site-body">
+<body class="site-body has-mobile-tabbar">
 
   <div class="site-ambient" aria-hidden="true"></div>
 
@@ -56,16 +56,18 @@
   <!-- ANA STÜDYO KABUĞU (Yalnızca yetkili oturumda görünür) -->
   <div class="site-shell" id="labAppShell" hidden>
 
-    <nav class="site-nav" aria-label="Stüdyo gezinmesi">
-      <a class="site-brand" href="/">
-        <img src="/fabrika_icon.svg" alt="yusasufhin">
-        <span>yusasufhin<span class="site-brand-sub" lang="en">Studio &amp; Mac Bridge</span></span>
-      </a>
-      <div style="display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap;">
-        <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪ Mac: Kontrol Ediliyor</span>
-        <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU: 0</span>
-        <a class="site-btn site-btn-ghost" href="/" style="padding:7px 13px; font-size:0.8rem;">← Vitrin</a>
-        <button type="button" class="site-btn site-btn-ghost" id="labLogoutBtn" style="padding:7px 13px; font-size:0.8rem;">Çıkış</button>
+    <nav class="site-nav" id="labTopNav" aria-label="Stüdyo gezinmesi">
+      <div class="site-nav-inner">
+        <a class="site-brand" href="/">
+          <img src="/fabrika_icon.svg" alt="yusasufhin">
+          <span>yusasufhin<span class="site-brand-sub" lang="en">Studio &amp; Mac Bridge</span></span>
+        </a>
+        <div style="display:flex; align-items:center; gap:6px; margin-left:auto; flex-wrap:wrap;">
+          <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪ Mac</span>
+          <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU: 0</span>
+          <a class="site-btn site-btn-ghost" href="/" style="padding:7px 12px; font-size:0.78rem;">← Vitrin</a>
+          <button type="button" class="site-btn site-btn-ghost" id="labLogoutBtn" style="padding:7px 12px; font-size:0.78rem;">Çıkış</button>
+        </div>
       </div>
     </nav>
 
@@ -696,9 +698,34 @@
           </div>
         </div>
       </div>
+
+      <!-- GELEN İLETİŞİM MESAJLARI & E-POSTA BİLDİRİM DURUMU -->
+      <section style="padding-top:24px;">
+        <div class="site-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+            <div>
+              <h3 style="margin:0 0 4px; font-size:1.08rem;">📩 Siteden Gelen İletişim Mesajları</h3>
+              <p id="contactNotifierHint" style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">Bildirim kanalı kontrol ediliyor…</p>
+            </div>
+            <button type="button" class="site-btn site-btn-ghost" onclick="loadContactInbox()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+          </div>
+          <div id="contactInboxList" style="display:flex; flex-direction:column; gap:10px;">
+            <div class="site-empty">Mesajlar yükleniyor…</div>
+          </div>
+        </div>
+      </section>
     </section>
 
   </div>
+
+  <!-- MOBİL SABİT ALT SEKME ÇUBUĞU (Aşağı kaydırınca da tek dokunuşla sekme geçişi) -->
+  <nav class="site-mobile-tabbar" id="labMobileTabbar" aria-label="Mobil stüdyo sekmeleri" hidden>
+    <button type="button" id="mobTabVideo" class="active" onclick="switchStudioView('video')"><span class="tab-ico">🎬</span>Video</button>
+    <button type="button" id="mobTabAudio" onclick="switchStudioView('audio')"><span class="tab-ico">🎵</span>Ses</button>
+    <button type="button" id="mobTabChannels" onclick="switchStudioView('channels')"><span class="tab-ico">📺</span>YouTube</button>
+    <button type="button" id="mobTabGpu" onclick="switchStudioView('gpu')"><span class="tab-ico">⚡</span>GPU</button>
+    <button type="button" id="mobTabMac" onclick="switchStudioView('mac')"><span class="tab-ico">💻</span>Mac</button>
+  </nav>
 
   <!-- Tema (Açık / Koyu) -->
   <div class="site-theme-pod" role="group" aria-label="Görsel tema">
@@ -706,7 +733,7 @@
     <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=15"></script>
-  <script src="/lab.js?v=24"></script>
+  <script src="/site.js?v=16"></script>
+  <script src="/lab.js?v=25"></script>
 </body>
 </html>
