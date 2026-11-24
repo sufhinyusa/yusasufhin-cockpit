@@ -2082,6 +2082,90 @@ def test_remote_fabrika_desktop_twin_ui_panels_and_routes(client):
     assert 'href="/fabrika"' in lab_html
 
 
+def test_live_desktop_mirror_poll_sync_and_ui_actions(client, auth_headers, monkeypatch):
+    """v28: Mac masaüstü durumu poll->status->WS desktop_sync ve uzaktan ui_action akışı."""
+    from mac_bridge import bridge_hub
+
+    monkeypatch.setenv("BRIDGE_SECRET", "v28-bridge-secret")
+    bridge_hub.reset()
+    try:
+        # 1. Mac köprüsü masaüstü penceresi açık durumunu poll ile bildirir
+        desk_payload = {
+            "desktop_app_open": True,
+            "rev": 7,
+            "chat_seq": 2,
+            "log_seq": 1,
+            "center_state": "ACTIVE",
+            "active_agent": "CEO",
+            "is_processing": False,
+            "is_speaking": False,
+            "chat_messages": [
+                {"seq": 1, "role": "user", "sender": "⌨️ Sen", "text": "selam", "ts": "22:50"},
+                {"seq": 2, "role": "agent", "sender": "CEO", "text": "Merhaba kurucu!", "ts": "22:50"},
+            ],
+            "logs": [{"seq": 1, "text": "CEO yanıtladı", "level": "info", "ts": "22:50:01"}],
+            "xai": {"state": "TAMAMLANDI", "agent": "CEO", "model": "Qwen3", "desc": "Hazır"},
+            "side_panel": {"open": True, "title": "Rapor", "mode": "report", "html": "<b>Canlı</b>", "updated_at": 123.4},
+            "question_card": {"visible": True, "title": "Onay", "question": "Başlasın mı?", "options": ["Evet", "Hayır"]},
+            "org_agents": [{"key": "CEO", "display_name": "CEO", "name": "Ermiş", "color": "#00FFCC", "is_core": True}],
+        }
+        r_poll = client.post(
+            "/api/bridge/poll",
+            headers={"X-Fabrika-Bridge-Secret": "v28-bridge-secret"},
+            json={"stats": {"cpu": 18.5, "ram": 52.0, "desktop_app_open": True}, "replies": [], "desktop_state": desk_payload},
+        )
+        assert r_poll.status_code == 200
+
+        r_st = client.get("/api/bridge/status", headers=auth_headers)
+        assert r_st.status_code == 200
+        st = r_st.json()
+        assert st["online"] is True
+        assert st["desktop_app_open"] is True
+        assert st["desktop_state"]["chat_messages"][-1]["text"] == "Merhaba kurucu!"
+
+        # 2. Uzaktan UI eylemi kuyruğa alınır ve sonraki Mac poll çağrısında teslim edilir
+        r_act = client.post(
+            "/api/bridge/action",
+            headers=auth_headers,
+            json={"action": "answer_question", "payload": {"choice": "Evet"}},
+        )
+        assert r_act.status_code == 200
+        assert r_act.json()["ok"] is True
+
+        r_poll2 = client.post(
+            "/api/bridge/poll",
+            headers={"X-Fabrika-Bridge-Secret": "v28-bridge-secret"},
+            json={"stats": {"cpu": 19.0, "ram": 52.1, "desktop_app_open": True}, "replies": [], "desktop_state": desk_payload},
+        )
+        assert r_poll2.status_code == 200
+        tasks = r_poll2.json()["tasks"]
+        assert len(tasks) == 1
+        assert tasks[0]["kind"] == "ui_action"
+        assert tasks[0]["action"] == "answer_question"
+        assert tasks[0]["payload"]["choice"] == "Evet"
+
+        # 3. WebSocket açılışında mevcut canlı masaüstü durumu (desktop_sync) hemen gönderilir
+        tok = auth_headers["Authorization"].split(" ", 1)[1]
+        with client.websocket_connect(f"/ws/chat?token={tok}") as ws:
+            w1 = ws.receive_json()
+            assert w1["type"] == "system_alert"
+            w2 = ws.receive_json()
+            assert w2["type"] == "desktop_sync"
+            assert w2["state"]["desktop_app_open"] is True
+            ws.send_json({"type": "ui_action", "action": "barge_in", "payload": {}})
+            ack = ws.receive_json()
+            assert ack["type"] == "ui_action_ack"
+            assert ack["ok"] is True
+
+        fab_html = (REPO_DIR / "static" / "fabrika.html").read_text(encoding="utf-8")
+        desk_js = (REPO_DIR / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
+        assert 'id="fabQuestionCard"' in fab_html
+        assert "applyDesktopSync" in desk_js and "sendUiAction" in desk_js
+    finally:
+        bridge_hub.reset()
+
+
+
 
 
 

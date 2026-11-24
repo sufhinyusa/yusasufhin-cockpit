@@ -15,7 +15,7 @@
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
   <link rel="stylesheet" href="/styles.css?v=9">
-  <link rel="stylesheet" href="/fabrika_desktop.css?v=27">
+  <link rel="stylesheet" href="/fabrika_desktop.css?v=28">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
@@ -51,7 +51,7 @@
             <button type="button" class="fab-tl-btn fab-tl-close" id="btnTlClose" title="Ana Sayfaya Dön (/)"></button>
             <button type="button" class="fab-tl-btn fab-tl-min" id="btnTlMin" title="Video / YouTube Stüdyosuna Geç (/lab.html)"></button>
             <button type="button" class="fab-tl-btn fab-tl-max" id="btnTlMax" title="Sağ Paneli Aç / Kapat (⌘B)"></button>
-            <span class="fab-remote-pill">UZAKTAN • 443</span>
+            <span class="fab-remote-pill" id="fabDesktopSyncBadge">UZAKTAN • 443</span>
           </div>
 
           <button type="button" class="fab-center-orb state-sleeping" id="btnCenterOrb" title="Durum / EQ Modu Geçişi">
@@ -178,6 +178,13 @@
             <a class="fab-quick-chip" href="/lab.html">🎬 Stüdyo</a>
           </div>
 
+          <!-- İnteraktif Soru Kartı (Mac Fabrika InteractiveQuestionCard Aynası) -->
+          <div class="fab-question-card" id="fabQuestionCard" hidden>
+            <div class="fab-question-title" id="fabQuestionTitle">❓ Soru</div>
+            <div class="fab-question-text" id="fabQuestionText"></div>
+            <div class="fab-question-options" id="fabQuestionOptions"></div>
+          </div>
+
           <!-- Alt Giriş Barı: ChatInputEdit + Gönder + MicButtonGorsel + HoparlorButtonGorsel -->
           <footer class="fab-input-bar">
             <textarea id="chatInput" class="fab-chat-input" rows="1" placeholder="Yazarak sohbet et veya '#CEO' komutu gir..." autocomplete="off"></textarea>
@@ -213,7 +220,7 @@
           <div class="fab-drawer-stack">
 
             <!-- Sayfa 0: Yönetim Kadrosu & Departmanlar (SagPanelGorsel Sayfa 2) -->
-            <div class="fab-drawer-page active" data-drawer-page="kadro">
+            <div class="fab-drawer-page active" data-drawer-page="kadro" id="drawerKadroPage">
               <div class="fab-org-section-title core">YÖNETİM KADROSU</div>
               <button type="button" class="fab-org-card active" data-agent-tag="#CEO" data-agent-prompt="#CEO stratejik durum değerlendirmesi yap...">
                 <div>
@@ -561,7 +568,7 @@
     </div>
   </div>
 
-  <script src="/fabrika_desktop.js?v=27"></script>
-  <script src="/app.js?v=10"></script>
+  <script src="/fabrika_desktop.js?v=28"></script>
+  <script src="/app.js?v=11"></script>
 </body>
 </html>

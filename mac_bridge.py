@@ -32,6 +32,9 @@ class MacBridgeHub:
         self.online_ttl_sec = float(online_ttl_sec)
         self._last_seen: float = 0.0
         self._mac_stats: Dict[str, Any] = {}
+        self._desktop_state: Dict[str, Any] = {}
+        self._last_broadcast_sig: Any = None
+        self._desktop_dirty: bool = False
         self._pending_commands: List[Dict[str, Any]] = []
         self._completed_replies: Dict[str, Dict[str, Any]] = {}
         self._waiters: Dict[str, threading.Event] = {}
@@ -41,6 +44,9 @@ class MacBridgeHub:
         with self._lock:
             self._last_seen = 0.0
             self._mac_stats.clear()
+            self._desktop_state.clear()
+            self._last_broadcast_sig = None
+            self._desktop_dirty = False
             self._pending_commands.clear()
             self._completed_replies.clear()
             for ev in self._waiters.values():
@@ -68,8 +74,9 @@ class MacBridgeHub:
         self,
         stats: Optional[Dict[str, Any]] = None,
         replies: Optional[List[Dict[str, Any]]] = None,
+        desktop_state: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """Mac köprüsünün kalp atışını ve yanıtlarını alır, bekleyen komutları teslim eder."""
+        """Mac köprüsünün kalp atışını, masaüstü durumunu ve yanıtlarını alır, bekleyen görevleri teslim eder."""
         now = time.time()
         with self._lock:
             self._last_seen = now
@@ -78,12 +85,29 @@ class MacBridgeHub:
                     "cpu": stats.get("cpu"),
                     "ram": stats.get("ram"),
                     "status": stats.get("status") or "online",
+                    "desktop_app_open": bool(stats.get("desktop_app_open", False)),
                     "link_pool_count": stats.get("link_pool_count"),
                     "rea_score": stats.get("rea_score"),
                     "named_tunnel_active": bool(stats.get("named_tunnel_active", False)),
                     "custom_domain": stats.get("custom_domain") or "https://yusasufhin.com",
                     "updated_at": now,
                 }
+
+            if isinstance(desktop_state, dict) and desktop_state:
+                self._desktop_state = dict(desktop_state)
+                self._desktop_state["synced_at"] = now
+                sig = (
+                    bool(desktop_state.get("desktop_app_open")),
+                    desktop_state.get("rev"),
+                    desktop_state.get("chat_seq"),
+                    desktop_state.get("log_seq"),
+                    desktop_state.get("is_processing"),
+                    desktop_state.get("is_speaking"),
+                    desktop_state.get("center_state"),
+                )
+                if sig != self._last_broadcast_sig:
+                    self._last_broadcast_sig = sig
+                    self._desktop_dirty = True
 
             if isinstance(replies, list):
                 for rep in replies:
@@ -98,6 +122,7 @@ class MacBridgeHub:
                         "text": str(rep.get("text") or ""),
                         "action": rep.get("action"),
                         "media": rep.get("media"),
+                        "accepted_desktop": bool(rep.get("accepted_desktop", False)),
                         "timestamp": now,
                     }
                     self._completed_replies[cid] = kayit
@@ -117,6 +142,21 @@ class MacBridgeHub:
             del self._pending_commands[:10]
             return tasks
 
+    def get_desktop_state(self) -> Optional[Dict[str, Any]]:
+        """Son canlı masaüstü anlık görüntüsünü döner (çevrimdışıysa None)."""
+        if not self.is_online():
+            return None
+        with self._lock:
+            return dict(self._desktop_state) if self._desktop_state else None
+
+    def pop_dirty_desktop_state(self) -> Optional[Dict[str, Any]]:
+        """Değişmiş masaüstü durumunu bir kez tüketir (WebSocket yayını için)."""
+        with self._lock:
+            if not self._desktop_dirty or not self._desktop_state:
+                return None
+            self._desktop_dirty = False
+            return dict(self._desktop_state)
+
     def get_status(self) -> Dict[str, Any]:
         """Köprü ve Mac telemetrisini dürüstçe döner (çevrimdışıysa cpu/ram None)."""
         now = time.time()
@@ -124,22 +164,50 @@ class MacBridgeHub:
             online = self._last_seen > 0.0 and (now - self._last_seen) <= self.online_ttl_sec
             last_seen_ago = round(now - self._last_seen, 1) if self._last_seen > 0.0 else None
             stats = dict(self._mac_stats) if online else None
+            desktop_state = dict(self._desktop_state) if (online and self._desktop_state) else None
+            desktop_open = bool(desktop_state.get("desktop_app_open")) if desktop_state else False
             pending = len(self._pending_commands)
 
         return {
             "online": online,
+            "desktop_app_open": desktop_open,
             "status": "online" if online else "offline",
             "last_seen_sec_ago": last_seen_ago,
             "pending_commands": pending,
             "cpu": stats.get("cpu") if stats else None,
             "ram": stats.get("ram") if stats else None,
             "stats": stats,
+            "desktop_state": desktop_state,
             "message": (
-                "Mac Fabrika köprüsü canlı (Port 443 HTTPS)."
-                if online
-                else "Mac Fabrika şu an çevrimdışı. Bilgisayarınızda Fabrika açıldığında otomatik bağlanır."
+                "Mac Masaüstü Fabrika canlı ve birebir senkron (Port 443)."
+                if (online and desktop_open)
+                else (
+                    "Mac Fabrika köprüsü canlı (masaüstü pencere bekleniyor)."
+                    if online
+                    else "Mac Fabrika şu an çevrimdışı. Bilgisayarınızda Fabrika açıldığında otomatik bağlanır."
+                )
             ),
         }
+
+    def enqueue_ui_action(self, action: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Uzaktan UI eylemini (sağ panel, log/XAI, söz kes, soru kartı vb.) Mac kuyruğuna ekler."""
+        temiz = str(action or "").strip()
+        if not temiz:
+            return {"ok": False, "mac_online": self.is_online(), "status": "empty"}
+        if not self.is_online():
+            return {"ok": False, "mac_online": False, "status": "mac_offline"}
+        cmd_id = f"act_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+        with self._lock:
+            if len(self._pending_commands) >= MAX_PENDING_COMMANDS:
+                self._pending_commands.pop(0)
+            self._pending_commands.append({
+                "id": cmd_id,
+                "kind": "ui_action",
+                "action": temiz,
+                "payload": payload if isinstance(payload, dict) else {},
+                "createdAt": int(time.time() * 1000),
+            })
+        return {"ok": True, "mac_online": True, "status": "queued", "id": cmd_id, "action": temiz}
 
     def enqueue_and_wait(self, text: str, timeout_sec: float = 14.0) -> Dict[str, Any]:
         """Mac çevrimiçiyse komutu iletir ve gerçek yanıtı bekler; kapalıysa bekletmeden bildirir."""
@@ -183,7 +251,8 @@ class MacBridgeHub:
             return {
                 "ok": True,
                 "mac_online": True,
-                "status": "replied",
+                "status": "accepted_desktop" if yanit.get("accepted_desktop") else "replied",
+                "accepted_desktop": bool(yanit.get("accepted_desktop", False)),
                 "id": cmd_id,
                 "sender": yanit.get("sender") or "Mac Fabrika",
                 "text": yanit.get("text") or "",

@@ -656,7 +656,14 @@
 
     // HoverFlowBar (👤 ➕ ⚙️ 🧠 ◧)
     const btnBrain = document.getElementById('btnFlowBrain');
-    if (btnBrain) btnBrain.addEventListener('click', toggleLogViewer);
+    if (btnBrain) {
+      btnBrain.addEventListener('click', () => {
+        toggleLogViewer();
+        if (desktopLive && typeof window.sendUiAction === 'function') {
+          window.sendUiAction('toggle_log');
+        }
+      });
+    }
 
     const btnUser = document.getElementById('btnFlowUser');
     if (btnUser) btnUser.addEventListener('click', () => toggleRightPanel('rapor'));
@@ -668,7 +675,15 @@
     if (btnSettings) btnSettings.addEventListener('click', () => toggleRightPanel('ayarlar'));
 
     const btnToggleRight = document.getElementById('btnToggleRightPanel');
-    if (btnToggleRight) btnToggleRight.addEventListener('click', () => toggleRightPanel());
+    if (btnToggleRight) {
+      btnToggleRight.addEventListener('click', () => {
+        const willOpen = !(document.getElementById('fabWindow') || {}).classList?.contains('drawer-open');
+        toggleRightPanel();
+        if (desktopLive && typeof window.sendUiAction === 'function') {
+          window.sendUiAction(willOpen ? 'open_right_panel' : 'close_right_panel');
+        }
+      });
+    }
 
     // Trafik lambaları (sol üst)
     const tlClose = document.getElementById('btnTlClose');
@@ -684,6 +699,11 @@
     const centerOrb = document.getElementById('btnCenterOrb');
     if (centerOrb) {
       centerOrb.addEventListener('click', () => {
+        if (desktopLive && typeof window.sendUiAction === 'function') {
+          if (centerOrbState === 'SLEEPING') window.sendUiAction('wake');
+          else if (centerOrbState === 'MUSIC') window.sendUiAction('active_mode');
+          else window.sendUiAction('music_mode');
+        }
         if (currentTopMode === 'eq') {
           setTopMode('reaktor');
         } else {
@@ -736,7 +756,14 @@
 
     // Sağ Panel Alt Butonlar (KAPAT / KAYDET)
     const btnCloseDrawer = document.getElementById('btnDrawerClose');
-    if (btnCloseDrawer) btnCloseDrawer.addEventListener('click', closeRightPanel);
+    if (btnCloseDrawer) {
+      btnCloseDrawer.addEventListener('click', () => {
+        closeRightPanel();
+        if (desktopLive && typeof window.sendUiAction === 'function') {
+          window.sendUiAction('close_right_panel');
+        }
+      });
+    }
 
     const backdrop = document.getElementById('fabDrawerBackdrop');
     if (backdrop) backdrop.addEventListener('click', closeRightPanel);
@@ -791,14 +818,17 @@
       });
     });
 
-    // ChatInputEdit otomatik büyüme + Shift+Enter yeni satır + Esc konuşma durdurma
+    // ChatInputEdit otomatik büyüme + Shift+Enter yeni satır + Esc konuşma durdurma (Mac barge-in dahil)
     const chatInp = document.getElementById('chatInput');
     if (chatInp) {
       chatInp.addEventListener('input', () => autoResizeChatInput(chatInp));
       chatInp.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           stopSpeaking();
-          appendLog('🛑 Konuşma Durduruldu (Esc)', 'warn');
+          if (desktopLive && typeof window.sendUiAction === 'function') {
+            window.sendUiAction('barge_in');
+          }
+          appendLog('🛑 Konuşma Durduruldu (Esc / Mac Barge-In)', 'warn');
         }
       });
     }
@@ -815,9 +845,210 @@
   }
 
   // --------------------------------------------------------------------------
-  // 8. APP.JS ENTEGRASYON KÖPRÜSÜ (window.FabrikaDesktop)
+  // 8. CANLI MAC MASAÜSTÜ AYNA SENKRONİZASYONU (desktop_sync)
+  // --------------------------------------------------------------------------
+  let desktopLive = false;
+  let lastSyncedChatSeq = 0;
+  let lastSyncedLogSeq = 0;
+  let lastSyncedSidePanelTs = 0;
+  let lastOrgSig = '';
+
+  const XAI_STATE_TO_STEP = {
+    BOSTA: 0,
+    GIRDI_ALINDI: 0,
+    FAST_CATCHER: 1,
+    JEV_YONLENDIRME: 2,
+    SLM_SOHBET: 3,
+    BUYUK_MODEL: 3,
+    ARAC_ICRA: 3,
+    DOGRULAMA: 4,
+    TAMAMLANDI: 4
+  };
+
+  function sanitizeReportHtml(rawHtml) {
+    return String(rawHtml || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  }
+
+  function renderQuestionCard(card) {
+    const box = document.getElementById('fabQuestionCard');
+    const titleEl = document.getElementById('fabQuestionTitle');
+    const textEl = document.getElementById('fabQuestionText');
+    const optsEl = document.getElementById('fabQuestionOptions');
+    if (!box || !optsEl) return;
+    if (!card || !card.visible || !card.question) {
+      box.hidden = true;
+      return;
+    }
+    if (titleEl) titleEl.textContent = card.title || '❓ Fabrika Sorusu';
+    if (textEl) textEl.textContent = card.question;
+    optsEl.innerHTML = '';
+    (card.options || []).forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fab-question-opt-btn';
+      btn.textContent = opt;
+      btn.addEventListener('click', () => {
+        box.hidden = true;
+        if (typeof window.sendUiAction === 'function') {
+          window.sendUiAction('answer_question', { choice: opt });
+        }
+      });
+      optsEl.appendChild(btn);
+    });
+    box.hidden = false;
+  }
+
+  function renderOrgAgents(agents) {
+    if (!Array.isArray(agents) || !agents.length) return;
+    const sig = agents.map((a) => `${a.key}:${a.name}`).join('|');
+    if (sig === lastOrgSig) return;
+    lastOrgSig = sig;
+    const page = document.getElementById('drawerKadroPage');
+    if (!page) return;
+    const core = agents.filter((a) => a.is_core);
+    const dept = agents.filter((a) => !a.is_core);
+    const cardHtml = (a) => `
+      <button type="button" class="fab-org-card" data-agent-tag="#${escapeHtmlSimple(a.name || a.key)}" data-agent-prompt="#${escapeHtmlSimple(a.name || a.key)} ">
+        <div>
+          <div class="fab-org-name" style="color:${escapeHtmlSimple(a.color || '#00FFCC')};">${escapeHtmlSimple(a.display_name || a.key)}</div>
+          <div class="fab-org-role">${escapeHtmlSimple(a.name || a.key)} • Canlı Mac Kadrosu</div>
+        </div>
+        <span class="fab-org-badge">Hazır</span>
+      </button>`;
+    page.innerHTML = `
+      <div class="fab-org-section-title core">YÖNETİM KADROSU (CANLI MAC)</div>
+      ${core.map(cardHtml).join('')}
+      ${dept.length ? `<div class="fab-org-section-title dept">DEPARTMANLAR</div>${dept.map(cardHtml).join('')}` : ''}
+    `;
+    page.querySelectorAll('.fab-org-card[data-agent-tag]').forEach((card) => {
+      card.addEventListener('click', () => {
+        page.querySelectorAll('.fab-org-card').forEach((c) => c.classList.remove('active'));
+        card.classList.add('active');
+        const tag = card.getAttribute('data-agent-tag');
+        const inp = document.getElementById('chatInput');
+        if (inp && tag) {
+          inp.value = `${tag} `;
+          inp.focus();
+          autoResizeChatInput(inp);
+        }
+        if (window.innerWidth <= 960) closeRightPanel();
+      });
+    });
+  }
+
+  function applyDesktopSync(state) {
+    if (!state || typeof state !== 'object') return;
+    desktopLive = Boolean(state.desktop_app_open);
+
+    const syncBadge = document.getElementById('fabDesktopSyncBadge');
+    if (syncBadge) {
+      syncBadge.textContent = desktopLive ? '🖥️ MAC BİREBİR' : '⚡ KÖPRÜ • 443';
+      syncBadge.classList.toggle('live', desktopLive);
+    }
+
+    if (!desktopLive) return;
+
+    // 1. Durum orbu, konuşma/işleme ve 3D reaktör
+    if (state.is_processing) {
+      setCenterOrbState('BUSY');
+    } else if (state.center_state) {
+      setCenterOrbState(state.center_state);
+    }
+    reactorState.speaking = Boolean(state.is_speaking || state.is_processing);
+
+    const chatInp = document.getElementById('chatInput');
+    if (chatInp && state.placeholder && !chatInp.value) {
+      chatInp.placeholder = state.placeholder;
+    }
+
+    if (state.error_strip) showPersistentError('mac_desktop_err', state.error_strip);
+    else clearPersistentError('mac_desktop_err');
+
+    // 2. Canlı XAI Durum Makinesi
+    if (state.xai) {
+      const stepIdx = XAI_STATE_TO_STEP[state.xai.state] ?? 0;
+      const det = `[${state.xai.state}] ${state.xai.agent || 'CEO'} • ${state.xai.model || ''} • ${state.xai.desc || ''}`;
+      setXaiStage(stepIdx, det.trim());
+    }
+
+    // 3. Canlı Üst Panel Logları
+    if (Array.isArray(state.logs)) {
+      state.logs.forEach((l) => {
+        if (l && Number(l.seq) > lastSyncedLogSeq) {
+          lastSyncedLogSeq = Number(l.seq);
+          appendLog(l.text, l.level || 'info');
+        }
+      });
+    }
+
+    // 4. Canlı Alt Panel Sohbet Akışı (tekil seq ile sıfır çift kayıt)
+    if (Array.isArray(state.chat_messages)) {
+      const box = document.getElementById('messagesBox');
+      state.chat_messages.forEach((m) => {
+        const seq = Number(m && m.seq);
+        if (!seq || seq <= lastSyncedChatSeq) return;
+        lastSyncedChatSeq = seq;
+
+        // Web'den iyimser olarak basılmış kullanıcı satırıyla eşleşiyorsa üstüne terfi ettir
+        if (m.role === 'user' && box) {
+          const pending = box.querySelector('[data-pending-user-text]');
+          if (pending && pending.getAttribute('data-pending-user-text') === m.text) {
+            pending.removeAttribute('data-pending-user-text');
+            pending.setAttribute('data-seq', String(seq));
+            return;
+          }
+        }
+
+        const mediaObj = m.media_url ? { type: 'image', url: m.media_url, file_name: 'mac_cikti.png' } : null;
+        if (typeof window.appendMessage === 'function') {
+          window.appendMessage(m.role === 'user' ? 'user' : 'agent', m.sender || 'Fabrika', m.text || '', null, mediaObj, { seq, ts: m.ts });
+        }
+
+        if (m.role === 'agent') {
+          pulseReactor(0.92, 950);
+          const codeMatch = String(m.text || '').match(/```(?:[\w+-]*)\n([\s\S]*?)```/);
+          if (codeMatch && codeMatch[1]) {
+            setCodeViewer(codeMatch[1].trim(), `${m.sender || 'Fabrika'} Kod`);
+          }
+          speakText(m.text || '');
+        }
+      });
+    }
+
+    // 5. Canlı Sağ Panel (Rapor HTML / Kod / Kapatma)
+    if (state.side_panel && Number(state.side_panel.updated_at || 0) > lastSyncedSidePanelTs) {
+      lastSyncedSidePanelTs = Number(state.side_panel.updated_at);
+      if (state.side_panel.open) {
+        if (state.side_panel.mode === 'code' && state.side_panel.code) {
+          setCodeViewer(state.side_panel.code, state.side_panel.title || 'Kod Önizleme');
+          openRightPanel('kod', { pulse: true });
+        } else if (state.side_panel.html) {
+          showReportInDrawer(
+            state.side_panel.title || '📊 BİLGİ & RAPOR PANELİ',
+            sanitizeReportHtml(state.side_panel.html),
+            ''
+          );
+        } else {
+          openRightPanel('rapor', { pulse: true });
+        }
+      } else {
+        closeRightPanel();
+      }
+    }
+
+    // 6. İnteraktif Soru Kartı & Canlı Kadro
+    renderQuestionCard(state.question_card);
+    renderOrgAgents(state.org_agents);
+  }
+
+  // --------------------------------------------------------------------------
+  // 9. APP.JS ENTEGRASYON KÖPRÜSÜ (window.FabrikaDesktop)
   // --------------------------------------------------------------------------
   window.FabrikaDesktop = {
+    isDesktopLive: () => desktopLive,
+    applyDesktopSync,
     resolveAgentColor,
     pulseReactor,
     setTopMode,

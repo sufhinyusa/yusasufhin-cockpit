@@ -141,6 +141,60 @@ body.fabrika-desktop-body {
   text-overflow: ellipsis;
 }
 
+.fab-remote-pill.live {
+  color: #00ffcc;
+}
+
+/* İnteraktif Soru Kartı (InteractiveQuestionCard Aynası) */
+.fab-question-card {
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(0, 255, 204, 0.38);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fab-question-card[hidden] {
+  display: none !important;
+}
+
+.fab-question-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00ffcc;
+}
+
+.fab-question-text {
+  font-size: 12px;
+  color: #e2e8f0;
+  line-height: 1.45;
+}
+
+.fab-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fab-question-opt-btn {
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #38bdf8;
+  border-radius: 7px;
+  padding: 6px 11px;
+  font-family: var(--fab-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fab-question-opt-btn:hover {
+  background: #38bdf8;
+  color: #000000;
+}
+
 /* CenterButtonGorsel (orb_button) */
 .fab-center-orb {
   background: transparent;

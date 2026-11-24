@@ -847,7 +847,8 @@ function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  appendMessage('user', 'Siz', text);
+  const isDesktopMirror = Boolean(window.FabrikaDesktop && window.FabrikaDesktop.isDesktopLive && window.FabrikaDesktop.isDesktopLive());
+  appendMessage('user', 'Siz', text, null, null, isDesktopMirror ? { pendingText: text } : null);
   input.value = '';
   if (window.FabrikaDesktop) {
     window.FabrikaDesktop.autoResizeChatInput(input);
@@ -861,7 +862,39 @@ function sendMessage() {
   }
 }
 
+function sendUiAction(action, payload = {}) {
+  if (!action) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'ui_action', action: action, payload: payload || {} }));
+    return;
+  }
+  authFetch('/api/bridge/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action, payload: payload || {} })
+  }).catch(() => {});
+}
+
 function handleIncomingMessage(msg) {
+  if (msg.type === 'desktop_sync' && msg.state) {
+    if (window.FabrikaDesktop && typeof window.FabrikaDesktop.applyDesktopSync === 'function') {
+      window.FabrikaDesktop.applyDesktopSync(msg.state);
+    }
+    return;
+  }
+  if (msg.type === 'desktop_ack') {
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.setXaiStage(3, `Mac Masaüstü Fabrika (${msg.sender || 'CEO'}) komutu aldı ve işliyor...`);
+      window.FabrikaDesktop.appendLog(`🖥️ Mac Fabrika komutu devraldı (${msg.sender || 'CEO'}).`, 'ok');
+    }
+    return;
+  }
+  if (msg.type === 'ui_action_ack') {
+    if (window.FabrikaDesktop) {
+      window.FabrikaDesktop.appendLog(`🎛️ UI eylemi Mac'e iletildi: ${msg.action || ''}`, 'info');
+    }
+    return;
+  }
   if (msg.type === 'agent_reply') {
     const sender = msg.sender || 'Mac Fabrika';
     appendMessage('agent', sender, msg.text, msg.action, msg.media);
@@ -878,10 +911,10 @@ function handleIncomingMessage(msg) {
   }
 }
 
-function appendMessage(role, sender, text, action = null, media = null) {
+function appendMessage(role, sender, text, action = null, media = null, meta = null) {
   const box = document.getElementById('messagesBox');
   if (!box) return;
-  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeStr = (meta && meta.ts) || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const formatted = formatMarkdown(text);
 
   let mediaHtml = '';
@@ -901,7 +934,9 @@ function appendMessage(role, sender, text, action = null, media = null) {
   if (box.classList.contains('fab-console')) {
     const line = document.createElement('div');
     line.className = 'fab-msg-line';
-    const prefixLabel = role === 'user' ? '⌨️ Sen:' : `${escapeHtml(sender)}:`;
+    if (meta && meta.seq) line.setAttribute('data-seq', String(meta.seq));
+    if (meta && meta.pendingText) line.setAttribute('data-pending-user-text', String(meta.pendingText));
+    const prefixLabel = role === 'user' ? (sender && sender !== 'Siz' ? `${escapeHtml(sender)}:` : '⌨️ Sen:') : `${escapeHtml(sender)}:`;
     const prefixColor = role === 'user'
       ? '#FFFFFF'
       : (window.FabrikaDesktop ? window.FabrikaDesktop.resolveAgentColor(sender) : '#00FFCC');
@@ -925,6 +960,7 @@ function appendMessage(role, sender, text, action = null, media = null) {
 }
 
 window.sendMessage = sendMessage;
+window.sendUiAction = sendUiAction;
 window.appendMessage = appendMessage;
 window.formatMarkdown = formatMarkdown;
 

@@ -4096,8 +4096,26 @@ async def mac_bridge_poll(
     tasks = bridge_hub.handle_poll(
         stats=body.get("stats") if isinstance(body.get("stats"), dict) else None,
         replies=body.get("replies") if isinstance(body.get("replies"), list) else None,
+        desktop_state=body.get("desktop_state") if isinstance(body.get("desktop_state"), dict) else None,
     )
+    fresh_state = bridge_hub.pop_dirty_desktop_state()
+    if fresh_state is not None and manager.active_connections:
+        await manager.broadcast(json.dumps({"type": "desktop_sync", "state": fresh_state}, ensure_ascii=False))
     return {"ok": True, "tasks": tasks}
+
+@app.post("/api/bridge/action", dependencies=[Depends(verify_auth)])
+async def mac_bridge_action(req: Request):
+    """Uzaktan UI eylemini (sağ panel, log/XAI, söz kes, soru kartı) Mac Fabrika'ya iletir."""
+    from mac_bridge import bridge_hub
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    action = str(body.get("action") or "").strip()
+    payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+    res = bridge_hub.enqueue_ui_action(action, payload)
+    return {"success": bool(res.get("ok")), **res}
 
 @app.get("/api/bridge/status", dependencies=[Depends(verify_auth)])
 async def mac_bridge_status():
@@ -4155,29 +4173,51 @@ async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None
     await manager.connect(websocket)
     try:
         mac_on = bridge_hub.is_online()
+        desk_state = bridge_hub.get_desktop_state()
+        desk_open = bool(desk_state and desk_state.get("desktop_app_open"))
         welcome = {
             "type": "system_alert",
             "sender": "Mac Fabrika Köprüsü",
             "text": (
-                "🟢 Mac Fabrika köprüsü canlı! Komutlarınız doğrudan bilgisayarınızdaki Fabrika'da çalıştırılır."
-                if mac_on
-                else "⚪ Mac Fabrika şu an çevrimdışı. Bilgisayarınızda Fabrika açıldığında otomatik bağlanır."
+                "🟢 Mac Masaüstü Fabrika birebir canlı bağlı! Yazdığınız ve yaptığınız her şey doğrudan Mac'teki Fabrika'da çalışır."
+                if (mac_on and desk_open)
+                else (
+                    "🟢 Mac Fabrika köprüsü canlı! Komutlarınız doğrudan bilgisayarınızdaki Fabrika'da çalıştırılır."
+                    if mac_on
+                    else "⚪ Mac Fabrika şu an çevrimdışı. Bilgisayarınızda Fabrika açıldığında otomatik bağlanır."
+                )
             ),
         }
         await websocket.send_text(json.dumps(welcome, ensure_ascii=False))
+        if desk_state is not None:
+            await websocket.send_text(json.dumps({"type": "desktop_sync", "state": desk_state}, ensure_ascii=False))
+
         while True:
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-                user_text = str(msg.get("text", "")).strip()
             except Exception:
-                user_text = str(data).strip()
+                msg = {"type": "user_message", "text": str(data)}
 
+            if isinstance(msg, dict) and msg.get("type") == "ui_action":
+                act = str(msg.get("action") or "").strip()
+                pay = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+                ack = bridge_hub.enqueue_ui_action(act, pay)
+                await websocket.send_text(json.dumps({"type": "ui_action_ack", **ack}, ensure_ascii=False))
+                continue
+
+            user_text = str(msg.get("text", "") if isinstance(msg, dict) else data).strip()
             if not user_text:
                 continue
 
             res = await run_in_threadpool(lambda: bridge_hub.enqueue_and_wait(user_text, timeout_sec=14.0))
-            if res.get("ok"):
+            if res.get("ok") and res.get("accepted_desktop"):
+                reply = {
+                    "type": "desktop_ack",
+                    "sender": res.get("sender") or "Mac Fabrika",
+                    "text": user_text,
+                }
+            elif res.get("ok"):
                 reply = {
                     "type": "agent_reply",
                     "sender": res.get("sender") or "Mac Fabrika",
