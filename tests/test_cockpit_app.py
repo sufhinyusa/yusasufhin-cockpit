@@ -340,11 +340,11 @@ def test_audio_honest_queue(client, auth_headers):
             wav_path.unlink()
 
 
-def test_gpu_cluster_honest_standby(client):
+def test_gpu_cluster_honest_standby(client, auth_headers):
     """GPU kümesi bağlı işçi yokken standby dönmelidir."""
     from main import ACTIVE_GPU_WORKERS
     ACTIVE_GPU_WORKERS.clear()
-    res = client.get("/api/gpu/cluster/status")
+    res = client.get("/api/gpu/cluster/status", headers=auth_headers)
     assert res.status_code == 200
     st = res.json()["status"]
     assert st["colab_connected"] is False
@@ -359,7 +359,7 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
     worker_headers = {"X-Worker-Key": main.get_worker_key()}
 
     # 1. Başlangıçta standby
-    st1 = client.get("/api/gpu/cluster/status").json()["status"]
+    st1 = client.get("/api/gpu/cluster/status", headers=auth_headers).json()["status"]
     assert st1["kaggle_connected"] is False
 
     # 2. worker.py erişimi
@@ -378,7 +378,7 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
     assert hb.json()["registered"] is True
 
     # 4. Telemetri aktif olmalı
-    st2 = client.get("/api/gpu/cluster/status").json()["status"]
+    st2 = client.get("/api/gpu/cluster/status", headers=auth_headers).json()["status"]
     assert st2["kaggle_connected"] is True
     assert st2["allocated_vram_gb"] == 32.0
     assert "Kaggle Dual-T4" in st2["cluster_status"]
@@ -420,7 +420,7 @@ def test_worker_protocol_and_gpu_activation(client, auth_headers):
 def test_rea_scan_and_history_dynamic(client, auth_headers):
     """REA taraması yapılınca skor ve kayıt dinamik hesaplanmalıdır."""
     # 1. Başlangıçta tarama yoksa Veri Yok dönmeli
-    res_init = client.get("/api/rea/history")
+    res_init = client.get("/api/rea/history", headers=auth_headers)
     assert res_init.status_code == 200
     assert res_init.json()["toplam_tarama"] == 0
     assert res_init.json()["ort_skor"] is None
@@ -436,7 +436,7 @@ def test_rea_scan_and_history_dynamic(client, auth_headers):
     assert res_bad.json()["score"] < 100
 
     # 4. Geçmişi oku — dinamik 2 olmalı
-    res_hist = client.get("/api/rea/history")
+    res_hist = client.get("/api/rea/history", headers=auth_headers)
     assert res_hist.status_code == 200
     h = res_hist.json()
     assert h["toplam_tarama"] == 2
@@ -872,7 +872,7 @@ def test_studio_catalog_and_channels_crud(client, auth_headers, monkeypatch, tmp
     import main as main_mod
     monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
 
-    cat = client.get("/api/studio/catalog")
+    cat = client.get("/api/studio/catalog", headers=auth_headers)
     assert cat.status_code == 200
     body = cat.json()
     assert body["success"] is True
@@ -899,12 +899,12 @@ def test_studio_catalog_and_channels_crud(client, auth_headers, monkeypatch, tmp
     assert created.status_code == 200
     cid = created.json()["channel"]["id"]
 
-    listed = client.get("/api/channels").json()
+    listed = client.get("/api/channels", headers=auth_headers).json()
     assert any(c["id"] == cid and c["style_preset"] == "pixar_3d_animation" for c in listed["channels"])
 
     deleted = client.delete(f"/api/channels/{cid}", headers=auth_headers)
     assert deleted.status_code == 200
-    assert not any(c["id"] == cid for c in client.get("/api/channels").json()["channels"])
+    assert not any(c["id"] == cid for c in client.get("/api/channels", headers=auth_headers).json()["channels"])
 
 
 def test_studio_image_first_then_i2v_and_youtube_bundle(client, auth_headers, monkeypatch, tmp_path):
@@ -1564,13 +1564,13 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=23" in sw_txt
-        assert "/lab.js?v=23" in lab_txt
-        assert "/site.css?v=15" in idx_txt and "/site.css?v=15" in lab_txt
-        assert "/styles.css?v=8" in fab_txt
-        assert "fabrika-pwa-v23-studio" in sw_txt
-        assert "fabrika-pwa-v23-studio" in lab_txt
-        assert "fabrika-pwa-v23-studio" in fab_txt
+        assert "/lab.js?v=24" in sw_txt
+        assert "/lab.js?v=24" in lab_txt
+        assert "/site.css?v=16" in idx_txt and "/site.css?v=16" in lab_txt
+        assert "/styles.css?v=9" in fab_txt
+        assert "fabrika-pwa-v24-clean" in sw_txt
+        assert "fabrika-pwa-v24-clean" in lab_txt
+        assert "fabrika-pwa-v24-clean" in fab_txt
         assert "♈ Burç" not in lab_txt and "♈ Astroloji" not in lab_txt
         lab_js = (Path(__file__).resolve().parent.parent / "static" / "lab.js").read_text(encoding="utf-8")
         assert "'♈ <strong>'" not in lab_js
@@ -1763,6 +1763,199 @@ def test_no_pollinations_no_text_card_and_real_i2v_character_animation(client, a
         for jid in created_ids:
             for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
                 p.unlink(missing_ok=True)
+
+
+# -----------------------------------------------------------------------------
+# 5. GÜVENLİK, MAC PORT-443 KÖPRÜSÜ, GERÇEK AST REA, YOUTUBE V3 & VİTRİN TESTLERİ
+# -----------------------------------------------------------------------------
+def test_media_bypass_blocked_and_private_read_endpoints_require_auth(client):
+    """/static/media atlatması 403 dönmeli ve tüm özel okuma API'leri tokensız 401 dönmelidir."""
+    assert client.get("/static/media/secret.mp4").status_code == 403
+    assert client.get("/media/secret.mp4").status_code == 403
+
+    private_reads = [
+        "/api/lab/history",
+        "/api/audio/history",
+        "/api/links/pool",
+        "/api/channels",
+        "/api/studio/catalog",
+        "/api/system/stats",
+        "/api/rea/history",
+        "/api/gpu/cluster/status",
+        "/api/video/tesis",
+        "/api/bridge/status",
+    ]
+    for url in private_reads:
+        r = client.get(url)
+        assert r.status_code == 401, f"{url} tokensız 401 dönmeliydi, alınan: {r.status_code}"
+    assert client.post("/api/bridge/command", json={"text": "merhaba"}).status_code == 401
+
+
+def test_mac_port443_bridge_and_websocket_relay(client, auth_headers, auth_token):
+    """Mac Port-443 köprüsü kapalıyken dürüst çevrimdışı döner; açıkken gerçek komut ve telemetri taşır."""
+    import threading
+    from mac_bridge import bridge_hub
+
+    bridge_hub.reset()
+    try:
+        # 1. Geçersiz sırla poll reddedilir
+        assert client.post("/api/bridge/poll", json={}).status_code == 401
+        assert client.post("/api/bridge/poll", json={}, headers={"X-Fabrika-Bridge-Secret": "yanlis"}).status_code == 401
+
+        # 2. Çevrimdışıyken komut beklemeden mac_offline döner
+        off = client.post("/api/bridge/command", json={"text": "durum"}, headers=auth_headers)
+        assert off.status_code == 200
+        assert off.json()["mac_online"] is False
+        assert off.json()["status"] == "mac_offline"
+
+        # 3. Mac köprüsü geçerli sırla kalp atışı gönderir
+        bridge_hdr = {"X-Fabrika-Bridge-Secret": "test_guclu_parola_9988"}
+        p1 = client.post(
+            "/api/bridge/poll",
+            json={"stats": {"cpu": 23.4, "ram": 58.1, "link_pool_count": 247, "named_tunnel_active": True}},
+            headers=bridge_hdr,
+        )
+        assert p1.status_code == 200
+        assert p1.json()["ok"] is True
+
+        st = client.get("/api/system/stats", headers=auth_headers).json()
+        assert st["mac_bridge_online"] is True
+        assert st["cpu"] == 23.4
+        assert st["ram"] == 58.1
+
+        # 4. Arka planda Mac yanıtlayıcı ile gerçek komut-yanıt akışı
+        def _fake_mac_worker():
+            import time as _t
+            for _ in range(30):
+                tasks = bridge_hub.handle_poll(stats={"cpu": 25.0, "ram": 60.0})
+                if tasks:
+                    cid = tasks[0]["id"]
+                    bridge_hub.handle_poll(replies=[{
+                        "id": cid,
+                        "sender": "⚡ Açık Uygulamalar",
+                        "text": "Chrome, VS Code açık",
+                        "action": "acik_uygulamalar",
+                    }])
+                    return
+                _t.sleep(0.05)
+
+        th = threading.Thread(target=_fake_mac_worker, daemon=True)
+        th.start()
+        cmd_res = client.post(
+            "/api/bridge/command",
+            json={"text": "açık uygulamalar neler", "timeout_sec": 5},
+            headers=auth_headers,
+        )
+        th.join(timeout=3)
+        assert cmd_res.status_code == 200
+        cd = cmd_res.json()
+        assert cd["success"] is True
+        assert cd["mac_online"] is True
+        assert "Chrome" in cd["text"]
+
+        # 5. WebSocket welcome mesajı app.js'in gösterdiği `system_alert` türünde olmalı
+        with client.websocket_connect(f"/ws/chat?token={auth_token}") as ws:
+            welcome = json.loads(ws.receive_text())
+            assert welcome["type"] == "system_alert"
+    finally:
+        bridge_hub.reset()
+
+
+def test_rea_ast_accepts_hedef_and_detects_real_issues(client, auth_headers):
+    """REA tarayıcısı `hedef` parametresini AST ile analiz eder (boş geçip 100 vermez)."""
+    bad_py = "import os, pickle\nos.system('id')\npickle.loads(data)\napi_key = 'sk-1234567890abcdef'\n"
+    res = client.post("/api/rea/scan", json={"hedef": bad_py, "persona": "kys"}, headers=auth_headers)
+    assert res.status_code == 200
+    d = res.json()
+    assert d["mode"] == "python_ast"
+    assert d["score"] <= 20
+    assert d["vulnerabilities_found"] >= 3
+    assert "AST" in d["rapor"]
+
+
+def test_youtube_http_resumable_uploader_and_env_persistence(monkeypatch, tmp_path):
+    """YouTube yükleyici google-api-python-client olmadan env token ile çalışır ve resumable MP4 yükler."""
+    import youtube_uploader as yu
+
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "cid-test")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "csec-test")
+    monkeypatch.setenv("YOUTUBE_REFRESH_TOKEN", "ref-test")
+
+    st = yu.youtube_status(tmp_path)
+    assert st["ready_for_live_upload"] is True
+    assert st["persistence_mode"] == "env"
+    assert st["transport"] == "http_resumable_v3"
+
+    fake_mp4 = tmp_path / "demo.mp4"
+    fake_mp4.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 1024)
+
+    class FakeHttpResp:
+        def __init__(self, status_code=200, payload=None, headers=None):
+            self.status_code = status_code
+            self.ok = 200 <= status_code < 300
+            self._payload = payload or {}
+            self.headers = headers or {}
+            self.text = json.dumps(self._payload)
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, **kw):
+        if "oauth2.googleapis.com" in url:
+            return FakeHttpResp(200, {"access_token": "acc-123"})
+        if "upload/youtube/v3/videos" in url:
+            return FakeHttpResp(200, {}, headers={"Location": "https://upload.example/session/1"})
+        return FakeHttpResp(200, {})
+
+    def fake_put(url, **kw):
+        assert url == "https://upload.example/session/1"
+        return FakeHttpResp(200, {"id": "yt_vid_999"})
+
+    monkeypatch.setattr(yu.requests, "post", fake_post)
+    monkeypatch.setattr(yu.requests, "put", fake_put)
+
+    up = yu.upload_video_resumable(
+        fake_mp4,
+        {"job_id": "J1", "channel_id": "Tech_AI_Fabrika", "title": "Demo", "description": "Test", "tags": ["ai"], "privacy": "private"},
+        tmp_path,
+    )
+    assert up["success"] is True
+    assert up["simulasyon"] is False
+    assert up["youtube_video_id"] == "yt_vid_999"
+    assert up["youtube_url"] == "https://www.youtube.com/watch?v=yt_vid_999"
+
+
+def test_public_homepage_clean_html_seo_and_contact_form(client):
+    """Ana sayfa kilit ekranıyla açılmamalı, kırık div içermemeli, SEO & iletişim formu çalışmalıdır."""
+    idx = client.get("/")
+    assert idx.status_code == 200
+    html = idx.text
+    assert 'property="og:title"' in html
+    assert 'id="projeler"' in html
+    assert 'id="siteContactForm"' in html
+    assert 'id="siteHub"' not in html
+    assert "Alancf" not in html and "alanadisifre" not in html
+    # Dengeli div sayısı (erken kapanan site-shell yok)
+    assert html.count("<div") == html.count("</div>")
+
+    site_js = client.get("/site.js").text
+    assert "if (!t) { showGate()" not in site_js
+
+    assert client.get("/robots.txt").status_code == 200
+    assert "Sitemap:" in client.get("/robots.txt").text
+    assert client.get("/sitemap.xml").status_code == 200
+
+    bad = client.post("/api/contact", json={"name": "A", "email": "bozuk", "message": "kısa"})
+    assert bad.status_code == 400
+
+    good = client.post("/api/contact", json={
+        "name": "Test Müşteri",
+        "email": "musteri@example.com",
+        "message": "Yapay zeka otomasyon projesi hakkında bilgi almak istiyorum.",
+    })
+    assert good.status_code == 200
+    assert good.json()["success"] is True
+
 
 
 

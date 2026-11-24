@@ -263,7 +263,7 @@ async function submitCredentialsLogin(enrollBiometricAfter = false) {
   const password = passInp ? passInp.value.trim() : '';
 
   if (!password) {
-    triggerPinError('Lütfen .env içerisindeki alanadisifre şifrenizi girin.');
+    triggerPinError('Lütfen yönetici parolanızı girin.');
     if (passInp) passInp.focus();
     return false;
   }
@@ -851,9 +851,9 @@ function sendMessage() {
 
 function handleIncomingMessage(msg) {
   if (msg.type === 'agent_reply') {
-    appendMessage('agent', msg.sender || 'Fabrika Ajanı', msg.text, msg.action, msg.media);
-  } else if (msg.type === 'system_alert') {
-    appendMessage('agent', '⚡ Sistem Alarmı', msg.text);
+    appendMessage('agent', msg.sender || 'Mac Fabrika', msg.text, msg.action, msg.media);
+  } else if (msg.type === 'system_alert' || msg.type === 'system_notice') {
+    appendMessage('agent', msg.sender || '⚡ Sistem', msg.text);
   }
 }
 
@@ -1019,26 +1019,7 @@ function urlBase64ToUint8Array(base64String) {
 
 // 7.5 Cloudflare yusasufhin.com Otomatik Tünel Kurulumu (Alancf & alansifre)
 async function triggerAutomatedCloudflareSetup() {
-  appendMessage('agent', '☁️ Cloudflare Otomasyonu', '⏳ `.env` içerisindeki `Alancf` ve `alansifre` bilgilerinizle `yusasufhin.com` kalıcı tünel kurulumu başlatılıyor...');
-  try {
-    const res = await authFetch('/api/tunnel/setup_domain', { method: 'POST' });
-    if (res.status === 404) {
-      const cfUrl = 'https://dash.cloudflare.com/argotunnel?aud=&callback=https%3A%2F%2Flogin.cloudflareaccess.org%2FBUPVoEjLOKrAHTTzn9dnVdkumgpciV966zGqUIbe3jE%3D';
-      window.open(cfUrl, '_blank');
-      appendMessage('agent', '☁️ Cloudflare Otomasyonu', `Cloudflare yetkilendirme penceresi açıldı (\`Alancf\` hesabınızla giriş yapıp \`yusasufhin.com\` alan adını seçin; \`alansifre\` panonuza kopyalandı).\n\n🔗 Bağlantı: ${cfUrl}`);
-      return;
-    }
-    const data = await res.json();
-    let msg = data.message || 'İşlem tamamlandı.';
-    if (data.auth_url) {
-      msg += `\n\n🔗 Otomatik açılmadıysa onay bağlantısı: ${data.auth_url}`;
-      window.open(data.auth_url, '_blank');
-    }
-    appendMessage('agent', '☁️ Cloudflare Otomasyonu', msg);
-    fetchSystemStats();
-  } catch (err) {
-    appendMessage('agent', '☁️ Cloudflare Otomasyonu', '❌ Kurulum tetiklenemedi: ' + err.message);
-  }
+  appendMessage('agent', '☁️ Bilgilendirme', 'Cloudflare tüneli yerel Mac üzerinden `cloudflared` veya Oracle ARM sunucusundan yönetilir.');
 }
 
 const FALLBACK_LINK_POOL = [
@@ -1424,8 +1405,8 @@ async function fetchReaHistory() {
     const data = await res.json();
     if (data.toplam_tarama !== undefined) {
       document.getElementById('reaTotalScans').textContent = data.toplam_tarama;
-      document.getElementById('reaAvgScore').textContent = data.ort_skor;
-      document.getElementById('reaRepeats').textContent = data.tekrarlayan_zafiyet_sayisi;
+      document.getElementById('reaAvgScore').textContent = (data.ort_skor !== null && data.ort_skor !== undefined) ? data.ort_skor : '—';
+      document.getElementById('reaRepeats').textContent = (data.tekrarlayan_zafiyet_sayisi !== undefined) ? data.tekrarlayan_zafiyet_sayisi : 0;
     }
   } catch (e) {
     console.warn('REA hafıza geçmişi alınamadı:', e);
@@ -1435,36 +1416,37 @@ async function fetchReaHistory() {
 async function fetchSystemStats() {
   try {
     const res = await authFetch('/api/system/stats');
+    if (!res.ok) return;
     const data = await res.json();
-    if (data.cpu !== undefined) {
-      document.getElementById('sysCpu').textContent = `CPU: %${data.cpu}`;
-      document.getElementById('sysRam').textContent = `RAM: %${data.ram}`;
-      const bCpuVal = document.getElementById('bentoCpuVal');
-      const bRamVal = document.getElementById('bentoRamVal');
-      const bCpuBar = document.getElementById('bentoCpuBar');
-      const bRamBar = document.getElementById('bentoRamBar');
-      if (bCpuVal) bCpuVal.textContent = `%${data.cpu}`;
-      if (bRamVal) bRamVal.textContent = `%${data.ram}`;
-      if (bCpuBar) bCpuBar.style.width = `${Math.min(100, data.cpu)}%`;
-      if (bRamBar) bRamBar.style.width = `${Math.min(100, data.ram)}%`;
-    }
+    const hasCpu = data.cpu !== null && data.cpu !== undefined;
+    const hasRam = data.ram !== null && data.ram !== undefined;
+    const sysCpu = document.getElementById('sysCpu');
+    const sysRam = document.getElementById('sysRam');
+    if (sysCpu) sysCpu.textContent = hasCpu ? `CPU: %${data.cpu}` : 'Mac: Çevrimdışı';
+    if (sysRam) sysRam.textContent = hasRam ? `RAM: %${data.ram}` : 'RAM: —';
+
+    const bCpuVal = document.getElementById('bentoCpuVal');
+    const bRamVal = document.getElementById('bentoRamVal');
+    const bCpuBar = document.getElementById('bentoCpuBar');
+    const bRamBar = document.getElementById('bentoRamBar');
+    if (bCpuVal) bCpuVal.textContent = hasCpu ? `%${data.cpu}` : '—';
+    if (bRamVal) bRamVal.textContent = hasRam ? `%${data.ram}` : '—';
+    if (bCpuBar) bCpuBar.style.width = hasCpu ? `${Math.min(100, Number(data.cpu))}%` : '0%';
+    if (bRamBar) bRamBar.style.width = hasRam ? `${Math.min(100, Number(data.ram))}%` : '0%';
+
     if (data.link_pool_count !== undefined) {
       const lpEl = document.getElementById('bentoLinkCount');
       if (lpEl) lpEl.textContent = data.link_pool_count;
     }
-    if (data.rea_score !== undefined) {
-      const rsEl = document.getElementById('bentoReaScore');
-      if (rsEl) rsEl.textContent = data.rea_score;
-    }
-    if (data.tunnel) {
-      const subEl = document.getElementById('bentoTunnelSub');
-      if (subEl) {
-        if (data.tunnel.named_tunnel_active === 'true') {
-          subEl.textContent = '🟢 Kalıcı Cloudflare Tüneli Aktif';
-        } else if (data.tunnel.cloudflare_url) {
-          subEl.textContent = data.tunnel.cloudflare_url.replace('https://', '');
-        }
-      }
-    }
+    const rsEl = document.getElementById('bentoReaScore');
+    if (rsEl) rsEl.textContent = (data.rea_score !== null && data.rea_score !== undefined) ? data.rea_score : '—';
+
+    const domTitle = document.getElementById('bentoDomainTitle');
+    const dot = document.getElementById('bentoTunnelDot');
+    const subEl = document.getElementById('bentoTunnelSub');
+    const macOn = Boolean(data.mac_bridge_online);
+    if (domTitle) domTitle.textContent = macOn ? 'Mac Çevrimiçi' : 'Mac Çevrimdışı';
+    if (dot) dot.className = macOn ? 'bento-status-dot online' : 'bento-status-dot';
+    if (subEl) subEl.textContent = macOn ? '🟢 Port 443 HTTPS Köprüsü Aktif' : '⚪ Bilgisayar kapalı / bekleniyor';
   } catch (e) {}
 }

@@ -9,9 +9,11 @@ video_factory/
 
 # Üretilen medya ve çalışma sırrı (depo şişmesin / sır sızmasın)
 static/media/*
+storage/media/*
 data/.session_secret
 data/.worker_key
 data/canli_teyit_rapor.txt
+data/contact_inquiries.jsonl
 graft/
 temp/
 *.db

@@ -59,7 +59,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -72,22 +72,29 @@ async def add_security_headers(request: Request, call_next):
     if _REQ_COUNT % 50 == 0:
         import gc
         gc.collect()
+    # Yetkisiz medya erişimini engelle (/static/media/* veya /media/* doğrudan servis edilemez)
+    req_path = request.url.path.lower()
+    if req_path.startswith("/static/media") or req_path.startswith("/media/"):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Medya dosyalarına doğrudan erişim engellendi; yetkili /api/media/file ucunu kullanın."},
+        )
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; "
-        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
-        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: https:; "
         "media-src 'self' blob:; "
         "connect-src 'self' wss: https:;"
     )
     return response
 
-# Statik Dosyaları Doğrudan Bağla
+# Statik Dosyaları Doğrudan Bağla (static/media middleware ile engellenir)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # -----------------------------------------------------------------------------
@@ -99,16 +106,42 @@ async def ping_health():
     """UptimeRobot ve harici 7/24 uyanık tutma servisleri için ultra-hafif ping."""
     return JSONResponse(content={"status": "ok", "service": "yusasufhin-cockpit", "live": True})
 
+@app.api_route("/robots.txt", methods=["GET", "HEAD"])
+async def get_robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /lab\n"
+        "Disallow: /lab.html\n"
+        "Disallow: /studio\n"
+        "Disallow: /fabrika\n"
+        "Disallow: /fabrika.html\n"
+        "Disallow: /api/\n"
+        "Sitemap: https://yusasufhin.com/sitemap.xml\n"
+    )
+    return Response(content=body, media_type="text/plain; charset=utf-8")
+
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
+async def get_sitemap_xml():
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        '  <url><loc>https://yusasufhin.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n'
+        '</urlset>\n'
+    )
+    return Response(content=body, media_type="application/xml; charset=utf-8")
+
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root_index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
 
 @app.api_route("/index.html", methods=["GET", "HEAD"])
 async def index_html():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
 
 _NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
 
+@app.api_route("/studio", methods=["GET", "HEAD"])
 @app.api_route("/lab", methods=["GET", "HEAD"])
 @app.api_route("/lab.html", methods=["GET", "HEAD"])
 async def lab_page():
@@ -489,24 +522,30 @@ def _new_job_id(prefix: str = "JOB") -> str:
 
 @app.api_route("/api/auth/public_info", methods=["GET", "HEAD"])
 async def public_info():
-    """Genel sistem ve ağ geçidi durumunu sunar (Kural 1 Uyarınca Doğrulanmış Veriler)."""
+    """Genel sistem durumu — yalnızca güvenli ve doğrulanmış temel bilgi döner (Kural 1)."""
+    from mac_bridge import bridge_hub
+    from cloud_storage import storage_status
+
+    mac_on = bridge_hub.is_online()
+    st = storage_status(MEDIA_DIR)
     return {
         "status": "online",
         "domain": "https://yusasufhin.com/",
-        "platform": "Render Cloud Edge (7/24 Kesintisiz Bulut)",
         "version": "2026.11",
         "timestamp": time.time(),
-        "uptime_sla": "Doğrulanmadı",
         "auth_methods": ["password", "pin"],
         "cluster_vram_gb": 0.0,
+        "mac_bridge_online": mac_on,
+        "storage_backend": st["backend"],
+        "storage_persistent": st["persistent"],
         "active_services": {
             "web_cockpit": "online",
-            "omniroute_waterfall": "online",
+            "mac_bridge": "online" if mac_on else "offline",
             "video_studio": "ready",
-            "audio_podcast_factory": "ready",
-            "humanizer_anti_slop": "ready",
-            "kaggle_gpu_worker": "standby"
-        }
+            "tts_audio": "ready",
+            "youtube_upload": "ready",
+            "kaggle_gpu_worker": "active" if _has_live_gpu_worker() else "standby",
+        },
     }
 
 @app.post("/api/auth/login")
@@ -654,10 +693,71 @@ async def biometric_auth(req: Request):
     )
 
 # -----------------------------------------------------------------------------
-# 3. SİSTEM İSTATİSTİKLERİ & LİNK HAVUZU
+# 3. SİSTEM İSTATİSTİKLERİ, İLETİŞİM FORMU & LİNK HAVUZU
 # -----------------------------------------------------------------------------
-@app.get("/api/system/stats")
+CONTACT_RATE: Dict[str, List[float]] = {}
+
+@app.post("/api/contact")
+async def public_contact(req: Request):
+    """Genel vitrin sitesinden gelen proje/iletişim taleplerini doğrular ve kaydeder."""
+    ip = get_client_ip(req)
+    now = time.time()
+    recent = [t for t in CONTACT_RATE.get(ip, []) if now - t < 300.0]
+    if len(recent) >= 5:
+        return JSONResponse(status_code=429, content={"success": False, "detail": "Çok sık mesaj gönderildi; lütfen birkaç dakika sonra tekrar deneyin."})
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    name = str(body.get("name") or "").strip()[:100]
+    email = str(body.get("email") or "").strip()[:160]
+    message = str(body.get("message") or "").strip()[:2000]
+    if len(name) < 2 or "@" not in email or "." not in email.split("@")[-1] or len(message) < 10:
+        return JSONResponse(status_code=400, content={"success": False, "detail": "Lütfen geçerli bir ad, e-posta adresi ve en az 10 karakterlik mesaj girin."})
+
+    recent.append(now)
+    CONTACT_RATE[ip] = recent
+
+    record = {
+        "timestamp": now,
+        "name": name,
+        "email": email,
+        "message": message,
+        "ip": ip,
+    }
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with (DATA_DIR / "contact_inquiries.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        logger.warning("İletişim kaydı yazılamadı: %s", exc)
+
+    tg_notified = False
+    tg_tok = get_secret_from_env("TELEGRAM_BOT_TOKEN")
+    tg_chat = get_secret_from_env("TELEGRAM_CHAT_ID")
+    if tg_tok and tg_chat:
+        try:
+            import requests as _req
+            r_tg = _req.post(
+                f"https://api.telegram.org/bot{tg_tok}/sendMessage",
+                json={"chat_id": tg_chat, "text": f"📩 yusasufhin.com İletişim\nAd: {name}\nE-posta: {email}\n\n{message[:1200]}"},
+                timeout=8,
+            )
+            tg_notified = bool(r_tg.ok)
+        except Exception:
+            tg_notified = False
+
+    return {
+        "success": True,
+        "notified": tg_notified,
+        "message": "Mesajınız alındı. En kısa sürede e-posta üzerinden dönüş yapılacaktır.",
+    }
+
+@app.get("/api/system/stats", dependencies=[Depends(verify_auth)])
 async def get_system_stats():
+    from mac_bridge import bridge_hub
+    from cloud_storage import storage_status
+
     link_count = 0
     ls_path = DATA_DIR / "link_store.json"
     if ls_path.exists():
@@ -680,24 +780,34 @@ async def get_system_stats():
         except Exception:
             pass
 
+    mac_st = bridge_hub.get_status()
+    mac_stats = mac_st.get("stats") or {}
+    mac_online = bool(mac_st.get("online"))
+
     return {
-        "cpu": None,
-        "ram": None,
+        "cpu": mac_stats.get("cpu") if mac_online else None,
+        "ram": mac_stats.get("ram") if mac_online else None,
         "status": "online",
-        "mimar": "LHH Manager Hazır",
-        "kys": "Kod Hastanesi Aktif",
-        "link_pool_count": link_count,
-        "rea_score": rea_score,
+        "mac_bridge_online": mac_online,
+        "mac_bridge": mac_st,
+        "storage": storage_status(MEDIA_DIR),
+        "link_pool_count": mac_stats.get("link_pool_count") if (mac_online and mac_stats.get("link_pool_count")) else link_count,
+        "rea_score": rea_score if rea_score is not None else (mac_stats.get("rea_score") if mac_online else None),
         "rea_scans": rea_scans,
-        "telemetry": "Veri Yok (Canlı CPU/RAM telemetrisi bağlı değil)",
+        "telemetry": (
+            "Canlı Mac Fabrika telemetrisi (Port 443 köprüsü)"
+            if mac_online
+            else "Mac Fabrika çevrimdışı (bulut kuyruğu etkin)"
+        ),
         "tunnel": {
-            "active": False,
-            "url": None,
-            "provider": "Yapılandırılmadı (Cloudflare/Render tüneli doğrulanmadı)"
+            "active": bool(mac_online and mac_stats.get("named_tunnel_active")),
+            "named_tunnel_active": "true" if (mac_online and mac_stats.get("named_tunnel_active")) else "false",
+            "url": mac_stats.get("custom_domain") if mac_online else "https://yusasufhin.com",
+            "provider": "Mac Port-443 HTTPS Köprüsü" if mac_online else "Bulut Kokpiti (Mac çevrimdışı)",
         }
     }
 
-@app.get("/api/links/pool")
+@app.get("/api/links/pool", dependencies=[Depends(verify_auth)])
 async def get_links_pool(q: Optional[str] = None, category: Optional[str] = None):
     ls_path = DATA_DIR / "link_store.json"
     links = []
@@ -755,7 +865,7 @@ async def get_links_pool(q: Optional[str] = None, category: Optional[str] = None
 # -----------------------------------------------------------------------------
 # 4. KOVA LAB MODEL KATALOĞU & İNTERAKTİF STÜDYO
 # -----------------------------------------------------------------------------
-@app.get("/api/video/tesis")
+@app.get("/api/video/tesis", dependencies=[Depends(verify_auth)])
 async def get_video_tesis():
     """YZ video hattının canlı ortamda çalışabilirliğini raporlar.
 
@@ -770,7 +880,7 @@ async def get_video_tesis():
         return {"success": False, "hata": str(e)}
 
 
-@app.get("/api/lab/models")
+@app.get("/api/lab/models", dependencies=[Depends(verify_auth)])
 async def get_lab_models():
     models_file = DATA_DIR / "kova_lab_models.json"
     if models_file.exists():
@@ -821,7 +931,7 @@ def _mp4_oynatilabilir(yol: Path) -> bool:
             return False
 
 
-@app.get("/api/lab/history")
+@app.get("/api/lab/history", dependencies=[Depends(verify_auth)])
 async def get_lab_history(limit: int = Query(12)):
     """
     Üretilen videoların GERÇEK geçmişi (2026-11-10).
@@ -1282,6 +1392,15 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
     job["artifacts"] = art
     if str(job.get("output_url") or "").lower().find(".mp4") >= 0:
         try:
+            from cloud_storage import put_file
+            jid_f = str(job.get("job_id") or "")
+            if jid_f:
+                put_file(MEDIA_DIR / f"{jid_f}.mp4", content_type="video/mp4")
+                if (MEDIA_DIR / f"{jid_f}_preview.png").is_file():
+                    put_file(MEDIA_DIR / f"{jid_f}_preview.png", content_type="image/png")
+        except Exception:
+            pass
+        try:
             job["youtube_bundle"] = ChannelStore(DATA_DIR).build_publish_bundle(job, MEDIA_DIR)
         except Exception:
             pass
@@ -1645,7 +1764,7 @@ async def generate_lab_video(req: Request):
 # -----------------------------------------------------------------------------
 # 5. VİDEO OTOMASYON PRODÜKSİYONU (REMOTION / BLENDER / CANVAS)
 # -----------------------------------------------------------------------------
-@app.get("/api/studio/video/channels")
+@app.get("/api/studio/video/channels", dependencies=[Depends(verify_auth)])
 async def studio_channels():
     try:
         from studio_controller import VideoStudioController
@@ -1679,7 +1798,7 @@ async def studio_channels():
             }
         }
 
-@app.get("/api/studio/catalog")
+@app.get("/api/studio/catalog", dependencies=[Depends(verify_auth)])
 async def studio_full_catalog():
     """Tüm doğrulanmış görsel/I2V modellerini, tarzları, sesleri ve kayıtlı YouTube kanallarını döner."""
     from channels_manager import ChannelStore, get_full_catalog
@@ -1693,7 +1812,7 @@ async def studio_full_catalog():
     }
 
 
-@app.get("/api/channels")
+@app.get("/api/channels", dependencies=[Depends(verify_auth)])
 async def list_youtube_channels():
     from channels_manager import ChannelStore
 
@@ -2566,7 +2685,7 @@ async def audio_process(req: Request):
         }
 
 
-@app.get("/api/audio/history")
+@app.get("/api/audio/history", dependencies=[Depends(verify_auth)])
 async def get_audio_history(limit: int = Query(12)):
     """Üretilen ses ve müzik dosyalarının gerçek geçmişi ve indirme bağlantıları."""
     items: List[Dict[str, Any]] = []
@@ -3212,7 +3331,7 @@ def _prune_stale_workers():
     for wid in stale:
         ACTIVE_GPU_WORKERS.pop(wid, None)
 
-@app.get("/api/gpu/cluster/status")
+@app.get("/api/gpu/cluster/status", dependencies=[Depends(verify_auth)])
 async def gpu_status():
     """Gerçek GPU işçi bağlantı durumu (Kural 1 gereği dürüst telemetri)."""
     _prune_stale_workers()
@@ -3544,6 +3663,11 @@ async def worker_upload(
             )
         hedef = MEDIA_DIR / f"{jid}.mp4"
         os.replace(gecici, hedef)
+        try:
+            from cloud_storage import put_file
+            await run_in_threadpool(lambda: put_file(hedef, content_type="video/mp4"))
+        except Exception:
+            pass
         cikti_url = f"/api/media/file?path={hedef.name}"
         indirme_url = f"{cikti_url}&download=1"
 
@@ -3621,7 +3745,7 @@ async def worker_subtitle(job_id: str):
 # -----------------------------------------------------------------------------
 # 8. OMNIROUTE MODEL ŞELALESİ & ANTI-SLOP
 # -----------------------------------------------------------------------------
-@app.get("/api/omniroute/status")
+@app.get("/api/omniroute/status", dependencies=[Depends(verify_auth)])
 async def omniroute_status():
     return {
         "status": "operational",
@@ -3721,10 +3845,11 @@ async def humanizer_clean(req: Request):
     }
 
 # -----------------------------------------------------------------------------
-# 9. GÜVENLİK, REA, MEDYA & PUSH BİLDİRİM API'LERİ (SIFIR AÇIK & İZOLASYON)
+# 9. GÜVENLİK, REA (GERÇEK AST), MEDYA (R2 + İZOLASYON) & MAC PORT-443 KÖPRÜSÜ
 # -----------------------------------------------------------------------------
-MEDIA_DIR = (BASE_DIR / "static" / "media").resolve()
+MEDIA_DIR = (BASE_DIR / "storage" / "media").resolve()
 MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+LEGACY_MEDIA_DIR = (BASE_DIR / "static" / "media").resolve()
 DATA_MEDIA_DIR = (BASE_DIR / "data").resolve()
 
 ALLOWED_MEDIA_EXT = {
@@ -3738,6 +3863,8 @@ ALLOWED_MEDIA_EXT = {
 @app.api_route("/api/media/file", methods=["GET", "HEAD"], dependencies=[Depends(verify_auth)])
 async def get_media_file(path: str, download: Optional[int] = Query(0)):
     """Path Traversal ve Keyfi Dosya Okuma Açıklarına Karşı %100 Yalıtılmış & Korumalı Medya Sunucu."""
+    from cloud_storage import ensure_local
+
     if not path:
         return JSONResponse(status_code=400, content={"detail": "Dosya yolu parametresi eksik."})
 
@@ -3750,23 +3877,28 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
     if ext not in ALLOWED_MEDIA_EXT:
         return JSONResponse(status_code=415, content={"detail": "Yalnızca doğrulanmış medya formatları desteklenir."})
 
-    # Dosyayı yalnızca MEDIA_DIR veya DATA_MEDIA_DIR içinde ara
+    # Dosyayı yalıtılmış storage/media, eski static/media veya data içinde ara; yoksa R2'den geri yükle
     target = (MEDIA_DIR / file_name).resolve()
+    if not target.is_file() and LEGACY_MEDIA_DIR.is_dir():
+        legacy_cand = (LEGACY_MEDIA_DIR / file_name).resolve()
+        if legacy_cand.is_file() and legacy_cand.is_relative_to(LEGACY_MEDIA_DIR):
+            target = legacy_cand
     if not target.is_file():
-        target = (DATA_MEDIA_DIR / file_name).resolve()
+        data_cand = (DATA_MEDIA_DIR / file_name).resolve()
+        if data_cand.is_file() and data_cand.is_relative_to(DATA_MEDIA_DIR):
+            target = data_cand
     if not target.is_file():
-        # 2026-11-09: StudioController çıktıları `video_factory/<JOB>/` altında
-        # kalabiliyordu (ör. rendered_output.mp4). MEDIA_DIR kopyası başarısız
-        # olduysa buradan servis edilir — aksi halde URL 404 verirdi.
         for _aday in sorted((BASE_DIR / "video_factory").glob(f"*/{file_name}"), reverse=True):
             if _aday.is_file():
                 target = _aday.resolve()
                 break
+    if not target.is_file():
+        restored = (MEDIA_DIR / file_name).resolve()
+        if restored.is_relative_to(MEDIA_DIR) and await run_in_threadpool(lambda: ensure_local(restored)):
+            target = restored
 
-    _izinli_kokler = (MEDIA_DIR, DATA_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
+    _izinli_kokler = (MEDIA_DIR, LEGACY_MEDIA_DIR, DATA_MEDIA_DIR, (BASE_DIR / "video_factory").resolve())
     if target.is_file() and any(target.is_relative_to(k) for k in _izinli_kokler):
-        # 2026-11-10: yarım kalmış MP4 (moov yok) tarayıcıda hiç oynamıyordu.
-        # Sessizce boş oynatıcı sunmak yerine dürüst 422 döneriz.
         if ext == ".mp4" and not _mp4_oynatilabilir(target):
             return JSONResponse(
                 status_code=422,
@@ -3781,7 +3913,8 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
             ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
             ".webp": "image/webp", ".gif": "image/gif", ".mp3": "audio/mpeg",
             ".ogg": "audio/ogg", ".wav": "audio/wav", ".mp4": "video/mp4",
-            ".webm": "video/webm", ".mov": "video/quicktime", ".pdf": "application/pdf"
+            ".webm": "video/webm", ".mov": "video/quicktime", ".pdf": "application/pdf",
+            ".srt": "application/x-subrip; charset=utf-8", ".ass": "text/x-ssa; charset=utf-8",
         }
         disp = f'attachment; filename="{file_name}"' if download else "inline"
         return FileResponse(
@@ -3793,60 +3926,46 @@ async def get_media_file(path: str, download: Optional[int] = Query(0)):
 
 @app.post("/api/rea/scan", dependencies=[Depends(verify_auth)])
 async def rea_scan(req: Request):
-    """Gerçek Kod & Zafiyet Analizörü (eval, exec, command injection, path traversal tespiti)."""
+    """Gerçek Python AST + Desen Tabanlı Güvenlik Analizörü (`hedef`, `code`, `snippet`, `url`)."""
+    from rea_analyzer import analyze_code
+
     try:
         body = await req.json()
     except Exception:
         body = {}
-    target_code = body.get("code") or body.get("snippet") or body.get("url") or ""
-    findings = []
-    score = 100
-    if target_code:
-        if re.search(r"\b(eval|exec)\s*\(", target_code):
-            findings.append({"kural": "Dinamik Kod Çalıştırma", "ciddiyet": "KRİTİK", "mesaj": "eval() veya exec() tespit edildi."})
-            score -= 35
-        if re.search(r"subprocess\.(run|Popen|call)\(.*shell\s*=\s*True", target_code):
-            findings.append({"kural": "Komut Enjeksiyonu", "ciddiyet": "YÜKSEK", "mesaj": "shell=True kullanımı tespit edildi."})
-            score -= 25
-        if re.search(r"(?:api_key|password|secret|token)\s*=\s*['\"][a-zA-Z0-9_\-]{8,}['\"]", target_code, re.I):
-            findings.append({"kural": "Hardcoded Secret", "ciddiyet": "YÜKSEK", "mesaj": "Kod içinde sabit anahtar/parola tespit edildi."})
-            score -= 20
-        if re.search(r"\.startswith\(", target_code) and "is_relative_to" not in target_code:
-            findings.append({"kural": "Zayıf Dizin Denetimi", "ciddiyet": "ORTA", "mesaj": "Dizin kontrolünde startswith yerine is_relative_to tercih edilmelidir."})
-            score -= 10
-    else:
-        score = 100
-        findings = []
+    target_code = (
+        body.get("hedef")
+        or body.get("code")
+        or body.get("snippet")
+        or body.get("url")
+        or ""
+    )
+    persona = str(body.get("persona") or "kys")
+    result = analyze_code(str(target_code), persona=persona)
 
-    score = max(0, min(100, score))
-    level = "GÜVENLİ (DÜŞÜK RİSK)" if score >= 90 else ("DİKKAT (ORTA RİSK)" if score >= 70 else "KRİTİK GÜVENSİZ")
+    if result.get("score") is not None:
+        scan_record = {
+            "timestamp": time.time(),
+            "score": result["score"],
+            "vulnerabilities_found": result["vulnerabilities_found"],
+            "rules": [f.get("kural", "") for f in result.get("findings", [])],
+            "level": result["level"],
+        }
+        scans_file = DATA_DIR / "rea_scans.json"
+        try:
+            records = []
+            if scans_file.exists():
+                records = json.loads(scans_file.read_text(encoding="utf-8"))
+            if not isinstance(records, list):
+                records = []
+            records.append(scan_record)
+            scans_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("REA tarama kaydı yazılamadı: %s", e)
 
-    scan_record = {
-        "timestamp": time.time(),
-        "score": score,
-        "vulnerabilities_found": len(findings),
-        "level": level
-    }
+    return result
 
-    scans_file = DATA_DIR / "rea_scans.json"
-    try:
-        records = []
-        if scans_file.exists():
-            records = json.loads(scans_file.read_text(encoding="utf-8"))
-        records.append(scan_record)
-        scans_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception as e:
-        logger.warning("REA tarama kaydı yazılamadı: %s", e)
-
-    return {
-        "status": "completed",
-        "score": score,
-        "vulnerabilities_found": len(findings),
-        "findings": findings,
-        "level": level
-    }
-
-@app.get("/api/rea/history")
+@app.get("/api/rea/history", dependencies=[Depends(verify_auth)])
 async def rea_history():
     """Gerçek REA geçmişi (Kural 1 uyarınca sahte mock rakamlar kaldırılmıştır)."""
     scans_file = DATA_DIR / "rea_scans.json"
@@ -3856,11 +3975,26 @@ async def rea_history():
             if isinstance(records, list) and records:
                 toplam = len(records)
                 ort = round(sum(r.get("score", 100) for r in records) / toplam, 1)
+                rule_counts: Dict[str, int] = {}
+                for rec in records:
+                    for rname in (rec.get("rules") or []):
+                        rule_counts[rname] = rule_counts.get(rname, 0) + 1
+                tekrar = sum(1 for c in rule_counts.values() if c >= 2)
                 level = "A+ (Mükemmel)" if ort >= 90 else ("B (Orta)" if ort >= 70 else "Kritik")
-                return {"toplam_tarama": toplam, "ort_skor": ort, "guvenlik_seviyesi": level}
+                return {
+                    "toplam_tarama": toplam,
+                    "ort_skor": ort,
+                    "tekrarlayan_zafiyet_sayisi": tekrar,
+                    "guvenlik_seviyesi": level,
+                }
         except Exception:
             pass
-    return {"toplam_tarama": 0, "ort_skor": None, "guvenlik_seviyesi": "Veri Yok (Tarama Yapılmadı)"}
+    return {
+        "toplam_tarama": 0,
+        "ort_skor": None,
+        "tekrarlayan_zafiyet_sayisi": 0,
+        "guvenlik_seviyesi": "Veri Yok (Tarama Yapılmadı)",
+    }
 
 @app.get("/api/push/vapid_public_key")
 async def push_vapid():
@@ -3886,7 +4020,66 @@ async def tunnel_setup():
     )
 
 # -----------------------------------------------------------------------------
-# 10. WEBSOCKET CANLI CHAT (MOBİL PWA & KOKPİT)
+# 9b. MAC FABRİKA PORT-443 HTTPS KÖPRÜSÜ (Core/gateway/vpn_port443_bridge.py)
+# -----------------------------------------------------------------------------
+def _valid_bridge_secrets() -> List[str]:
+    found: List[str] = []
+    for k in ("BRIDGE_SECRET", "ALANADISIFRE", "alanadisifre", "FABRIKA_GATEWAY_PASSWORD", "GATEWAY_PASSWORD", "alansifre"):
+        val = get_secret_from_env(k)
+        if val and val not in found:
+            found.append(val)
+    return found
+
+@app.post("/api/bridge/poll")
+async def mac_bridge_poll(
+    req: Request,
+    x_bridge_secret: Optional[str] = Header(None, alias="X-Fabrika-Bridge-Secret"),
+):
+    """Mac'teki `VPNPort443Bridge` her 2 sn'de bir bu ucu arar; kalp atışı & yanıt bırakır, görev alır."""
+    from mac_bridge import bridge_hub
+
+    secrets_list = _valid_bridge_secrets()
+    if not secrets_list:
+        raise HTTPException(status_code=503, detail="Bridge secret sunucuda yapılandırılmadı.")
+    if not bridge_hub.verify_secret(x_bridge_secret, secrets_list):
+        raise HTTPException(status_code=401, detail="Geçersiz X-Fabrika-Bridge-Secret.")
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+
+    tasks = bridge_hub.handle_poll(
+        stats=body.get("stats") if isinstance(body.get("stats"), dict) else None,
+        replies=body.get("replies") if isinstance(body.get("replies"), list) else None,
+    )
+    return {"ok": True, "tasks": tasks}
+
+@app.get("/api/bridge/status", dependencies=[Depends(verify_auth)])
+async def mac_bridge_status():
+    """Mac Fabrika bağlantısının anlık ve dürüst durumunu döner."""
+    from mac_bridge import bridge_hub
+
+    return {"success": True, **bridge_hub.get_status()}
+
+@app.post("/api/bridge/command", dependencies=[Depends(verify_auth)])
+async def mac_bridge_command(req: Request):
+    """Komutu canlı Mac Fabrika köprüsüne iletir; Mac çevrimdışıysa bekletmeden dürüstçe bildirir."""
+    from mac_bridge import bridge_hub
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    text = str(body.get("text") or body.get("command") or "").strip()
+    timeout_sec = max(2.0, min(25.0, float(body.get("timeout_sec") or 14.0)))
+    res = await run_in_threadpool(lambda: bridge_hub.enqueue_and_wait(text, timeout_sec=timeout_sec))
+    return {"success": bool(res.get("ok")), **res}
+
+# -----------------------------------------------------------------------------
+# 10. WEBSOCKET CANLI CHAT (MAC KÖPRÜSÜNE BAĞLI — ÇEVRİMDIŞIYSA DÜRÜST BİLDİRİM)
 # -----------------------------------------------------------------------------
 class ConnectionManager:
     def __init__(self):
@@ -3911,31 +4104,51 @@ manager = ConnectionManager()
 
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None)):
+    from mac_bridge import bridge_hub
+
     if not token or not is_session_valid(token):
         await websocket.close(code=4401)
         return
 
     await manager.connect(websocket)
     try:
+        mac_on = bridge_hub.is_online()
         welcome = {
-            "type": "system_notice",
-            "sender": "Fabrika Cloud AI",
-            "text": "yusasufhin.com 7/24 Bulut Kokpiti devrede. Komutlarınız bulut kuyruğuna alınır."
+            "type": "system_alert",
+            "sender": "Mac Fabrika Köprüsü",
+            "text": (
+                "🟢 Mac Fabrika köprüsü canlı! Komutlarınız doğrudan bilgisayarınızdaki Fabrika'da çalıştırılır."
+                if mac_on
+                else "⚪ Mac Fabrika şu an çevrimdışı. Bilgisayarınızda Fabrika açıldığında otomatik bağlanır."
+            ),
         }
-        await websocket.send_text(json.dumps(welcome))
+        await websocket.send_text(json.dumps(welcome, ensure_ascii=False))
         while True:
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-                user_text = msg.get("text", "")
+                user_text = str(msg.get("text", "")).strip()
             except Exception:
-                user_text = data
+                user_text = str(data).strip()
 
-            reply = {
-                "type": "system_notice",
-                "sender": "Fabrika Cloud Relay",
-                "text": f"[Sistem Kuyruğu] '{user_text}' mesajınız alındı (Kural 1 uyarınca: Canlı ajan yürütmesi için yerel düğüm beklenmektedir)."
-            }
+            if not user_text:
+                continue
+
+            res = await run_in_threadpool(lambda: bridge_hub.enqueue_and_wait(user_text, timeout_sec=14.0))
+            if res.get("ok"):
+                reply = {
+                    "type": "agent_reply",
+                    "sender": res.get("sender") or "Mac Fabrika",
+                    "text": res.get("text") or "",
+                    "action": res.get("action"),
+                    "media": res.get("media"),
+                }
+            else:
+                reply = {
+                    "type": "system_alert",
+                    "sender": res.get("sender") or "Mac Köprüsü",
+                    "text": res.get("text") or "Mac Fabrika şu an çevrimdışı.",
+                }
             await websocket.send_text(json.dumps(reply, ensure_ascii=False))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -3946,17 +4159,25 @@ async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None
 # -----------------------------------------------------------------------------
 # 11. ÇOK KATMANLI AKILLI STATİK VE SPA DÜŞÜŞ (FALLBACK) YÖNLENDİRMESİ
 # -----------------------------------------------------------------------------
+_PUBLIC_STATIC_EXT = {".html", ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".woff2", ".ttf", ".ipynb"}
+
 @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
 async def catch_all_router(full_path: str):
     """
-    Herhangi bir alt sayfa veya dosya isteğinde:
-    1. Dizin atlama kontrolü: is_relative_to(STATIC_DIR)
-    2. STATIC_DIR içinde dosya varsa doğrudan sunar (örn: /styles.css, /lab.js)
-    3. full_path.html varsa onu sunar (örn: /lab -> /lab.html)
-    4. Hiçbiri yoksa index.html SPA karşılama sayfasına döner.
+    Güvenli statik/SPA yönlendiricisi:
+    - `media/`, gizli dosyalar ve hassas uzantılar kesinlikle engellenir.
+    - İzinli statik varlıklar ve `.html` sayfaları sunulur; yoksa index.html döner.
     """
+    raw = (full_path or "").lstrip("/")
+    if not raw:
+        return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
+
+    low = raw.lower()
+    if low.startswith("media/") or low.startswith("static/media") or "/media/" in low or low.startswith(".") or "/." in low:
+        return JSONResponse(status_code=403, content={"detail": "Bu kaynağa doğrudan erişim yasaktır."})
+
     try:
-        clean_name = Path(full_path).name if "/" not in full_path else full_path
+        clean_name = Path(raw).name if "/" not in raw else raw
         target = (STATIC_DIR / clean_name).resolve()
         if not target.is_relative_to(STATIC_DIR.resolve()):
             return JSONResponse(status_code=403, content={"detail": "Dizin sınırları dışına erişim engellendi."})
@@ -3964,13 +4185,15 @@ async def catch_all_router(full_path: str):
         return JSONResponse(status_code=400, content={"detail": "Geçersiz dosya yolu."})
 
     if target.is_file():
-        return FileResponse(target)
+        if target.name in ("manifest.json", "surum.json") or target.suffix.lower() in _PUBLIC_STATIC_EXT:
+            return FileResponse(target, headers=_NO_CACHE)
+        return JSONResponse(status_code=403, content={"detail": "Bu dosya türü doğrudan sunulamaz."})
 
     target_html = (STATIC_DIR / f"{clean_name}.html").resolve()
     if target_html.is_file() and target_html.is_relative_to(STATIC_DIR.resolve()):
-        return FileResponse(target_html)
+        return FileResponse(target_html, headers=_NO_CACHE)
 
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
 
 if __name__ == "__main__":
     import uvicorn

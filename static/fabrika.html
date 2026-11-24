@@ -14,13 +14,12 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/styles.css?v=8">
+  <link rel="stylesheet" href="/styles.css?v=9">
   <script>
-    // Kurumsal VPN & Tarayıcı Eski Service Worker Önbellek Temizleyici
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (let name of names) {
-          if (name !== 'fabrika-pwa-v23-studio') caches.delete(name);
+          if (name !== 'fabrika-pwa-v24-clean') caches.delete(name);
         }
       });
     }
@@ -148,21 +147,18 @@
       </div>
 
       <div class="sidebar-footer">
-        <button class="btn-push" id="btnOpenLinkPoolSidebar">
-          <span>📚</span> Ar-Ge Link Havuzu (229 Proje)
-        </button>
-        <button class="btn-sidebar-sec" id="btnAutoSetupCf">
-          <span>☁️</span> yusasufhin.com Cloudflare Kur
-        </button>
-        <button class="btn-sidebar-sec" id="btnEnablePush">
-          <span>🔔</span> Web Push Bildirimlerini Aç
+        <a class="btn-push" href="/lab.html" style="text-decoration:none; text-align:center;">
+          <span>🎬</span> Video, Ses &amp; YouTube Stüdyosu
+        </a>
+        <button class="btn-sidebar-sec" id="btnOpenLinkPoolSidebar">
+          <span>📚</span> Ar-Ge Link Havuzu
         </button>
         <button class="btn-sidebar-sec" id="btnOpenChangePin">
           <span>🔑</span> PIN Kodunu Değiştir
         </button>
-        <button class="btn-sidebar-sec" id="btnToggleBiometrics">
-          <span>👤</span> Face ID / Biyometrik Kilit
-        </button>
+        <a class="btn-sidebar-sec" href="/" style="text-decoration:none; text-align:center;">
+          <span>←</span> Ana Sayfaya Dön
+        </a>
       </div>
     </aside>
 
@@ -198,59 +194,59 @@
         </div>
       </header>
 
-      <!-- Link #153 (bentogrids.com) & Link #66 (PilotDeck 2.0) Bento Komuta Panosu -->
+      <!-- Bento Komuta Panosu -->
       <section class="bento-dashboard" id="bentoDashboard">
         <div class="bento-card spotlight-card" id="bentoCardDomain">
           <div class="bento-card-top">
-            <span class="bento-tag">🌍 ALAN ADI &amp; TÜNEL</span>
-            <span class="bento-status-dot online" id="bentoTunnelDot"></span>
+            <span class="bento-tag">💻 MAC FABRİKA KÖPRÜSÜ</span>
+            <span class="bento-status-dot" id="bentoTunnelDot"></span>
           </div>
-          <div class="bento-main-val" id="bentoDomainTitle">yusasufhin.com</div>
+          <div class="bento-main-val" id="bentoDomainTitle">Kontrol Ediliyor</div>
           <div class="bento-sub-row">
-            <span id="bentoTunnelSub">Cloudflare Zero-Trust</span>
-            <button type="button" class="bento-mini-btn" id="btnBentoCfSetup">⚡ Otomatik Bağla</button>
+            <span id="bentoTunnelSub">Port 443 HTTPS Köprüsü</span>
+            <a href="/lab.html#mac" class="bento-mini-btn" style="text-decoration:none;">Stüdyo →</a>
           </div>
         </div>
 
         <div class="bento-card spotlight-card" id="bentoCardLinkPool" style="cursor: pointer;">
           <div class="bento-card-top">
             <span class="bento-tag">📚 AR-GE LİNK HAVUZU</span>
-            <span class="bento-badge-purple">Oil UI &amp; Jiro</span>
+            <span class="bento-badge-purple">Canlı</span>
           </div>
-          <div class="bento-main-val"><span id="bentoLinkCount">229</span> <small>Proje</small></div>
+          <div class="bento-main-val"><span id="bentoLinkCount">—</span> <small>Proje</small></div>
           <div class="bento-sub-row">
-            <span>Tasarım, Ajan &amp; Siber Kalkan</span>
+            <span>Arama &amp; Filtreleme</span>
             <span class="bento-link-arrow">Keşfet →</span>
           </div>
         </div>
 
         <div class="bento-card spotlight-card" id="bentoCardRea" style="cursor: pointer;">
           <div class="bento-card-top">
-            <span class="bento-tag">🛡️ REA SİBER KALKAN</span>
-            <span class="bento-badge-green">AST + MR</span>
+            <span class="bento-tag">🛡️ REA GÜVENLİK (AST)</span>
+            <span class="bento-badge-green">Python AST</span>
           </div>
-          <div class="bento-main-val"><span id="bentoReaScore">100</span><small>/100</small></div>
+          <div class="bento-main-val"><span id="bentoReaScore">—</span><small>/100</small></div>
           <div class="bento-sub-row">
-            <span id="bentoReaScansText">Sıfır Zafiyet İhlali</span>
+            <span id="bentoReaScansText">Kod Güvenlik Taraması</span>
             <span class="bento-link-arrow">Denetle →</span>
           </div>
         </div>
 
         <div class="bento-card spotlight-card">
           <div class="bento-card-top">
-            <span class="bento-tag">⚡ APPLE SILICON MLX</span>
-            <span class="bento-badge-cyan" id="bentoMemLabel">Unified</span>
+            <span class="bento-tag">📊 MAC TELEMETRİSİ</span>
+            <span class="bento-badge-cyan" id="bentoMemLabel">Port 443</span>
           </div>
           <div class="bento-bars">
             <div class="bento-bar-row">
               <span>CPU</span>
-              <div class="bento-progress"><div class="bento-progress-fill" id="bentoCpuBar" style="width: 18%;"></div></div>
-              <span id="bentoCpuVal">%--</span>
+              <div class="bento-progress"><div class="bento-progress-fill" id="bentoCpuBar" style="width: 0%;"></div></div>
+              <span id="bentoCpuVal">—</span>
             </div>
             <div class="bento-bar-row">
               <span>RAM</span>
-              <div class="bento-progress"><div class="bento-progress-fill purple" id="bentoRamBar" style="width: 42%;"></div></div>
-              <span id="bentoRamVal">%--</span>
+              <div class="bento-progress"><div class="bento-progress-fill purple" id="bentoRamBar" style="width: 0%;"></div></div>
+              <span id="bentoRamVal">—</span>
             </div>
           </div>
         </div>
@@ -261,12 +257,11 @@
         <div class="msg-row agent">
           <div class="msg-bubble">
             <div class="msg-header">
-              <span>👑 CEO &amp; Meclis</span>
+              <span>💻 Mac Fabrika Köprüsü</span>
               <span class="msg-time">Şimdi</span>
             </div>
             <div class="msg-content">
-              <strong>yusasufhin.com — Fabrika Komuta Merkezi (PWA)</strong> devrede! Ar-Ge Link Havuzundaki <strong>Oil UI (#164)</strong> 3-yönlü tema motoru, <strong>Bento Grids (#153)</strong> canlı telemetri panosu, <strong>Canvas UI (#103)</strong> ve <strong>Jiro Build (#173/#186)</strong> bileşenleriyle donatıldı.<br/><br/>
-              Üstteki <strong>📚 Link Havuzu</strong> kartına tıklayarak 229 projeyi anında arayabilir, <strong>⌘K</strong> ile Komut Paletini açabilir veya <strong>⚡ Otomatik Bağla</strong> butonuyla <code>Alancf</code> / <code>alansifre</code> üzerinden Cloudflare kalıcı tünelini tek tıkla tamamlayabilirsiniz.
+              <strong>yusasufhin.com — Fabrika Komuta Merkezi</strong> hazır. Bilgisayarınızda Fabrika açık olduğunda komutlarınız Port-443 HTTPS köprüsü üzerinden doğrudan Mac'inizde çalışır. Video, seslendirme ve YouTube işlemleri için <a href="/lab.html" style="color:var(--accent-cyan);">Stüdyo</a> sayfasına geçebilirsiniz.
             </div>
           </div>
         </div>
@@ -406,7 +401,7 @@
     </div>
   </div>
 
-  <!-- Giriş ve Güvenlik Ekranı (yusasufhin.com — Kullanıcı Adı + Şifre / Yüz Kilidi / PIN) -->
+  <!-- Giriş ve Güvenlik Ekranı (Parola veya 6 Haneli PIN) -->
   <div class="pin-modal-overlay active" id="pinModalOverlay">
     <div class="pin-card spotlight-card" id="pinCard">
       <div class="pin-brand">
@@ -414,43 +409,25 @@
           <img src="/fabrika_icon.svg" alt="Fabrika" class="pin-logo">
         </div>
         <h2>FABRİKA HUD</h2>
-        <span class="pin-security-badge">🌐 yusasufhin.com • Zero-Trust Kalkanı</span>
-        <p id="authSubtitleText">Kullanıcı adı &amp; şifrenizle veya Yüz Kilidi (Face ID) ile giriş yapın</p>
-      </div>
-
-      <!-- Oil UI Hızlı Tema Seçici (Giriş Ekranında) -->
-      <div class="lockscreen-theme-bar">
-        <button type="button" class="theme-chip active" data-set-theme="cyber_hud">🌌 Cyber HUD</button>
-        <button type="button" class="theme-chip" data-set-theme="jiro_glass">💎 Jiro Glass</button>
-        <button type="button" class="theme-chip" data-set-theme="minimal_gold">🏛️ Minimal Gold</button>
-      </div>
-
-      <!-- Hızlı Giriş Başlatma Butonu -->
-      <div class="login-gate-launcher" id="loginGateLauncher">
-        <button type="button" class="btn-gate-open" id="btnOpenLoginGate">
-          <span>🔐</span> Giriş Ekranını Aç (Kullanıcı Adı / Yüz Kilidi)
-        </button>
+        <span class="pin-security-badge">🌐 yusasufhin.com • Yönetici Girişi</span>
+        <p id="authSubtitleText">Yönetici parolanız veya 6 haneli PIN kodunuzla giriş yapın</p>
       </div>
 
       <!-- Giriş Yöntemi Sekmeleri -->
       <div class="auth-mode-tabs" id="authModeTabs">
-        <button type="button" class="auth-tab-btn active" id="tabBtnPassword" data-mode="password">🔑 Kullanıcı Adı &amp; Şifre</button>
+        <button type="button" class="auth-tab-btn active" id="tabBtnPassword" data-mode="password">🔑 Yönetici Parolası</button>
         <button type="button" class="auth-tab-btn" id="tabBtnPin" data-mode="pin">🔢 6 Haneli PIN</button>
       </div>
 
       <!-- Hata veya Bilgilendirme Mesajı -->
       <div class="pin-status-msg" id="pinStatusMsg"></div>
 
-      <!-- 1. Kullanıcı Adı & Şifre (.env alanadisifre / Alancf) Giriş Paneli -->
+      <!-- 1. Parola Giriş Paneli -->
       <form class="credentials-login-box" id="loginCredentialsForm" autocomplete="on">
         <div class="cred-input-group">
-          <label for="inputLoginUsername">Kullanıcı Adı / Cloudflare E-Posta (<code>Alancf</code>)</label>
-          <input type="text" id="inputLoginUsername" name="username" value="yusuf" placeholder="E-posta (Alancf) veya kullanıcı adı" autocomplete="username" class="cred-input">
-        </div>
-        <div class="cred-input-group">
-          <label for="inputLoginPassword">Web Sitesi Şifresi (<code>.env alanadisifre</code>)</label>
+          <label for="inputLoginPassword">Yönetici Parolası</label>
           <div class="cred-pass-wrapper">
-            <input type="password" id="inputLoginPassword" name="password" placeholder="••••••••••" autocomplete="current-password" class="cred-input">
+            <input type="password" id="inputLoginPassword" name="password" placeholder="••••••••••" autocomplete="current-password" class="cred-input" required>
             <button type="button" class="btn-toggle-pass" id="btnTogglePassVis" title="Şifreyi Göster/Gizle">👁️</button>
           </div>
         </div>
@@ -461,7 +438,6 @@
 
       <!-- 2. 6 Haneli PIN Giriş Paneli -->
       <div class="pin-mode-container" id="pinModeContainer" style="display: none;">
-        <!-- 6 Haneli PIN Noktaları -->
         <div class="pin-indicators" id="pinIndicators">
           <span class="pin-dot" data-index="0"></span>
           <span class="pin-dot" data-index="1"></span>
@@ -471,7 +447,6 @@
           <span class="pin-dot" data-index="5"></span>
         </div>
 
-        <!-- Dokunmatik Numpad (Mobil & Masaüstü) -->
         <div class="pin-numpad" id="pinNumpad">
           <button type="button" class="numpad-key" data-key="1">1</button>
           <button type="button" class="numpad-key" data-key="2">2</button>
@@ -488,57 +463,50 @@
         </div>
       </div>
 
-      <!-- 3. Biyometrik / Yüz Kilidi (Face ID / Touch ID) Hızlı Giriş Butonu -->
-      <div class="pin-biometric-box" id="pinBiometricBox">
-        <button type="button" class="btn-face-id" id="btnFaceIdLogin">
-          <span class="face-icon">👤</span> Yüz Kilidi (Face ID / Touch ID) ile Gir
-        </button>
-      </div>
-
       <div class="pin-card-footer">
-        <span>🔐 .env (alanadisifre &amp; Alancf) • Oil UI v3.8 Tasarım Motoru</span>
+        <a href="/" style="color:var(--text-muted); text-decoration:none;">← Ana Sayfaya Dön</a>
       </div>
     </div>
   </div>
 
   <!-- PIN Değiştirme Modalı -->
   <div class="modal-backdrop" id="changePinModal" style="display: none;">
-    <div class="rea-modal" style="max-width: 420px;">
+    <form class="rea-modal" style="max-width: 420px;" onsubmit="return false;">
       <div class="rea-modal-header">
         <div class="rea-title">
           <span>🔑</span>
           <h3>PIN Kodunu Güncelle</h3>
         </div>
-        <button class="modal-close" id="btnCloseChangePin">✕</button>
+        <button type="button" class="modal-close" id="btnCloseChangePin">✕</button>
       </div>
       <div class="rea-modal-body">
         <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.4;">
           Mevcut PIN kodunuzu doğrulayın ve yeni 6 haneli kodunuzu belirleyin. Güvenlik amacıyla diğer tüm oturumlar otomatik kapatılır.
         </p>
-        
+
         <div class="pin-form-group">
-          <label>Mevcut PIN</label>
-          <input type="password" id="inputOldPin" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+          <label for="inputOldPin">Mevcut PIN</label>
+          <input type="password" id="inputOldPin" maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="off" class="pin-form-input">
         </div>
 
         <div class="pin-form-group">
-          <label>Yeni 6 Haneli PIN</label>
-          <input type="password" id="inputNewPin" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+          <label for="inputNewPin">Yeni 6 Haneli PIN</label>
+          <input type="password" id="inputNewPin" maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="new-password" class="pin-form-input">
         </div>
 
         <div class="pin-form-group">
-          <label>Yeni PIN (Tekrar)</label>
-          <input type="password" id="inputNewPinConfirm" maxlength="6" inputmode="numeric" placeholder="••••••" class="pin-form-input">
+          <label for="inputNewPinConfirm">Yeni PIN (Tekrar)</label>
+          <input type="password" id="inputNewPinConfirm" maxlength="6" inputmode="numeric" placeholder="••••••" autocomplete="new-password" class="pin-form-input">
         </div>
 
         <div class="pin-change-status" id="pinChangeStatus"></div>
 
         <div style="display: flex; gap: 10px; margin-top: 18px;">
-          <button class="btn-primary" id="btnSubmitChangePin" style="flex: 1; padding: 12px; font-weight: 600;">Kaydet ve Güncelle</button>
-          <button class="btn-secondary" id="btnCancelChangePin" style="padding: 12px 18px;">Vazgeç</button>
+          <button type="button" class="btn-primary" id="btnSubmitChangePin" style="flex: 1; padding: 12px; font-weight: 600;">Kaydet ve Güncelle</button>
+          <button type="button" class="btn-secondary" id="btnCancelChangePin" style="padding: 12px 18px;">Vazgeç</button>
         </div>
       </div>
-    </div>
+    </form>
   </div>
 
   <!-- Görsel İnceleme / Lightbox Modalı -->
@@ -560,6 +528,6 @@
     </div>
   </div>
 
-  <script src="/app.js?v=8"></script>
+  <script src="/app.js?v=9"></script>
 </body>
 </html>

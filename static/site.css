@@ -16,14 +16,15 @@
   --site-card-hover: rgba(26, 34, 52, 0.86);
   --site-border: rgba(120, 145, 190, 0.18);
   --site-border-strong: rgba(120, 145, 190, 0.34);
-  --site-text: #e8eefc;
-  --site-text-dim: #93a1bd;
-  --site-text-faint: #64748b;
+  --site-text: #eef2ff;
+  --site-text-dim: #a3b1cc;
+  --site-text-faint: #8796b2;
   --site-accent: #2dd4bf;
   --site-accent-2: #8b5cf6;
   --site-accent-3: #38bdf8;
   --site-danger: #f87171;
   --site-radius: 18px;
+  --site-radius-md: 14px;
   --site-radius-sm: 12px;
   --site-space: 8px;
   --site-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.85);
@@ -87,7 +88,166 @@ body.site-body { overflow-x: clip; }
 img, video { max-width: 100%; height: auto; }
 code, pre { overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
 
-/* ── Canlı arka plan (Link #103) ───────────────────────────────────────── */
+/* ── Hafif CSS ortam ışığı (0 FPS CPU yükü) ───────────────────────────── */
+.site-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(640px circle at 15% 10%, color-mix(in srgb, var(--site-accent) 13%, transparent), transparent 65%),
+    radial-gradient(580px circle at 85% 20%, color-mix(in srgb, var(--site-accent-2) 12%, transparent), transparent 65%);
+}
+
+.site-brand span.site-brand-sub {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--site-text-faint);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.site-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+
+.site-contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 820px) {
+  .site-contact-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.site-contact-status {
+  min-height: 20px;
+  margin: 0 0 12px;
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.site-footer {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--site-border);
+  color: var(--site-text-dim);
+  font-size: 0.82rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.site-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-footer-links a {
+  color: var(--site-text-dim);
+  text-decoration: none;
+}
+
+.site-footer-links a:hover {
+  color: var(--site-accent);
+}
+
+input[type="file"].site-input {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+input[type="file"].site-input::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-accent) 16%, transparent);
+  color: var(--site-text);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.site-master-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 14px;
+  margin-bottom: 18px;
+}
+
+.site-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid var(--site-border-strong);
+  color: var(--site-text-dim);
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.site-mac-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--site-border);
+  background: color-mix(in srgb, var(--site-bg) 78%, transparent);
+  margin-bottom: 12px;
+}
+
+.site-mac-msg {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.site-mac-msg.user {
+  align-self: flex-end;
+  max-width: 85%;
+  background: color-mix(in srgb, var(--site-accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--site-accent) 40%, transparent);
+}
+
+.site-mac-msg.agent {
+  align-self: flex-start;
+  max-width: 92%;
+  background: var(--site-card);
+  border: 1px solid var(--site-border);
+}
+
+.site-mac-msg-sender {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--site-accent);
+  margin-bottom: 4px;
+}
+
+/* ── Canlı arka plan (geriye dönük uyumluluk) ──────────────────────────── */
 .site-canvas {
   position: fixed;
   inset: 0;

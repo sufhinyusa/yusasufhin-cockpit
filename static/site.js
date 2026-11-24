@@ -1,78 +1,73 @@
-/* site.js — yusasufhin.com genel yüz: giriş kapısı, hub, tema, canvas arka plan
+/* site.js — yusasufhin.com genel vitrin, isteğe bağlı yönetici girişi, iletişim formu ve tema
  *
- * Oturum sözleşmesi: mevcut Fabrika dashboard'u ile AYNI anahtar kullanılır
- * (`fabrika_token`), böylece giriş bir kez yapılır ve /fabrika.html'e geçişte
- * yeniden kimlik sorulmaz.
+ * Önemli: Ana sayfa ziyaretçilere HER ZAMAN doğrudan açılır; giriş kapısı asla otomatik
+ * olarak sayfayı bloke etmez. Yönetici girişi yalnızca footer'daki düğmeye basıldığında
+ * veya /?login=1 ile açılır; giriş başarılı olunca doğrudan /lab.html stüdyosuna geçilir.
  */
 (function () {
   'use strict';
 
   var TOKEN_KEY = 'fabrika_token';
-  var USER_KEY = 'fabrika_username';
   var THEME_KEY = 'site_theme';
 
   var gate = document.getElementById('siteGate');
-  var hub = document.getElementById('siteHub');
   var form = document.getElementById('siteGateForm');
   var errorBox = document.getElementById('siteGateError');
   var submitBtn = document.getElementById('siteGateSubmit');
-  var userInput = document.getElementById('siteUser');
   var passInput = document.getElementById('sitePass');
+  var studioQuickLink = document.getElementById('studioQuickLink');
 
-  function token() {
-    try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
+  function getToken() {
+    try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
   }
 
   function showGate(message) {
-    if (hub) hub.hidden = true;
-    if (gate) gate.hidden = false;
-    if (errorBox && message) errorBox.textContent = message;
-    if (userInput && !userInput.value) {
-      try {
-        var saved = localStorage.getItem(USER_KEY);
-        if (saved) userInput.value = saved;
-      } catch (e) { /* yoksay */ }
+    if (!gate) return;
+    gate.hidden = false;
+    if (errorBox) errorBox.textContent = message || '';
+    if (passInput) {
+      passInput.value = '';
+      passInput.focus();
     }
-    if (passInput) passInput.focus();
   }
 
-  function showHub() {
+  function hideGate() {
     if (gate) gate.hidden = true;
-    if (hub) hub.hidden = false;
-    var who = document.getElementById('siteHubUser');
-    if (who) {
-      var saved = '';
-      try { saved = localStorage.getItem(USER_KEY) || ''; } catch (e) { saved = ''; }
-      who.textContent = saved;
-    }
+    if (errorBox) errorBox.textContent = '';
   }
 
-  /* ── Oturum doğrulama ───────────────────────────────────────────────── */
-  function checkSession() {
-    var t = token();
-    if (!t) { showGate(); return; }
+  function checkOptionalSession() {
+    var t = getToken();
+    if (!t) return;
     fetch('/api/auth/check', { headers: { Authorization: 'Bearer ' + t } })
-      .then(function (r) { return r.json(); })
+      .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
-        if (data && data.authenticated) { showHub(); } else { showGate(); }
+        if (data && data.authenticated && studioQuickLink) {
+          studioQuickLink.hidden = false;
+        }
       })
-      .catch(function () { showGate(); });
+      .catch(function () { /* sessiz geç */ });
   }
 
-  /* ── Giriş ──────────────────────────────────────────────────────────── */
   if (form) {
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
+      var secretVal = passInput ? passInput.value.trim() : '';
+      if (!secretVal) {
+        if (errorBox) errorBox.textContent = 'Lütfen parola veya PIN girin.';
+        return;
+      }
       if (errorBox) errorBox.textContent = '';
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Doğrulanıyor…'; }
 
-      fetch('/api/auth/login', {
+      var isPin = /^\d{6}$/.test(secretVal);
+      var endpoint = isPin ? '/api/auth/verify_pin' : '/api/auth/login';
+      var bodyPayload = isPin ? { pin: secretVal } : { password: secretVal };
+
+      fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: userInput ? userInput.value.trim() : '',
-          password: passInput ? passInput.value : ''
-        })
+        body: JSON.stringify(bodyPayload)
       })
         .then(function (r) {
           return r.json().then(function (body) { return { ok: r.ok, body: body }; });
@@ -81,10 +76,9 @@
           if (res.ok && res.body && res.body.token) {
             try {
               localStorage.setItem(TOKEN_KEY, res.body.token);
-              localStorage.setItem(USER_KEY, userInput ? userInput.value.trim() : '');
+              localStorage.setItem('cockpit_token', res.body.token);
             } catch (e) { /* yoksay */ }
-            if (passInput) passInput.value = '';
-            showHub();
+            window.location.href = '/lab.html';
           } else {
             var msg = (res.body && (res.body.detail || res.body.message)) || 'Giriş başarısız.';
             if (errorBox) errorBox.textContent = msg;
@@ -94,44 +88,102 @@
           if (errorBox) errorBox.textContent = 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.';
         })
         .finally(function () {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Giriş Yap'; }
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Stüdyoya Gir'; }
         });
     });
   }
 
-  ['openGateBtn', 'heroGateBtn'].forEach(function (id) {
-    var btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', function () { showGate(); });
-  });
+  var openGateBtn = document.getElementById('openGateBtn');
+  if (openGateBtn) {
+    openGateBtn.addEventListener('click', function () {
+      var t = getToken();
+      if (t) {
+        fetch('/api/auth/check', { headers: { Authorization: 'Bearer ' + t } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (d && d.authenticated) window.location.href = '/lab.html';
+            else showGate();
+          })
+          .catch(function () { showGate(); });
+      } else {
+        showGate();
+      }
+    });
+  }
 
   var cancelBtn = document.getElementById('siteGateCancel');
-  if (cancelBtn) cancelBtn.addEventListener('click', function () {
-    if (gate) gate.hidden = true;
-    if (errorBox) errorBox.textContent = '';
-  });
+  if (cancelBtn) cancelBtn.addEventListener('click', hideGate);
 
-  var logoutBtn = document.getElementById('siteLogoutBtn');
-  if (logoutBtn) logoutBtn.addEventListener('click', function () {
-    var t = token();
-    if (t) {
-      fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t } })
-        .catch(function () { /* yoksay */ });
-    }
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
-    } catch (e) { /* yoksay */ }
-    showGate('Oturum kapatıldı.');
-  });
+  if (gate) {
+    gate.addEventListener('click', function (ev) {
+      if (ev.target === gate) hideGate();
+    });
+    window.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !gate.hidden) hideGate();
+    });
+  }
 
-  /* ── Tema (Link #164 Oil UI) ────────────────────────────────────────── */
+  /* ── İletişim Formu (/api/contact) ──────────────────────────────────── */
+  var contactForm = document.getElementById('siteContactForm');
+  var contactStatus = document.getElementById('contactStatus');
+  var contactBtn = document.getElementById('contactSubmitBtn');
+  if (contactForm) {
+    contactForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var nameEl = document.getElementById('contactName');
+      var emailEl = document.getElementById('contactEmail');
+      var msgEl = document.getElementById('contactMsg');
+      var payload = {
+        name: nameEl ? nameEl.value.trim() : '',
+        email: emailEl ? emailEl.value.trim() : '',
+        message: msgEl ? msgEl.value.trim() : ''
+      };
+      if (contactStatus) { contactStatus.textContent = ''; contactStatus.style.color = ''; }
+      if (contactBtn) { contactBtn.disabled = true; contactBtn.textContent = 'Gönderiliyor…'; }
+
+      fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(function (r) {
+          return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+        })
+        .then(function (res) {
+          if (res.ok && res.body && res.body.success) {
+            contactForm.reset();
+            if (contactStatus) {
+              contactStatus.textContent = '✅ ' + (res.body.message || 'Mesajınız iletildi.');
+              contactStatus.style.color = 'var(--site-accent)';
+            }
+          } else {
+            if (contactStatus) {
+              contactStatus.textContent = '⚠️ ' + ((res.body && (res.body.detail || res.body.message)) || 'Gönderilemedi.');
+              contactStatus.style.color = 'var(--site-danger)';
+            }
+          }
+        })
+        .catch(function () {
+          if (contactStatus) {
+            contactStatus.textContent = '⚠️ Sunucuya ulaşılamadı. Doğrudan e-posta ile ulaşabilirsiniz.';
+            contactStatus.style.color = 'var(--site-danger)';
+          }
+        })
+        .finally(function () {
+          if (contactBtn) { contactBtn.disabled = false; contactBtn.textContent = 'Mesajı Gönder'; }
+        });
+    });
+  }
+
+  /* ── Tema (Açık / Koyu) ─────────────────────────────────────────────── */
   function applyTheme(name) {
-    document.documentElement.setAttribute('data-site-theme', name);
-    try { localStorage.setItem(THEME_KEY, name); } catch (e) { /* yoksay */ }
+    var safe = (name === 'saas') ? 'saas' : 'cyber';
+    document.documentElement.setAttribute('data-site-theme', safe);
+    try { localStorage.setItem(THEME_KEY, safe); } catch (e) { /* yoksay */ }
     var buttons = document.querySelectorAll('[data-site-theme-btn]');
     for (var i = 0; i < buttons.length; i++) {
       buttons[i].setAttribute('aria-pressed',
-        buttons[i].getAttribute('data-site-theme-btn') === name ? 'true' : 'false');
+        buttons[i].getAttribute('data-site-theme-btn') === safe ? 'true' : 'false');
     }
   }
 
@@ -146,84 +198,10 @@
   try { savedTheme = localStorage.getItem(THEME_KEY) || 'cyber'; } catch (e) { savedTheme = 'cyber'; }
   applyTheme(savedTheme);
 
-  checkSession();
-})();
-
-/* ── Canlı canvas arka plan (Link #103) ───────────────────────────────── */
-(function () {
-  'use strict';
-  var canvas = document.getElementById('siteCanvas');
-  if (!canvas || !canvas.getContext) return;
-
-  var ctx = canvas.getContext('2d');
-  var nodes = [];
-  var raf = null;
-
-  function accent() {
-    var styles = getComputedStyle(document.documentElement);
-    return (styles.getPropertyValue('--site-accent') || '#2dd4bf').trim();
-  }
-
-  function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    var count = Math.min(56, Math.round((canvas.width * canvas.height) / 26000));
-    nodes = [];
-    for (var n = 0; n < count; n++) {
-      nodes.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        r: Math.random() * 1.6 + 0.6
-      });
+  if (gate) {
+    checkOptionalSession();
+    if (window.location.search && window.location.search.indexOf('login=1') >= 0) {
+      showGate();
     }
   }
-
-  function draw() {
-    var color = accent();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (var a = 0; a < nodes.length; a++) {
-      var p = nodes[a];
-      p.x += p.vx;
-      p.y += p.vy;
-      if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-      if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.55;
-      ctx.fill();
-
-      for (var b = a + 1; b < nodes.length; b++) {
-        var q = nodes[b];
-        var dx = p.x - q.x;
-        var dy = p.y - q.y;
-        var dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 132) {
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(q.x, q.y);
-          ctx.strokeStyle = color;
-          ctx.globalAlpha = (1 - dist / 132) * 0.16;
-          ctx.lineWidth = 0.7;
-          ctx.stroke();
-        }
-      }
-    }
-    ctx.globalAlpha = 1;
-    raf = requestAnimationFrame(draw);
-  }
-
-  resize();
-  draw();
-
-  window.addEventListener('resize', function () {
-    if (raf) cancelAnimationFrame(raf);
-    resize();
-    draw();
-  });
 })();
-

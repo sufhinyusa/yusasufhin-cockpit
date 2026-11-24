@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Fabrika Stüdyo & GPU Kokpiti | yusasufhin.com</title>
-  <meta name="description" content="Doğrudan webden ve telefondan Video Otomasyonu (Remotion, Wan 2.2, Opus Canvas), Ses & Müzik Fabrikası, OmniRoute Model Şelalesi ve 48GB GPU Yönetimi.">
+  <title>Stüdyo &amp; Mac Kokpiti | yusasufhin.com</title>
+  <meta name="robots" content="noindex, nofollow">
 
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#07090e">
@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=15">
+  <link rel="stylesheet" href="/site.css?v=16">
   <script>
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v23-studio') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v24-clean') caches.delete(names[i]);
         }
       });
     }
@@ -30,401 +30,419 @@
 </head>
 <body class="site-body">
 
-  <canvas class="site-canvas" id="siteCanvas" aria-hidden="true"></canvas>
+  <div class="site-ambient" aria-hidden="true"></div>
 
-  <div class="site-shell">
-
-    <nav class="site-nav">
-      <a class="site-brand" href="/">
-        <img src="/fabrika_icon.svg" alt="">
-        <span>yusasufhin<span class="site-brand-sub">Stüdyo &amp; GPU Kokpiti</span></span>
-      </a>
-      <div class="site-nav-links">
-        <a href="#videoStudio" onclick="switchStudioView('video')">🎬 Video Stüdyosu</a>
-        <a href="#channelsStudio" onclick="switchStudioView('channels')">📺 YouTube Kanallarım</a>
-        <a href="#burcStudio" onclick="switchStudioView('burc')">🔮 Burç Stüdyosu</a>
-        <a href="#audioStudio" onclick="switchStudioView('audio')">🎵 Ses &amp; Müzik</a>
-        <a href="#omniStudio" onclick="switchStudioView('omni')">🤖 OmniRoute</a>
-        <a href="#humanizerStudio" onclick="switchStudioView('humanizer')">✍️ Anti-Slop</a>
-        <a href="#gpuStudio" onclick="switchStudioView('gpu')">⚡ Kaggle / Colab GPU</a>
-        <a href="/fabrika.html">🏭 Fabrika</a>
+  <!-- KİMLİK DOĞRULAMA KAPISI: Oturum yoksa hiçbir özel API çağrısı yapılmaz -->
+  <div class="site-gate" id="labAuthGate">
+    <form class="site-gate-card" id="labLoginForm" autocomplete="on">
+      <img class="site-gate-logo" src="/fabrika_icon.svg" alt="yusasufhin">
+      <h2>Stüdyo &amp; Kokpit Girişi</h2>
+      <p class="site-gate-sub">Devam etmek için yönetici parolanızı veya 6 haneli PIN kodunuzu girin.</p>
+      <div class="site-field">
+        <label for="labLoginSecret">Parola veya PIN</label>
+        <input type="password" id="labLoginSecret" name="password" autocomplete="current-password"
+               placeholder="••••••••" required>
       </div>
-      <a class="site-btn site-btn-ghost" href="/">← Ana Sayfa</a>
+      <p class="site-gate-error" id="labLoginError" role="alert"></p>
+      <button class="site-btn site-btn-primary site-btn-block" id="labLoginSubmit" type="submit">
+        Giriş Yap
+      </button>
+      <a class="site-btn site-btn-ghost site-btn-block" href="/" style="margin-top:10px;">
+        ← Ana Sayfaya Dön
+      </a>
+    </form>
+  </div>
+
+  <!-- ANA STÜDYO KABUĞU (Yalnızca yetkili oturumda görünür) -->
+  <div class="site-shell" id="labAppShell" hidden>
+
+    <nav class="site-nav" aria-label="Stüdyo gezinmesi">
+      <a class="site-brand" href="/">
+        <img src="/fabrika_icon.svg" alt="yusasufhin">
+        <span>yusasufhin<span class="site-brand-sub" lang="en">Studio &amp; Mac Bridge</span></span>
+      </a>
+      <div style="display:flex; align-items:center; gap:8px; margin-left:auto; flex-wrap:wrap;">
+        <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪ Mac: Kontrol Ediliyor</span>
+        <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU: 0</span>
+        <a class="site-btn site-btn-ghost" href="/" style="padding:7px 13px; font-size:0.8rem;">← Vitrin</a>
+        <button type="button" class="site-btn site-btn-ghost" id="labLogoutBtn" style="padding:7px 13px; font-size:0.8rem;">Çıkış</button>
+      </div>
     </nav>
 
-    <header style="padding: 24px 0 16px;">
-      <span class="site-eyebrow">Yusuf Şahin · Otonom Üretim &amp; Donanım İstasyonu</span>
-      <h1 style="margin: 0 0 8px; font-size: clamp(1.6rem, 3.8vw, 2.4rem); letter-spacing: -0.03em;">
-        Fabrika Çoklu Üretim Kokpiti
+    <header style="padding: 20px 0 12px;">
+      <h1 style="margin:0 0 6px; font-size: clamp(1.45rem, 3.2vw, 2rem); letter-spacing:-0.025em;">
+        Üretim Stüdyosu &amp; Uzaktan Kontrol
       </h1>
-      <p style="margin: 0; max-width: 820px; color: var(--site-text-dim); font-size: 0.94rem; line-height: 1.6;">
-        Telefonunuzdan YouTube kanallarınızı seçin, Remotion Cinema (#246), Blender+Wan (#245) veya Opus Canvas (#179)
-        ile video üretin; Kaggle 32 GB + Colab GPU'larında render yapın veya OmniRoute 375+ model şelalesini $0 maliyetle çalıştırın.
+      <p style="margin:0; color:var(--site-text-dim); font-size:0.88rem;">
+        Video üretimi, Gemini TTS seslendirme, YouTube kanal yükleme, Kaggle/Colab GPU işçisi ve canlı Mac Fabrika köprüsü.
       </p>
     </header>
 
-    <!-- ── YENİ NESİL KOKPİT SEÇİCİ SEKMELER ────────────────────────────── -->
+    <!-- 5 NET, GERÇEK SEKME (Sıfır kırpılma, sıfır sahte sekme) -->
     <div class="site-master-nav" role="tablist">
-      <button class="site-nav-pill active" id="tabNavVideo" onclick="switchStudioView('video')">
-        🎬 Görsel → I2V Video Stüdyosu
+      <button type="button" class="site-nav-pill active" id="tabNavVideo" onclick="switchStudioView('video')">
+        🎬 Video Stüdyosu
       </button>
-      <button class="site-nav-pill" id="tabNavChannels" onclick="switchStudioView('channels')">
-        📺 YouTube Kanallarım &amp; Otomasyon
+      <button type="button" class="site-nav-pill" id="tabNavAudio" onclick="switchStudioView('audio')">
+        🎵 Seslendirme (TTS)
       </button>
-      <button class="site-nav-pill" id="tabNavBurc" onclick="switchStudioView('burc')">
-        🔮 Burç Videosu Stüdyosu (Kaggle / Colab)
+      <button type="button" class="site-nav-pill" id="tabNavChannels" onclick="switchStudioView('channels')">
+        📺 YouTube Kanallarım
       </button>
-      <button class="site-nav-pill" id="tabNavAudio" onclick="switchStudioView('audio')">
-        🎵 Ses, Müzik &amp; Podcast (Gemini TTS)
+      <button type="button" class="site-nav-pill" id="tabNavGpu" onclick="switchStudioView('gpu')">
+        ⚡ GPU İşçisi (Kaggle / Colab)
       </button>
-      <button class="site-nav-pill" id="tabNavOmni" onclick="switchStudioView('omni')">
-        🤖 OmniRoute Akıllı YZ Şelalesi ($0.00)
-      </button>
-      <button class="site-nav-pill" id="tabNavHumanizer" onclick="switchStudioView('humanizer')">
-        ✍️ Humanizer Anti-Slop
-      </button>
-      <button class="site-nav-pill" id="tabNavGpu" onclick="switchStudioView('gpu')">
-        ⚡ Kaggle / Colab GPU İşçisi
-      </button>
-      <button class="site-nav-pill" id="tabNavWan" onclick="switchStudioView('wan')">
-        🎞️ Kova Lab I2V &amp; Model Kataloğu
+      <button type="button" class="site-nav-pill" id="tabNavMac" onclick="switchStudioView('mac')">
+        💻 Mac Fabrika &amp; Araçlar
       </button>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 1. VİDEO OTOMASYON & SİNEMA STÜDYOSU (Links 246, 245, 179)        -->
+    <!-- 1. TEKLEŞTİRİLMİŞ VİDEO STÜDYOSU (Genel + Burç + I2V + Kuyruk)     -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewVideoStudio" class="site-studio-view">
+    <section id="viewVideoStudio" class="site-studio-view">
       <div class="site-studio-grid">
 
-        <!-- SOL: Kanal, Yöntem, GPU, Prompt ve Montaj Seçenekleri -->
         <div class="site-card site-studio-form-card">
           <div class="site-studio-header">
             <div>
-              <span class="site-badge site-badge-free">Mobil &amp; Masaüstü Yayında</span>
-              <span id="studioGpuWorkerWarn" class="site-badge" style="margin-left:6px; cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU İşçisi Kontrol Ediliyor…</span>
-              <h2 style="margin: 6px 0 2px; font-size: 1.25rem;">
-                Çok Kanallı Video Prodüksiyon Masası
-              </h2>
-              <p style="margin: 0; font-size: 0.82rem; color: var(--site-text-dim);">
-                Türkçe konunuz otomatik olarak İngilizce somut görsel sahnelere çevrilir; önce görseli görüp onaylayarak I2V ile videoya çevirebilirsiniz.
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">Video Prodüksiyon Masası</h2>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
+                Türkçe konunuz İngilizce görsel sahneye çevrilir. Önce anahtar kareyi onaylayıp I2V ile canlandırın veya çok sahneli MP4 üretin.
               </p>
             </div>
+            <span id="studioGpuWorkerWarn" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">GPU kontrol ediliyor…</span>
           </div>
 
           <form id="studioVideoForm" onsubmit="handleStudioVideoSubmit(event)">
-            <!-- 1. YouTube Kanalı ve Üretim Akışı (Önce Görsel -> I2V Önerilen) -->
             <div class="site-studio-row-2">
               <div class="site-field">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                  <label for="videoChannelSelect" style="margin:0;">1. Hedef YouTube Kanalı</label>
-                  <button type="button" class="site-chip-btn" onclick="switchStudioView('channels')">+ Kanal Yönet</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+                  <label for="videoChannelSelect" style="margin:0;">1. Hedef Kanal</label>
+                  <button type="button" class="site-chip-btn" onclick="switchStudioView('channels')">+ Yönet</button>
                 </div>
                 <select id="videoChannelSelect" class="site-select">
-                  <option value="Astroloji_Kova">♒ Astroloji &amp; Burçlar (Kova Kozmos)</option>
-                  <option value="Animasyon_3D">🧸 3D Animasyon &amp; Hikaye Stüdyosu</option>
-                  <option value="Anime_Evreni">⛩️ Anime &amp; Fantastik Çizgi Evren</option>
-                  <option value="Tech_AI_Fabrika" selected>🤖 Fabrika AI &amp; Gelecek Teknolojisi</option>
-                  <option value="Belgesel_Sinematik">🏛️ İstanbul &amp; Tarih Sinematik Belgeseli</option>
-                  <option value="Viral_Shorts">⚡ Viral Sinematik Shorts &amp; Hızlı Kanca</option>
+                  <option value="Tech_AI_Fabrika" selected>🤖 Fabrika AI &amp; Teknoloji</option>
+                  <option value="Astroloji_Kova">♒ Astroloji &amp; Burçlar</option>
+                  <option value="Animasyon_3D">🧸 3D Animasyon</option>
+                  <option value="Anime_Evreni">⛩️ Anime Evreni</option>
+                  <option value="Belgesel_Sinematik">🏛️ Sinematik Belgesel</option>
+                  <option value="Viral_Shorts">⚡ Viral Shorts</option>
                 </select>
-                <div id="videoChannelTray" class="site-picker-tray" aria-label="Kanallar kaydırmalı liste"></div>
               </div>
 
               <div class="site-field">
-                <label for="videoMethodSelect">2. Üretim Akışı &amp; Yöntemi</label>
+                <label for="videoMethodSelect">2. Üretim Akışı</label>
                 <select id="videoMethodSelect" class="site-select">
-                  <option value="image_first_preview" selected>🖼️ 1. Önce Görsel Üret → Beğen/Onayla → I2V Video (Önerilen)</option>
-                  <option value="image_then_i2v">🎬 2. Otomatik 2 Aşama: Görsel Üret + Hemen I2V ile Canlandır</option>
-                  <option value="wan_i2v">📸 3. Hazır/Yüklenen Görselden Doğrudan I2V</option>
-                  <option value="t2v_direct">📝 4. Doğrudan T2V (Metinden Video — Görsel Adımsız)</option>
-                  <option value="hyperframes_motion">🎞️ 5. HyperFrames + Opus Stüdyo (#296 — Anında Çok Sahneli MP4 + HTML5)</option>
-                  <option value="product_launch">🚀 6. Ürün / Web Sitesi Lansman Videosu (#296 Product Launch Motion)</option>
-                  <option value="opus_canvas">💻 7. Opus Canvas Code Motion (#179 — Saf Kod Animasyon)</option>
-                  <option value="remotion_cinema">📽️ 8. Remotion Cinema Yerel Kurgu (#246)</option>
+                  <option value="image_first_preview" selected>🖼️ Önce Görsel Üret → Onayla → I2V (Önerilen)</option>
+                  <option value="image_then_i2v">🎬 2 Aşama: Görsel + I2V</option>
+                  <option value="wan_i2v">📸 Yüklenen Görselden Doğrudan I2V</option>
+                  <option value="hyperframes_motion">🎞️ Çok Sahneli Bulut Kurgu (MP4)</option>
+                  <option value="product_launch">🚀 Web Sitesi URL → Tanıtım Videosu</option>
+                  <option value="t2v_direct">📝 Doğrudan Metinden Video (GPU)</option>
                 </select>
               </div>
             </div>
 
-            <div class="site-studio-row-2" style="margin-top:6px;">
+            <!-- Opsiyonel Burç Şablonu (Kanal Astroloji seçildiğinde veya istenirse açılır) -->
+            <div class="site-studio-row-2" id="burcPresetRow" style="margin-top:4px;">
               <div class="site-field">
-                <label for="videoExecModeSelect">2B. GPU İşçisi Yoksa Çalıştırma Modu</label>
+                <label for="burcSignSelect">Burç Şablonu (İsteğe Bağlı)</label>
+                <select id="burcSignSelect" class="site-select">
+                  <option value="">— Genel (Burç şablonu yok) —</option>
+                  <option value="kova">♒ Kova (20 Ocak – 18 Şubat)</option>
+                </select>
+              </div>
+              <div class="site-field" style="display:flex; align-items:flex-end; padding-bottom:6px;">
+                <label style="display:flex; align-items:center; gap:8px; margin:0; text-transform:none; letter-spacing:0; font-size:0.8rem; color:var(--site-text-dim); cursor:pointer;">
+                  <input id="burcRawPromptCheck" type="checkbox" checked style="width:auto; accent-color:var(--site-accent);" />
+                  <span>Sadece kendi promptumu kullan (otomatik kalıp ekleme)</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="site-studio-row-2" style="margin-top:4px;">
+              <div class="site-field">
+                <label for="videoStyleSelect">3. Görsel Tarz</label>
+                <select id="videoStyleSelect" class="site-select">
+                  <option value="cinematic_realism">🎬 Sinematik Realizm</option>
+                  <option value="pixar_3d_animation">🧸 3D Animasyon</option>
+                  <option value="anime_2d">⛩️ Anime / 2D</option>
+                  <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik</option>
+                  <option value="tech_futuristic" selected>🤖 Teknoloji &amp; Fütürizm</option>
+                  <option value="history_documentary">🏛️ Tarih &amp; Belgesel</option>
+                  <option value="minimal_explainer">📊 Eğitim &amp; İnfografik</option>
+                </select>
+              </div>
+              <div class="site-field">
+                <label for="videoExecModeSelect">4. Çalıştırma Modu</label>
                 <select id="videoExecModeSelect" class="site-select">
-                  <option value="auto" selected>⚡ Otomatik (0 GPU İşçisi → Anında Bulut + HyperFrames)</option>
-                  <option value="gpu_queue">📦 Sadece GPU Kuyruğuna Al (Wan2.1 / LTX İşçisi Bekle)</option>
+                  <option value="auto" selected>⚡ Otomatik (GPU varsa GPU, yoksa Bulut)</option>
+                  <option value="gpu_queue">📦 Yalnızca Kaggle/Colab GPU Kuyruğu</option>
                 </select>
               </div>
-              <div class="site-field" id="videoSourceUrlWrap" hidden>
-                <label for="videoSourceUrlInput">🌐 Hedef Web / Ürün URL'si (Product Launch)</label>
-                <input id="videoSourceUrlInput" type="url" class="site-input" placeholder="https://yusasufhin.com" />
-              </div>
             </div>
 
-            <!-- 2. Görsel Tarzı ve Modeller (Kaydırmalı Seçim) -->
-            <div class="site-field" style="margin-top:6px;">
-              <label for="videoStyleSelect">3. Video Türü &amp; Görsel Tarzı</label>
-              <select id="videoStyleSelect" class="site-select">
-                <option value="cinematic_realism">🎬 Sinematik Realizm (Film)</option>
-                <option value="pixar_3d_animation">🧸 3D Animasyon (Pixar / Blender Tarzı)</option>
-                <option value="anime_2d">⛩️ Anime &amp; 2D Çizgi Evren</option>
-                <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik Mistik (Burçlar)</option>
-                <option value="tech_futuristic" selected>🤖 Yapay Zeka, Kod &amp; Fütürizm</option>
-                <option value="history_documentary">🏛️ Tarih &amp; Kültür Belgeseli</option>
-                <option value="minimal_explainer">📊 Bilgi, Eğitim &amp; Hareketli İnfografik</option>
-              </select>
-              <div id="videoStyleTray" class="site-picker-tray" aria-label="Tarzlar kaydırmalı liste"></div>
+            <div class="site-field" id="videoSourceUrlWrap" hidden>
+              <label for="videoSourceUrlInput">🌐 Hedef Web / Ürün URL'si</label>
+              <input id="videoSourceUrlInput" type="url" class="site-input" placeholder="https://yusasufhin.com" />
             </div>
 
-            <div class="site-studio-row-2" style="margin-top:6px;">
+            <div class="site-studio-row-2" style="margin-top:4px;">
               <div class="site-field">
-                <label for="videoImageModelSelect">4. Anahtar Görsel Modeli (1. Adım)</label>
+                <label for="videoImageModelSelect">5. Anahtar Görsel Modeli</label>
                 <select id="videoImageModelSelect" class="site-select">
-                  <option value="flux2-klein" selected>FLUX.2 Klein 4B (Genel Tutarlılık)</option>
-                  <option value="z-image-turbo">Z-Image Turbo 6B (Hızlı Fotorealizm &amp; Tipografi)</option>
-                  <option value="realvis-xl">RealVisXL V4.0 (Ultra Gerçekçi Sinema/Belgesel)</option>
-                  <option value="animagine-xl">Animagine XL 3.1 (Anime &amp; 2D Çizgi Film)</option>
-                  <option value="sdxl-turbo">SDXL Turbo (En Hızlı 3D / Konsept)</option>
+                  <option value="flux2-klein" selected>FLUX.2 Klein 4B</option>
+                  <option value="z-image-turbo">Z-Image Turbo 6B</option>
+                  <option value="realvis-xl">RealVisXL V4.0</option>
+                  <option value="animagine-xl">Animagine XL 3.1</option>
+                  <option value="sdxl-turbo">SDXL Turbo</option>
                 </select>
-                <div id="videoImageModelTray" class="site-picker-tray" aria-label="Görsel modelleri kaydırmalı liste"></div>
               </div>
-
               <div class="site-field">
-                <label for="videoI2vModelSelect">5. I2V / Video Modeli (2. Adım)</label>
+                <label for="videoI2vModelSelect">6. Video (I2V) Modeli</label>
                 <select id="videoI2vModelSelect" class="site-select">
-                  <option value="wan2.1-i2v-14b" selected>Wan 2.1 I2V 14B (NF4 — En Yüksek Fizik)</option>
-                  <option value="wan2.2-ti2v-5b">Wan 2.2 TI2V 5B (Yeni Nesil Hızlı TI2V)</option>
-                  <option value="ltx-video">LTX-Video (Hızlı Gerçek Zamanlı I2V — Animasyon/Shorts)</option>
-                  <option value="cogvideox-5b-i2v">CogVideoX 5B I2V (3D Animasyon &amp; Yumuşak Kamera)</option>
-                  <option value="svd-xt">Stable Video Diffusion XT (Atmosferik I2V)</option>
-                  <option value="wan2.1-t2v-1.3b">Wan 2.1 T2V 1.3B (Sadece Doğrudan T2V)</option>
+                  <option value="wan2.1-i2v-14b" selected>Wan 2.1 I2V 14B (NF4)</option>
+                  <option value="wan2.2-ti2v-5b">Wan 2.2 TI2V 5B</option>
+                  <option value="ltx-video">LTX-Video (Hızlı I2V)</option>
+                  <option value="cogvideox-5b-i2v">CogVideoX 5B I2V</option>
+                  <option value="svd-xt">SVD-XT</option>
+                  <option value="wan2.1-t2v-1.3b">Wan 2.1 T2V 1.3B</option>
                 </select>
-                <div id="videoI2vModelTray" class="site-picker-tray" aria-label="Video modelleri kaydırmalı liste"></div>
               </div>
             </div>
 
-            <!-- 3. Donanım, Oran, Süre ve Kamera -->
-            <div class="site-studio-row-3" style="margin-top:6px;">
+            <div class="site-studio-row-3" style="margin-top:4px;">
               <div class="site-field">
-                <label for="videoRenderTarget">6. GPU İstasyonu</label>
-                <select id="videoRenderTarget" class="site-select">
-                  <option value="kaggle_32gb" selected>🚀 Kaggle 32 GB Çift T4 GPU (#226)</option>
-                  <option value="google_colab">☁️ Google Colab GPU (16 GB T4)</option>
-                  <option value="hybrid_cluster">⚡ Hibrit Küme (Colab + Kaggle)</option>
-                  <option value="local_mac">🍎 Yerel Mac (Yerel Kurgu/Önizleme)</option>
-                </select>
-              </div>
-
-              <div class="site-field">
-                <label for="videoAspectSelect">7. Oran</label>
+                <label for="videoAspectSelect">Oran</label>
                 <select id="videoAspectSelect" class="site-select">
-                  <option value="16:9" selected>16:9 Yatay YouTube</option>
+                  <option value="16:9" selected>16:9 Yatay</option>
                   <option value="9:16">9:16 Dikey Shorts</option>
                   <option value="1:1">1:1 Kare</option>
                 </select>
               </div>
-
               <div class="site-field">
-                <label for="videoDurationSelect">8. Süre (sn)</label>
+                <label for="videoDurationSelect">Süre</label>
                 <select id="videoDurationSelect" class="site-select">
-                  <option value="4">4 saniye</option>
-                  <option value="5" selected>5 saniye (T4 ideal)</option>
-                  <option value="8">8 saniye</option>
-                  <option value="10">10 saniye</option>
+                  <option value="4">4 sn</option>
+                  <option value="5" selected>5 sn</option>
+                  <option value="8">8 sn</option>
+                  <option value="10">10 sn</option>
                 </select>
               </div>
-            </div>
-
-            <div class="site-studio-row-2" style="margin-top:6px;">
               <div class="site-field">
-                <label for="videoCameraSelect">9. Kamera Hareketi (I2V)</label>
-                <select id="videoCameraSelect" class="site-select">
-                  <option value="otomatik" selected>Otomatik (Stile Uygun)</option>
-                  <option value="push_in">Yavaş Yakınlaşma (Push-In)</option>
-                  <option value="pull_out">Yavaş Uzaklaşma (Pull-Out)</option>
-                  <option value="orbital">Yörünge Dönüşü (Orbital)</option>
-                  <option value="pan_right">Yatay Kaydırma (Pan Right)</option>
-                  <option value="wind_cloth_glow">Sabit Kadraj + Rüzgar &amp; Işık</option>
-                </select>
-              </div>
-
-              <div class="site-field">
-                <label for="videoVoiceSelect">10. Seslendirme (Gemini TTS)</label>
+                <label for="videoVoiceSelect">Ses (Gemini TTS)</label>
                 <select id="videoVoiceSelect" class="site-select">
-                  <option value="Aoede" selected>🎙️ Aoede (Astroloji &amp; Hikaye)</option>
-                  <option value="Puck">⚡ Puck (Teknoloji &amp; Animasyon)</option>
-                  <option value="Charon">🏛️ Charon (Belgesel &amp; Tarih)</option>
-                  <option value="Kore">📰 Kore (Eğitim &amp; Analiz)</option>
-                  <option value="Fenrir">🔥 Fenrir (Sinematik Fragman)</option>
-                  <option value="none">🔇 Sessiz</option>
+                  <option value="Aoede" selected>Aoede</option>
+                  <option value="Puck">Puck</option>
+                  <option value="Charon">Charon</option>
+                  <option value="Kore">Kore</option>
+                  <option value="Fenrir">Fenrir</option>
+                  <option value="none">Sessiz</option>
                 </select>
               </div>
             </div>
 
-            <!-- Opsiyonel Başlangıç Görseli Yükleme (Doğrudan I2V) -->
-            <div class="site-field" style="margin-top:6px;">
-              <label for="studioVideoImageInput">İsteğe Bağlı Referans Görsel (PNG/JPEG — Yüklerseniz I2V doğrudan başlar)</label>
-              <input id="studioVideoImageInput" type="file" accept="image/png,image/jpeg,image/webp" class="site-input" />
-              <div id="studioVideoUploadedWrap" hidden style="margin-top:8px; display:flex; align-items:center; gap:10px;">
-                <img id="studioVideoUploadedImg" alt="Yüklenen görsel" style="max-height:68px; border-radius:8px; border:1px solid #334155;" />
-                <button type="button" id="studioVideoClearImgBtn" class="site-btn site-btn-ghost" style="padding:5px 10px; font-size:0.74rem;">Kaldır</button>
+            <div class="site-studio-row-2" style="margin-top:4px;">
+              <div class="site-field">
+                <label for="videoCameraSelect">Kamera Hareketi</label>
+                <select id="videoCameraSelect" class="site-select">
+                  <option value="otomatik" selected>Otomatik</option>
+                  <option value="push_in">Yavaş Yakınlaşma</option>
+                  <option value="pull_out">Yavaş Uzaklaşma</option>
+                  <option value="orbital">Yörünge (Orbital)</option>
+                  <option value="pan_right">Yatay Kaydırma</option>
+                  <option value="wind_cloth_glow">Sabit Kadraj + Atmosfer</option>
+                </select>
+              </div>
+              <div class="site-field">
+                <label for="studioVideoImageInput">Referans Görsel (Opsiyonel I2V)</label>
+                <input id="studioVideoImageInput" type="file" accept="image/png,image/jpeg,image/webp" class="site-input" />
               </div>
             </div>
 
-            <!-- 3. Prompt & Hızlı Şablonlar -->
-            <div class="site-field" style="margin-top:6px;">
+            <div id="studioVideoUploadedWrap" hidden style="margin-bottom:10px; display:flex; align-items:center; gap:10px;">
+              <img id="studioVideoUploadedImg" alt="Yüklenen görsel" style="max-height:64px; border-radius:8px; border:1px solid var(--site-border-strong);" />
+              <button type="button" id="studioVideoClearImgBtn" class="site-btn site-btn-ghost" style="padding:5px 10px; font-size:0.76rem;">Görseli Kaldır</button>
+            </div>
+
+            <div class="site-field">
               <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                <label for="videoPromptInput" style="margin:0;">11. Sahne Konusu &amp; İstemi (Prompt)</label>
+                <label for="videoPromptInput" style="margin:0;">Sahne Konusu / Prompt</label>
                 <div class="site-prompt-chips">
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Büyülü kütüphanede parlayan minik 3D robot ve meraklı baykuş, sıcak sinematik ışık')">🧸 3D Animasyon</button>
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Yağmurlu neon sokakta yürüyen anime karakter, parlayan yansımalar, sakuga atmosferi')">⛩️ Anime Sahne</button>
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Kova burcu kozmik bulutsu içinde parlayan altın astrolab ve gezegenler')">♒ Kova Burcu</button>
+                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Büyülü kütüphanede parlayan minik 3D robot ve meraklı baykuş, sıcak sinematik ışık')">🧸 3D</button>
+                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Yağmurlu neon sokakta yürüyen anime karakter, parlayan yansımalar')">⛩️ Anime</button>
+                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Elinde kova olan göksel figür yıldızlı gökyüzünden yeryüzüne parlayan su boşaltıyor')">♒ Kova</button>
                   <button type="button" class="site-chip-btn" onclick="setStudioPrompt('İstanbul Yerebatan Sarnıcı mermer sütunlarında yanan meşale ışıkları')">🏛️ Belgesel</button>
                 </div>
               </div>
-              <textarea id="videoPromptInput" class="site-textarea" rows="3" placeholder="Üretilecek videonun ilk görselini ve sahne hareketini tarif edin..."></textarea>
-              <input id="videoNegPromptInput" type="text" class="site-input" style="margin-top:6px;" placeholder="Negatif prompt (isteğe bağlı, boş bırakılırsa stile göre otomatik doldurulur)..." />
+              <textarea id="videoPromptInput" class="site-textarea" rows="3" placeholder="Sahneyi, konuyu ve hareketi tarif edin..."></textarea>
+              <input id="videoNegPromptInput" type="text" class="site-input" style="margin-top:6px;" placeholder="Negatif prompt (isteğe bağlı)..." />
             </div>
 
-            <!-- Canlı Montaj Aşamaları Göstergesi -->
-            <label style="font-size:0.8rem; font-weight:600; color:var(--site-text-dim); display:block; margin-top:8px;">
-              Canlı Tutarlı Üretim Hattı (Görsel → Onay → I2V Video → YouTube):
-            </label>
             <div class="site-pipeline-steps" id="videoPipelineSteps">
-              <div class="site-pipeline-step done" id="step1">
-                <strong>1. Stil &amp; Kanal</strong>
-                <span style="color:var(--site-text-dim);">Hazır</span>
-              </div>
-              <div class="site-pipeline-step active" id="step2">
-                <strong>2. Anahtar Görsel</strong>
-                <span style="color:var(--site-accent);">Seçili Model</span>
-              </div>
-              <div class="site-pipeline-step" id="step3">
-                <strong>3. Görsel Onayı</strong>
-                <span style="color:var(--site-text-dim);">Bekliyor</span>
-              </div>
-              <div class="site-pipeline-step" id="step4">
-                <strong>4. I2V Render</strong>
-                <span style="color:var(--site-text-dim);">Kaggle / Colab</span>
-              </div>
-              <div class="site-pipeline-step" id="step5">
-                <strong>5. YouTube Paketi</strong>
-                <span style="color:var(--site-text-dim);">SEO + Kapak</span>
-              </div>
+              <div class="site-pipeline-step done" id="step1"><strong>1. Plan</strong><span style="color:var(--site-text-dim);">Hazır</span></div>
+              <div class="site-pipeline-step active" id="step2"><strong>2. Görsel</strong><span style="color:var(--site-accent);">Anahtar Kare</span></div>
+              <div class="site-pipeline-step" id="step3"><strong>3. Video</strong><span style="color:var(--site-text-dim);">I2V / Kurgu</span></div>
+              <div class="site-pipeline-step" id="step4"><strong>4. Yayın</strong><span style="color:var(--site-text-dim);">İndir / YT</span></div>
             </div>
 
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-              <button type="button" class="site-btn site-btn-primary" onclick="handleInstantCloudPreview()" style="flex:1; padding:13px;">
-                ⚡ 1A. Hızlı Önizleme Görseli (Anında)
+              <button type="button" class="site-btn site-btn-primary" onclick="handleInstantCloudPreview()" style="flex:1; padding:12px;">
+                ⚡ Hızlı Önizleme Görseli
               </button>
-              <button type="submit" class="site-btn site-btn-primary" id="startProductionBtn" style="flex:1; padding:13px;">
-                🖼️ 1B. GPU'da Görsel / Seçili Akışı Başlat
+              <button type="submit" class="site-btn site-btn-primary" id="startProductionBtn" style="flex:1; padding:12px;">
+                🎬 Seçili Akışı Başlat
               </button>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="handleStudioVideoSubmit(event, 'image_then_i2v')" style="flex:1; padding:11px;">
-                🎬 Tek Tık 2 Aşama (Görsel→I2V)
+              <button type="button" class="site-btn site-btn-ghost" onclick="handleStudioVideoSubmit(event, 'image_then_i2v')" style="flex:1; padding:10px; font-size:0.84rem;">
+                🚀 Tek Tık 2 Aşama (Görsel → I2V)
               </button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="handlePlanStoryboard()" style="flex:1; padding:11px;">
-                🎞️ 3-Sahneli Storyboard Planla
+              <button type="button" class="site-btn site-btn-ghost" onclick="handlePlanStoryboard()" style="flex:1; padding:10px; font-size:0.84rem;">
+                🎞️ 3 Sahneli Storyboard
               </button>
             </div>
-            <div id="studioStoryboardBox" hidden style="margin-top:10px; border:1px solid #334155; border-radius:8px; padding:10px; background:rgba(15,23,42,0.75);"></div>
+            <div id="studioStoryboardBox" hidden style="margin-top:10px; border:1px solid var(--site-border-strong); border-radius:10px; padding:12px;"></div>
           </form>
         </div>
 
-        <!-- SAĞ: Canlı Önizleme & Telemetri HUD -->
+        <!-- SAĞ: Canlı Çıktı & Log -->
         <div class="site-card site-studio-player-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.08rem;">🎞️ Stüdyo Canlı Telemetrisi &amp; Çıktı</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+            <h3 style="margin:0; font-size:1.08rem;">🎞️ Canlı Çıktı</h3>
             <span class="site-badge" id="studioTaskBadge">Hazır</span>
           </div>
 
           <div class="site-video-stage" id="studioStageArea">
-            <div id="studioPlaceholderText" style="text-align:center; padding:20px;">
-              <span style="font-size:2.4rem; display:block; margin-bottom:8px;">🎬</span>
-              <strong>Aktif Prodüksiyon Bekleniyor</strong>
-              <p style="margin:6px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
-                Soldaki formdan kanal ve konuyu seçip "Prodüksiyonu Başlat" butonuna basın.
+            <div style="text-align:center; padding:20px;">
+              <span style="font-size:2.2rem; display:block; margin-bottom:8px;">🎬</span>
+              <strong>Aktif üretim bekleniyor</strong>
+              <p style="margin:6px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
+                Soldan kanal ve konuyu girip önizleme görseli veya video başlatın.
               </p>
             </div>
           </div>
 
-          <div class="site-hud-box" id="studioHudLog" style="margin-top:14px;">
-            [FABRIKA STÜDYO KOKPİTİ BAŞLATILDI]<br>
-            • Kanal Havuzu: Astroloji Kova, Tech AI, Belgesel, Viral Shorts<br>
-            • Yöntemler: Remotion Cinema (#246), Blender+Wan (#245), Opus Canvas (#179)<br>
-            • Donanım: Kaggle 32 GB Dual GPU + Colab Köprüsü Hazır ($0.00)
+          <div class="site-hud-box" id="studioHudLog" style="margin-top:12px;">
+            Stüdyo hazır. Üretim adımları burada canlı görünür.
           </div>
-
-          <!-- ÜRETİLEN VİDEOLAR GALERİSİ (2026-11-10) -->
-          <div style="margin-top:18px; border-top:1px solid #1e293b; padding-top:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-              <h4 style="margin:0; font-size:0.98rem;">📼 Üretilen Videolar</h4>
-              <button type="button" onclick="loadVideoHistory()"
-                      style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.78rem;">
-                🔄 Yenile
-              </button>
-            </div>
-            <div id="videoHistoryList" style="display:flex; flex-direction:column; gap:10px;">
-              <p style="margin:0; font-size:0.8rem; color:var(--site-text-muted);">
-                Yükleniyor...
-              </p>
-            </div>
-          </div>
-
         </div>
-
       </div>
 
-      <!-- BEKLEYEN GPU KUYRUĞU VE ANINDA BULUT DÖNÜŞÜMÜ (Link #296) -->
-      <section id="studioQueueSection" style="padding-top: 22px;">
+      <!-- BEKLEYEN GPU KUYRUĞU -->
+      <section id="studioQueueSection" style="padding-top: 24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
           <div>
-            <h2 style="margin:0; font-size:1.15rem;">⏳ Bekleyen GPU Biletleri &amp; Kuyruk Yönetimi</h2>
-            <p style="margin:4px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
-              GPU işçisi yokken bekleyen biletleri tek tıkla anında bulutta oynatılabilir MP4/görsele çevirin veya iptal edin.
+            <h2 style="margin:0; font-size:1.12rem;">⏳ Bekleyen GPU Kuyruğu</h2>
+            <p style="margin:3px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
+              Kaggle/Colab işçisi bekleyen işler; dilerseniz anında bulut kurgusuna çevirebilir veya iptal edebilirsiniz.
             </p>
           </div>
           <button type="button" class="site-btn site-btn-ghost" onclick="loadStudioQueue()" style="padding:7px 14px; font-size:0.8rem;">
-            🔄 Kuyruğu Yenile
+            🔄 Yenile
           </button>
         </div>
         <div id="studioQueueList" class="site-cards-grid">
-          <div class="site-empty">Kuyruk yükleniyor...</div>
+          <div class="site-empty">Kuyruk kontrol ediliyor…</div>
         </div>
       </section>
 
-      <!-- ÜRETİLEN VİDEOLAR & DOĞRUDAN İNDİRME LİSTESİ (Sekme 1 üzerinde her zaman görünür) -->
-      <section id="studioVideoHistorySection" style="padding-top: 28px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+      <!-- TEK TEMİZ ÜRETİLEN VİDEOLAR GALERİSİ -->
+      <section id="studioVideoHistorySection" style="padding-top: 26px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
           <div>
-            <h2 style="margin:0; font-size:1.25rem;">📥 Üretilen Videolar &amp; İndirme Merkezi</h2>
-            <p style="margin:4px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
-              Üretilen tüm videoların durumu (✅ Üretildi / ⏳ Kuyrukta), önizlemesi ve doğrudan MP4 indirme bağlantıları.
+            <h2 style="margin:0; font-size:1.18rem;">📥 Üretilen Videolar &amp; YouTube Yükleme</h2>
+            <p style="margin:3px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
+              Yalnızca doğrulanmış MP4 çıktıları listelenir. İndirebilir, GPU'ya yükseltebilir veya YouTube kanalınıza yükleyebilirsiniz.
             </p>
           </div>
-          <button type="button" class="site-btn site-btn-ghost" onclick="window.refreshStudioMediaLists && window.refreshStudioMediaLists()" style="padding:8px 14px; font-size:0.8rem;">
-            🔄 Listeyi Yenile
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadVideoHistory()" style="padding:7px 14px; font-size:0.8rem;">
+            🔄 Yenile
           </button>
         </div>
         <div id="studioVideoHistoryGrid" class="site-model-grid">
-          <div class="site-empty">Üretilen videolar kontrol ediliyor…</div>
+          <div class="site-empty">Videolar yükleniyor…</div>
         </div>
       </section>
-    </div>
+    </section>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 1B. ÇOKLU YOUTUBE KANALI & OTOMASYON YÖNETİMİ                      -->
+    <!-- 2. GERÇEK SESLENDİRME (GOOGLE GEMINI 2.5 NEURAL TTS)               -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewChannelsStudio" class="site-studio-view" hidden>
+    <section id="viewAudioStudio" class="site-studio-view" hidden>
+      <div class="site-studio-grid">
+        <div class="site-card">
+          <div class="site-studio-header">
+            <div>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Nöral Seslendirme (Gemini TTS)</h2>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
+                Metninizi Google Gemini 2.5 Neural TTS ile stüdyo kalitesinde indirilebilir WAV ses dosyasına dönüştürür.
+              </p>
+            </div>
+            <span class="site-badge site-badge-free">Gerçek TTS</span>
+          </div>
+
+          <form id="audioStudioForm" onsubmit="handleAudioSubmit(event)">
+            <div class="site-field">
+              <label for="audioVoiceSelect">Ses Profili</label>
+              <select id="audioVoiceSelect" class="site-select">
+                <option value="Aoede" selected>🎙️ Aoede (Sıcak Kadın — Hikaye &amp; Astroloji)</option>
+                <option value="Puck">⚡ Puck (Dinamik Erkek — Teknoloji &amp; Shorts)</option>
+                <option value="Charon">🏛️ Charon (Derin Erkek — Belgesel &amp; Tarih)</option>
+                <option value="Kore">📰 Kore (Net Kadın — Eğitim &amp; Haber)</option>
+                <option value="Fenrir">🔥 Fenrir (Dramatik Erkek — Fragman)</option>
+              </select>
+            </div>
+            <div class="site-field">
+              <label for="audioPromptInput">Seslendirilecek Metin</label>
+              <textarea id="audioPromptInput" class="site-textarea" rows="5" placeholder="Seslendirmek istediğiniz metni buraya yazın..."></textarea>
+            </div>
+            <button type="submit" class="site-btn site-btn-primary site-btn-block" id="startAudioBtn">
+              🎙️ Seslendir ve WAV Üret
+            </button>
+          </form>
+        </div>
+
+        <div class="site-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0; font-size:1.08rem;">🎧 Ses Çıktısı</h3>
+            <span class="site-badge" id="audioTaskBadge">Hazır</span>
+          </div>
+          <div class="site-video-stage" id="audioStageArea" style="min-height:150px; margin-bottom:12px;">
+            <div style="text-align:center; padding:16px;">
+              <span style="font-size:2rem; display:block; margin-bottom:6px;">🎧</span>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen ses oynatıcısı burada görünür.</p>
+            </div>
+          </div>
+          <div class="site-hud-box" id="audioOutputHud">
+            Gemini 2.5 Neural TTS hazır. Yerel ses klonlama için Mac Fabrika sekmesini kullanabilirsiniz.
+          </div>
+        </div>
+      </div>
+
+      <section style="padding-top:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h2 style="margin:0; font-size:1.15rem;">📥 Üretilen Sesler</h2>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadAudioHistory()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+        </div>
+        <div id="studioAudioHistoryGrid" class="site-model-grid">
+          <div class="site-empty">Ses kayıtları yükleniyor…</div>
+        </div>
+      </section>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. YOUTUBE KANALLARIM & DATA API V3 YAYIN OTOMASYONU               -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <section id="viewChannelsStudio" class="site-studio-view" hidden>
       <div class="site-studio-grid">
         <div class="site-card site-studio-form-card">
           <div class="site-studio-header">
             <div>
-              <span class="site-badge site-badge-auto">Çoklu Kanal Mimarisi</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">📺 YouTube Kanalı Ekle / Düzenle</h2>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">📺 Kanal Profili Ekle / Düzenle</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Animasyon, anime, sinematik belgesel veya burç kanallarınızın varsayılan modellerini ve tarzını kaydedin.
+                Her kanalınız için varsayılan stil, model, ses ve YouTube gizlilik ayarını kaydedin.
               </p>
             </div>
           </div>
@@ -433,40 +451,38 @@
             <div class="site-studio-row-2">
               <div class="site-field">
                 <label for="chNameInput">Kanal Adı</label>
-                <input id="chNameInput" type="text" class="site-input" placeholder="Örn: Masal 3D Animasyon" required />
+                <input id="chNameInput" type="text" class="site-input" placeholder="Örn: Kova Kozmos" required />
               </div>
               <div class="site-field">
                 <label for="chHandleInput">Handle (@etiket)</label>
-                <input id="chHandleInput" type="text" class="site-input" placeholder="@masal3d" />
+                <input id="chHandleInput" type="text" class="site-input" placeholder="@kovakozmos" />
               </div>
             </div>
-
-            <div class="site-studio-row-2" style="margin-top:6px;">
+            <div class="site-studio-row-2">
               <div class="site-field">
-                <label for="chStyleSelect">Görsel Tarz &amp; Stil</label>
+                <label for="chStyleSelect">Görsel Tarz</label>
                 <select id="chStyleSelect" class="site-select">
-                  <option value="cinematic_realism">🎬 Sinematik Realizm (Film)</option>
-                  <option value="pixar_3d_animation">🧸 3D Animasyon (Pixar/Blender)</option>
-                  <option value="anime_2d">⛩️ Anime &amp; 2D Çizgi Evren</option>
-                  <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik Mistik</option>
-                  <option value="tech_futuristic">🤖 Teknoloji &amp; Fütürizm</option>
-                  <option value="history_documentary">🏛️ Tarih &amp; Kültür Belgeseli</option>
-                  <option value="minimal_explainer">📊 Bilgi &amp; İnfografik Motion</option>
+                  <option value="cinematic_realism">🎬 Sinematik Realizm</option>
+                  <option value="pixar_3d_animation">🧸 3D Animasyon</option>
+                  <option value="anime_2d">⛩️ Anime / 2D</option>
+                  <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik</option>
+                  <option value="tech_futuristic">🤖 Teknoloji</option>
+                  <option value="history_documentary">🏛️ Belgesel</option>
+                  <option value="minimal_explainer">📊 İnfografik</option>
                 </select>
               </div>
               <div class="site-field">
-                <label for="chWorkflowSelect">Varsayılan Üretim Akışı</label>
+                <label for="chWorkflowSelect">Varsayılan Akış</label>
                 <select id="chWorkflowSelect" class="site-select">
-                  <option value="image_first_preview" selected>🖼️ Önce Görsel → Onay → I2V</option>
-                  <option value="image_then_i2v">🎬 Otomatik 2 Aşama: Görsel → I2V</option>
-                  <option value="opus_canvas">💻 Opus Canvas Motion</option>
+                  <option value="image_first_preview" selected>🖼️ Önce Görsel → I2V</option>
+                  <option value="image_then_i2v">🎬 Otomatik 2 Aşama</option>
+                  <option value="hyperframes_motion">🎞️ Çok Sahneli Kurgu</option>
                 </select>
               </div>
             </div>
-
-            <div class="site-studio-row-2" style="margin-top:6px;">
+            <div class="site-studio-row-2">
               <div class="site-field">
-                <label for="chImageModelSelect">Anahtar Görsel Modeli</label>
+                <label for="chImageModelSelect">Görsel Modeli</label>
                 <select id="chImageModelSelect" class="site-select"></select>
               </div>
               <div class="site-field">
@@ -474,8 +490,7 @@
                 <select id="chI2vModelSelect" class="site-select"></select>
               </div>
             </div>
-
-            <div class="site-studio-row-3" style="margin-top:6px;">
+            <div class="site-studio-row-3">
               <div class="site-field">
                 <label for="chAspectSelect">Oran</label>
                 <select id="chAspectSelect" class="site-select">
@@ -494,58 +509,55 @@
                 </select>
               </div>
               <div class="site-field">
-                <label for="chPrivacySelect">YouTube Gizlilik</label>
+                <label for="chPrivacySelect">Gizlilik</label>
                 <select id="chPrivacySelect" class="site-select">
-                  <option value="private" selected>Özel (Private — Güvenli)</option>
-                  <option value="unlisted">Liste Dışı (Unlisted)</option>
-                  <option value="public">Herkese Açık (Public)</option>
+                  <option value="private" selected>Özel (Private)</option>
+                  <option value="unlisted">Liste Dışı</option>
+                  <option value="public">Herkese Açık</option>
                 </select>
               </div>
             </div>
-
-            <div class="site-studio-row-2" style="margin-top:6px;">
+            <div class="site-studio-row-2">
               <div class="site-field">
-                <label for="chYoutubeIdInput">Gerçek YouTube Kanal ID (İsteğe bağlı)</label>
+                <label for="chYoutubeIdInput">YouTube Kanal ID (Opsiyonel)</label>
                 <input id="chYoutubeIdInput" type="text" class="site-input" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" />
               </div>
               <div class="site-field">
-                <label for="chTagsInput">Otomasyon Etiketleri (virgülle)</label>
-                <input id="chTagsInput" type="text" class="site-input" placeholder="3danimasyon, hikaye, aivideo" />
+                <label for="chTagsInput">Etiketler (virgülle)</label>
+                <input id="chTagsInput" type="text" class="site-input" placeholder="astroloji, shorts, aivideo" />
               </div>
             </div>
-
-            <div class="site-field" style="margin-top:6px;">
-              <label for="chDefaultPromptInput">Örnek / Şablon Prompt (İsteğe bağlı)</label>
-              <input id="chDefaultPromptInput" type="text" class="site-input" placeholder="Kanal açıldığında hazır gelecek konu şablonu..." />
+            <div class="site-field">
+              <label for="chDefaultPromptInput">Varsayılan Prompt Şablonu</label>
+              <input id="chDefaultPromptInput" type="text" class="site-input" placeholder="Kanal seçildiğinde hazır gelecek konu..." />
             </div>
-
-            <div style="display:flex; gap:8px; margin-top:10px;">
-              <button type="submit" class="site-btn site-btn-primary" style="flex:1;">💾 Kanalı Kaydet / Güncelle</button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="resetChannelForm()">Yeni Form</button>
+            <div style="display:flex; gap:8px;">
+              <button type="submit" class="site-btn site-btn-primary" style="flex:1;">💾 Kaydet</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="resetChannelForm()">Temizle</button>
             </div>
             <p id="channelFormMsg" class="site-studio-status" aria-live="polite"></p>
           </form>
         </div>
 
         <div class="site-card site-studio-player-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.08rem;">🔑 YouTube Data API v3 Bağlantısı &amp; Otomasyon</h3>
-            <span class="site-badge" id="ytAuthBadge">Kontrol Ediliyor</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
+            <h3 style="margin:0; font-size:1.08rem;">🔑 YouTube Data API v3 Bağlantısı</h3>
+            <span class="site-badge" id="ytAuthBadge">Kontrol ediliyor</span>
           </div>
           <div id="youtubeAuthBox" class="site-hud-box" style="margin-bottom:12px;">
-            YouTube OAuth bağlantı durumu sorgulanıyor…
+            YouTube OAuth durumu sorgulanıyor…
           </div>
           <div class="site-field">
-            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code> İçeriği (Opsiyonel)</label>
-            <textarea id="ytSecretJsonInput" class="site-textarea" rows="3" placeholder='{"installed":{"client_id":"...","client_secret":"..."}}'></textarea>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="handleSaveYtSecret()">🔐 OAuth İstemci Anahtarını Kaydet</button>
-              <button type="button" class="site-btn site-btn-primary" onclick="handleStartYoutubeOAuth()">🔗 Google Hesabıyla YouTube Bağla</button>
+            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code></label>
+            <textarea id="ytSecretJsonInput" class="site-textarea" rows="3" placeholder='{"web":{"client_id":"...","client_secret":"..."}}'></textarea>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+              <button type="button" class="site-btn site-btn-ghost" onclick="handleSaveYtSecret()">🔐 Anahtarı Kaydet</button>
+              <button type="button" class="site-btn site-btn-primary" onclick="handleStartYoutubeOAuth()">🔗 Google ile YouTube Bağla</button>
             </div>
           </div>
-          <div style="margin-top:14px;">
+          <div style="margin-top:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <h4 style="margin:0; font-size:0.96rem;">📚 Kayıtlı Kanallarınız</h4>
+              <h4 style="margin:0; font-size:0.96rem;">📚 Kayıtlı Kanallar</h4>
               <button type="button" class="site-chip-btn" onclick="loadChannelsCatalog(true)">🔄 Yenile</button>
             </div>
             <div id="channelsListGrid" class="site-channel-grid">
@@ -554,597 +566,147 @@
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 2. SES, MÜZİK VE PODCAST FABRİKASI                                -->
+    <!-- 4. KAGGLE / COLAB GPU İŞÇİSİ                                       -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewAudioStudio" class="site-studio-view" hidden>
-      <div class="site-studio-grid">
-        <div class="site-card">
-          <div class="site-studio-header">
-            <div>
-              <span class="site-badge site-badge-pool">Abonelik İptal Ettirenler</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">🎵 Ses, Müzik &amp; Podcast Fabrikası</h2>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                VoiceStudio ses klonlama, ACE-Step 1.5 metinden müzik, Podcastfy ve şarkı bulucu.
-              </p>
-            </div>
-          </div>
-
-          <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-            <button type="button" class="site-nav-pill active" id="audioTabMusic" onclick="switchAudioAction('generate_music')">🎸 Müzik &amp; Roman Havası</button>
-            <button type="button" class="site-nav-pill" id="audioTabVoice" onclick="switchAudioAction('voice_clone_tts')">🎙️ VoiceStudio Klonlama</button>
-            <button type="button" class="site-nav-pill" id="audioTabPodcast" onclick="switchAudioAction('generate_podcast')">📻 Podcastfy (Diyalog)</button>
-            <button type="button" class="site-nav-pill" id="audioTabIdentify" onclick="switchAudioAction('identify_music')">🔍 Şarkı &amp; Müzik Bulucu</button>
-          </div>
-
-          <form id="audioStudioForm" onsubmit="handleAudioSubmit(event)">
-            <div id="audioInputGroup">
-              <div class="site-field">
-                <label id="audioPromptLabel" for="audioPromptInput">Müzik İstem Açıklaması</label>
-                <textarea id="audioPromptInput" class="site-textarea" rows="3" placeholder="Örn: Eğlenceli enerjik Trakya Roman havası ritmi, klarnet ve darbuka solosu..."></textarea>
-              </div>
-
-              <div class="site-studio-row-2" id="audioParamRow">
-                <div class="site-field">
-                  <label for="audioGenreSelect">Müzik Türü</label>
-                  <select id="audioGenreSelect" class="site-select">
-                    <option value="roman_havasi" selected>💃 Roman Havası / Oyun Havası</option>
-                    <option value="lofi_chill">☕ Lo-Fi Chill Beats</option>
-                    <option value="cyberpunk_synthwave">⚡ Cyberpunk Synthwave</option>
-                    <option value="sinematik_epik">🎬 Sinematik Epik Film Müziği</option>
-                    <option value="anadolu_rock">🎸 Anadolu Rock</option>
-                  </select>
-                </div>
-                <div class="site-field">
-                  <label for="audioBpmInput">Hız (BPM)</label>
-                  <input type="number" id="audioBpmInput" class="site-input" value="128" min="60" max="200">
-                </div>
-              </div>
-
-              <div class="site-field" id="audioVoiceRow" style="display:none; margin-top:8px;">
-                <label for="audioVoiceSelect">Google Gemini 2.5 Nöral Ses Profili</label>
-                <select id="audioVoiceSelect" class="site-select">
-                  <option value="Aoede" selected>🎙️ Aoede (Sıcak, Etkileyici Kadın — Astroloji &amp; Hikaye)</option>
-                  <option value="Puck">⚡ Puck (Dinamik, Enerjik Erkek — Teknoloji &amp; Viral Shorts)</option>
-                  <option value="Charon">🏛️ Charon (Derin, Otoriter Erkek — Belgesel &amp; Tarih)</option>
-                  <option value="Kore">📰 Kore (Net, Sakin Kadın — Haber &amp; Eğitici)</option>
-                  <option value="Fenrir">🔥 Fenrir (Güçlü, Dramatik Erkek — Sinematik Fragman)</option>
-                </select>
-              </div>
-            </div>
-
-            <button type="submit" class="site-btn site-btn-primary" id="startAudioBtn" style="width:100%; padding:12px; margin-top:8px;">
-              🎵 Sentezle &amp; Üret
-            </button>
-          </form>
-        </div>
-
-        <div class="site-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.08rem;">🎧 Ses &amp; Müzik Çıktısı ve İndirme</h3>
-            <span class="site-badge" id="audioTaskBadge">Hazır</span>
-          </div>
-
-          <div class="site-video-stage" id="audioStageArea" style="min-height:160px; margin-bottom:14px;">
-            <div style="text-align:center; padding:18px;">
-              <span style="font-size:2.2rem; display:block; margin-bottom:6px;">🎧</span>
-              <strong>Aktif Ses Üretimi Bekleniyor</strong>
-              <p style="margin:6px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
-                Soldaki formdan müzik, seslendirme veya podcast konusunu girip "Sentezle &amp; Üret" butonuna basın.
-              </p>
-            </div>
-          </div>
-
-          <div class="site-hud-box" id="audioOutputHud">
-            [SES & MÜZİK MOTORU HAZIR]<br>
-            • VoiceStudio: Yusuf Şahin ve çoklu ses profili<br>
-            • ACE-Step 1.5: 4 Kök Parça (Stems: Vokal, Davul, Bas, Enstrüman)<br>
-            • Podcastfy: Çift sesli diyalog kurgusu<br>
-            • Akıllı Müzik Bulucu: Video sözlerinden anında şarkı tespiti
-          </div>
-        </div>
-      </div>
-
-      <!-- ÜRETİLEN SESLER & DOĞRUDAN İNDİRME LİSTESİ -->
-      <section id="studioAudioHistorySection" style="padding-top: 28px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-          <div>
-            <h2 style="margin:0; font-size:1.25rem;">📥 Üretilen Sesler &amp; İndirme Merkezi</h2>
-            <p style="margin:4px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
-              Üretilen tüm ses, müzik ve podcast dosyalarını buradan dinleyebilir veya doğrudan WAV olarak indirebilirsiniz.
-            </p>
-          </div>
-          <button type="button" class="site-btn site-btn-ghost" onclick="window.refreshStudioMediaLists && window.refreshStudioMediaLists()" style="padding:8px 14px; font-size:0.8rem;">
-            🔄 Listeyi Yenile
-          </button>
-        </div>
-        <div id="studioAudioHistoryGrid" class="site-model-grid">
-          <div class="site-empty">Üretilen ses dosyaları kontrol ediliyor…</div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 3. OMNIROUTE & DSH-OUR-FREE-MODEL ŞELALESİ (Links 199, 230)       -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewOmniRoute" class="site-studio-view" hidden>
-      <div class="site-studio-grid">
-        <div class="site-card">
-          <div class="site-studio-header">
-            <div>
-              <span class="site-badge site-badge-free">0₺ Tamamen Ücretsiz</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">🤖 OmniRoute 375+ Model Şelalesi</h2>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                DeepSeek V4.1, Kimi K3, GLM 5.3 ve Qwen 2.5 Coder kesintisiz yük devri şelalesi.
-              </p>
-            </div>
-          </div>
-
-          <form onsubmit="handleOmniRouteSubmit(event)">
-            <div class="site-field">
-              <label for="omniPromptInput">İstem / Soru</label>
-              <textarea id="omniPromptInput" class="site-textarea" rows="4" placeholder="Ücretsiz frontier model şelalesine bir soru veya kodlama görevi yazın..."></textarea>
-            </div>
-            <button type="submit" class="site-btn site-btn-primary" style="width:100%; padding:12px;">
-              ⚡ Şelale Üzerinden Yanıt Al ($0.00)
-            </button>
-          </form>
-        </div>
-
-        <div class="site-card">
-          <h3 style="margin:0 0 12px; font-size:1.08rem;">📊 Şelale Durumu &amp; Yanıt Telemetrisi</h3>
-          <div class="site-hud-box" id="omniOutputHud">
-            [OMNIROUTE BULUT ŞELALESİ AKTİF]<br>
-            • 375+ Sağlayıcı, 150+ Ücretsiz Model<br>
-            • Tier 1: DeepSeek V4.1 Flash (Frontier)<br>
-            • Tier 2: Kimi K3 Next (256K Context)<br>
-            • Tier 3: GLM 5.3 Flash (Reasoning)<br>
-            • Tier 4: Qwen 2.5 Coder 32B<br>
-            • Tier 5: Yerel MLX 35B MoE Güvencesi<br>
-            • Maliyet: $0.00 (Tamamen Ücretsiz)
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 4. HUMANIZER ANTI-SLOP (Link 177)                                 -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewHumanizer" class="site-studio-view" hidden>
-      <div class="site-studio-grid">
-        <div class="site-card">
-          <div class="site-studio-header">
-            <div>
-              <span class="site-badge site-badge-free">Link #177 Ar-Ge</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">✍️ Humanizer Anti-Slop Metin Arındırıcı</h2>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Yapay zeka klişelerini ("Sonuç olarak", "Dikkate değerdir ki", vb.) temizler.
-              </p>
-            </div>
-          </div>
-
-          <form onsubmit="handleHumanizerSubmit(event)">
-            <div class="site-field">
-              <label for="humanizerInput">Arındırılacak Yapay Zeka Metni</label>
-              <textarea id="humanizerInput" class="site-textarea" rows="5" placeholder="Robotik veya yapay zeka koktuğunu düşündüğünüz metni buraya yapıştırın..."></textarea>
-            </div>
-            <button type="submit" class="site-btn site-btn-primary" style="width:100%; padding:12px;">
-              ✨ Robotik Kalıpları Temizle &amp; İnsanlaştır
-            </button>
-          </form>
-        </div>
-
-        <div class="site-card">
-          <h3 style="margin:0 0 12px; font-size:1.08rem;">🌿 %100 Organik İnsan Çıktısı</h3>
-          <div class="site-hud-box" id="humanizerOutputHud" style="color:#10b981;">
-            Temizlenmiş organik metin burada görünecektir.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5. KAGGLE 32 GB + COLAB GPU KOKPİTİ (Link 226)                    -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewGpuStudio" class="site-studio-view" hidden>
+    <section id="viewGpuStudio" class="site-studio-view" hidden>
       <div class="site-studio-grid">
         <div class="site-card site-studio-form-card">
           <div class="site-studio-header">
             <div>
-              <span class="site-badge">Uzak GPU Kuyruğu</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">⚡ Kaggle Dual-T4 &amp; Colab GPU İşçisi</h2>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">⚡ İsteğe Bağlı GPU İşçisi (Kaggle / Colab)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Gerçek FLUX.2-klein-4B ve Wan2.1 T2V/I2V render işleri buradan bağlı Kaggle/Colab işçisine iletilir.
+                FLUX.2 ve Wan2.1/LTX gerçek video difüzyon işleri için Kaggle Dual-T4 veya Colab işçisini yalnızca iş varken bağlayın.
               </p>
             </div>
           </div>
 
           <div class="site-field">
-            <label for="gpuModeSelect">GPU Dağıtım &amp; Şelale Modu</label>
+            <label for="gpuModeSelect">Dağıtım Önceliği</label>
             <select id="gpuModeSelect" class="site-select" onchange="handleGpuModeChange(this.value)">
-              <option value="kaggle_first" selected>🚀 Kaggle Öncelikli (Dual T4 GPU)</option>
-              <option value="colab_first">☁️ Google Colab Öncelikli (T4 / A100)</option>
-              <option value="concurrent">⚡ Hibrit Kuyruk (İlk Boş İşçi)</option>
+              <option value="kaggle_first" selected>🚀 Kaggle Öncelikli (Dual T4)</option>
+              <option value="colab_first">☁️ Colab Öncelikli</option>
+              <option value="concurrent">⚡ İlk Boş İşçi</option>
             </select>
           </div>
 
-          <div style="background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.25); border-radius:8px; padding:12px; margin-top:14px;">
-            <strong style="color:var(--site-accent); font-size:0.86rem; display:block; margin-bottom:6px;">
-              ⚡ Kaggle veya Colab'da Korumalı GPU İşçisi Başlatın ($0.00)
-            </strong>
-            <p style="margin:0 0 8px; font-size:0.78rem; color:var(--site-text-dim);">
-              İşçi uçları artık <code>X-Worker-Key</code> ile korunur. Aşağıdan anahtarlı komutu alın ve Kaggle (GPU T4 x2) veya Colab hücresinde çalıştırın:
-            </p>
-            <code id="gpuWorkerCmdCode" style="display:block; background:#0b1120; padding:8px 10px; border-radius:6px; color:#38bdf8; font-size:0.78rem; word-break:break-all; user-select:all;">
-              curl -sS https://yusasufhin.com/worker.py -o worker.py &amp;&amp; FABRIKA_WORKER_KEY=&lt;oturum_acinca_getir&gt; python3 worker.py --server https://yusasufhin.com
+          <div style="background:color-mix(in srgb, var(--site-accent) 6%, transparent); border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-top:10px;">
+            <strong style="font-size:0.86rem; display:block; margin-bottom:6px;">🔑 Korumalı GPU İşçi Komutu (X-Worker-Key)</strong>
+            <code id="gpuWorkerCmdCode" style="display:block; background:#090d16; padding:9px 10px; border-radius:8px; color:#38bdf8; font-size:0.78rem; user-select:all;">
+              Anahtarlı komutu almak için aşağıdaki düğmeye basın.
             </code>
             <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-              <button type="button" class="site-btn site-btn-primary" onclick="loadGpuWorkerSetup()" style="padding:6px 12px; font-size:0.78rem;">
-                🔑 Anahtarlı Komutu Getir
+              <button type="button" class="site-btn site-btn-primary" onclick="loadGpuWorkerSetup()" style="padding:7px 14px; font-size:0.8rem;">
+                🔑 Komutu Getir &amp; Kopyala
               </button>
-              <a href="/Fabrika_GPU_Renderer.ipynb" download="Fabrika_GPU_Renderer.ipynb"
-                 style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
-                📥 Fabrika_GPU_Renderer.ipynb İndir
+              <a href="/Fabrika_GPU_Renderer.ipynb" download="Fabrika_GPU_Renderer.ipynb" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+                📥 Notebook İndir
               </a>
-              <a href="https://colab.research.google.com" target="_blank" rel="noopener"
-                 style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
-                ☁️ Colab'ı Aç
+              <a href="https://www.kaggle.com/code" target="_blank" rel="noopener" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+                🚀 Kaggle
               </a>
-              <a href="https://www.kaggle.com/code" target="_blank" rel="noopener"
-                 style="background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); padding:6px 12px; border-radius:6px; font-size:0.78rem; text-decoration:none; font-weight:600; display:inline-block;">
-                🚀 Kaggle'ı Aç
+              <a href="https://colab.research.google.com" target="_blank" rel="noopener" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+                ☁️ Colab
               </a>
             </div>
           </div>
 
-          <div style="display:flex; gap:10px; margin-top:16px;">
-            <button type="button" class="site-btn site-btn-primary" onclick="refreshGpuStatus()" style="flex:1;">
-              🔄 Telemetriyi Yenile
-            </button>
-          </div>
+          <button type="button" class="site-btn site-btn-ghost site-btn-block" onclick="refreshGpuStatus()" style="margin-top:12px;">
+            🔄 GPU Telemetrisini Yenile
+          </button>
         </div>
 
         <div class="site-card">
-          <h3 style="margin:0 0 12px; font-size:1.08rem;">🖥️ GPU Küme Durumu</h3>
+          <h3 style="margin:0 0 12px; font-size:1.08rem;">🖥️ Canlı İşçi Durumu &amp; Depolama</h3>
           <div class="site-hud-box" id="gpuOutputHud">
-            Canlı işçi telemetrisi yükleniyor...
+            Telemetri yükleniyor…
+          </div>
+          <div class="site-hud-box" id="storageStatusHud" style="margin-top:10px; color:var(--site-text-dim);">
+            Depolama durumu kontrol ediliyor…
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5B. BURÇ VİDEOSU STÜDYOSU (KAGGLE / COLAB I2V + TTS + ALTYAZI)     -->
+    <!-- 5. CANLI MAC FABRİKA KÖPRÜSÜ (PORT-443) + AST REA TARAYICI         -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewBurcStudio" class="site-studio-view" hidden>
+    <section id="viewMacStudio" class="site-studio-view" hidden>
       <div class="site-studio-grid">
-        <div class="site-card site-studio-form-card">
+        <div class="site-card">
           <div class="site-studio-header">
             <div>
-              <span class="site-badge site-badge-free" id="burcQueueBadge">Kaggle / Colab GPU Kuyruğu</span>
-              <h2 style="margin:6px 0 2px; font-size:1.25rem;">🔮 Burç Videosu Stüdyosu (Gerçek I2V + Ses + Altyazı)</h2>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">💻 Mac Fabrika Uzaktan Kontrol (Port 443)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Önce FLUX.2 önizleme görseli üretip beğendikten sonra Wan2.1 I2V ile videoya çevirin ya da tek tıkla doğrudan Kaggle/Colab'da burç videosu üretin.
+                Bilgisayarınızda Fabrika açık olduğunda komutlarınız doğrudan Mac üzerinde çalışır ve gerçek yanıt döner.
               </p>
+            </div>
+            <span class="site-badge" id="macPanelBadge">Kontrol ediliyor</span>
+          </div>
+
+          <div id="macStatsBar" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; font-size:0.8rem; color:var(--site-text-dim);">
+            <span>CPU: <strong id="macCpuVal">—</strong></span>
+            <span>RAM: <strong id="macRamVal">—</strong></span>
+            <span>Son kalp atışı: <strong id="macSeenVal">—</strong></span>
+            <button type="button" class="site-chip-btn" onclick="refreshMacBridgeStatus()" style="margin-left:auto;">🔄 Yenile</button>
+          </div>
+
+          <div class="site-mac-chat" id="macChatLog">
+            <div class="site-mac-msg agent">
+              <span class="site-mac-msg-sender">Mac Köprüsü</span>
+              Mac Fabrika bağlantı durumu kontrol ediliyor…
             </div>
           </div>
 
-          <form id="burcVideoForm" onsubmit="return false;">
-            <div class="site-studio-row-2">
-              <div class="site-field">
-                <label for="burcSignSelect">1. Burç Seçimi (12 Burç)</label>
-                <select id="burcSignSelect" class="site-select">
-                  <option value="kova" selected>♒ Kova (20 Ocak - 18 Şubat)</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="burcRenderTarget">2. Uzak GPU Hedefi</label>
-                <select id="burcRenderTarget" class="site-select">
-                  <option value="kaggle_32gb" selected>🚀 Kaggle Dual-T4 GPU</option>
-                  <option value="google_colab">☁️ Google Colab GPU</option>
-                </select>
-              </div>
-            </div>
+          <div class="site-prompt-chips" style="margin-bottom:8px;">
+            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('açık uygulamalar ve pencereler neler')">💻 Açık Pencereler</button>
+            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('ekran görüntüsü al')">📸 Ekran Görüntüsü</button>
+            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('link havuzu raporu hazırla')">📊 Link Raporu</button>
+          </div>
 
-            <div class="site-studio-row-2">
-              <div class="site-field">
-                <label for="burcAspectSelect">3. Video Oranı</label>
-                <select id="burcAspectSelect" class="site-select">
-                  <option value="9:16" selected>9:16 Shorts / Reels Dikey</option>
-                  <option value="16:9">16:9 YouTube Yatay</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="burcDurationSelect">4. Süre</label>
-                <select id="burcDurationSelect" class="site-select">
-                  <option value="5" selected>5 saniye (Hızlı T4 I2V)</option>
-                  <option value="10">10 saniye</option>
-                  <option value="15">15 saniye</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="site-studio-row-2">
-              <div class="site-field">
-                <label for="burcImageModelSelect">Anahtar Görsel Modeli (1. Adım)</label>
-                <select id="burcImageModelSelect" class="site-select">
-                  <option value="flux2-klein" selected>FLUX.2 Klein 4B (Kozmik Varsayılan)</option>
-                  <option value="z-image-turbo">Z-Image Turbo 6B</option>
-                  <option value="realvis-xl">RealVisXL V4.0</option>
-                  <option value="animagine-xl">Animagine XL 3.1 (Anime Burç)</option>
-                  <option value="sdxl-turbo">SDXL Turbo (Hızlı)</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="burcI2vModelSelect">I2V Video Modeli (2. Adım)</label>
-                <select id="burcI2vModelSelect" class="site-select">
-                  <option value="wan2.1-i2v-14b" selected>Wan 2.1 I2V 14B (En Yüksek Kalite)</option>
-                  <option value="wan2.2-ti2v-5b">Wan 2.2 TI2V 5B (Hızlı)</option>
-                  <option value="ltx-video">LTX-Video (Çok Hızlı)</option>
-                  <option value="cogvideox-5b-i2v">CogVideoX 5B I2V</option>
-                  <option value="svd-xt">SVD-XT (Kozmik Paralaks)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="site-field">
-              <label for="burcTopicInput">5. Doğrudan Video / Görsel Promptunuz (İstediğinizi yazın — boşsa seçili burç kullanılır)</label>
-              <textarea id="burcTopicInput" class="site-textarea" rows="2" placeholder="Örn: Elinde kova olan bir adam gökyüzünden yeryüzüne su boşaltıyor"></textarea>
-              <label style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:0.82rem; color:var(--site-text-dim); cursor:pointer;">
-                <input id="burcRawPromptCheck" type="checkbox" checked style="width:auto; accent-color:var(--site-accent);" />
-                <span>Sadece kendi promptumu kullan (otomatik burç yazısı / kalıp metin ekleme)</span>
-              </label>
-            </div>
-
-            <div class="site-field">
-              <label for="burcImageInput">6. Özel Başlangıç Görseli Yükle (İsteğe bağlı — Direkt I2V)</label>
-              <input id="burcImageInput" type="file" accept="image/png,image/jpeg,image/webp" class="site-input" />
-              <div id="burcUploadedWrap" hidden style="margin-top:8px; display:flex; align-items:center; gap:10px;">
-                <img id="burcUploadedImg" alt="Yüklenen burç görseli" style="max-height:72px; border-radius:8px; border:1px solid #334155;" />
-                <button type="button" id="burcClearImageBtn" class="site-btn site-btn-ghost" style="padding:6px 10px; font-size:0.76rem;">Görseli Kaldır</button>
-              </div>
-            </div>
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-              <button type="button" id="burcPreviewImageBtn" class="site-btn site-btn-primary" onclick="handleBurcSubmit('flux2_resim')" style="flex:1; padding:12px;">
-                🖼️ 1. Önce Görsel Üret (Seçili Görsel Modeli)
-              </button>
-              <button type="button" id="burcDirectVideoBtn" class="site-btn site-btn-ghost" onclick="handleBurcSubmit('image_then_i2v')" style="flex:1; padding:12px;">
-                🚀 2 Aşamalı Otomatik Burç Videosu
-              </button>
-            </div>
-            <p id="burcStatusMsg" class="site-studio-status" aria-live="polite" style="margin-top:8px;"></p>
+          <form id="macCmdForm" onsubmit="handleMacCommandSubmit(event)" style="display:flex; gap:8px;">
+            <label for="macCmdInput" class="site-hidden">Mac komutu</label>
+            <input id="macCmdInput" type="text" class="site-input" placeholder="Mac Fabrika'ya komut gönderin..." autocomplete="off" />
+            <button type="submit" class="site-btn site-btn-primary" id="macCmdSendBtn">Gönder</button>
           </form>
         </div>
 
-        <div class="site-card site-studio-player-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:1.08rem;">🔭 Burç Önizleme, Senaryo &amp; Video Çıktısı</h3>
-            <span class="site-badge" id="burcOutputBadge">Hazır</span>
+        <div class="site-card">
+          <div class="site-studio-header">
+            <div>
+              <h3 style="margin:0 0 4px; font-size:1.08rem;">🛡️ Gerçek Python AST Güvenlik Tarayıcı (REA)</h3>
+              <p style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">
+                Yapıştırdığınız Python kodunu gerçek <code>ast.parse</code> ağacında tarar (<code>eval</code>, <code>shell=True</code>, <code>pickle</code>, sabit parola vb.).
+              </p>
+            </div>
+            <span class="site-badge" id="reaHistBadge">Tarama: —</span>
           </div>
-          <div id="burcStageArea" class="site-video-stage" style="padding:14px;">
-            <p style="margin:0; color:var(--site-text-dim); text-align:center;">
-              Bir burç seçip önce FLUX.2 önizleme görseli üretin; görseli beğendiğinizde <strong>Wan2.1 I2V</strong> ile videoya dönüştürebilirsiniz.
-            </p>
+
+          <div class="site-field">
+            <label for="labReaCodeInput">Taranacak Python Kodu / Yapılandırma</label>
+            <textarea id="labReaCodeInput" class="site-textarea" rows="5" placeholder="def kontrol(x): ..."></textarea>
           </div>
-          <div id="burcApproveActions" hidden style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" id="burcAnimatePreviewBtn" class="site-btn site-btn-primary" style="flex:1; padding:12px;">
-              ✅ Görseli Beğendim → Wan2.1 I2V ile Videoya Çevir
-            </button>
-          </div>
-          <div class="site-hud-box" id="burcHudLog" style="margin-top:12px;">
-            [BURÇ STÜDYOSU] Kaggle/Colab işçisi bağlıysa kuyruktaki iş otomatik işlenir.
+          <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="handleLabReaScan()">
+            🔍 AST Güvenlik Taraması Çalıştır
+          </button>
+          <div class="site-hud-box" id="labReaResultHud" style="margin-top:12px;">
+            Tarama sonucu burada görünür.
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 6. KOVA LAB KLASİK DİFÜZYON & MODEL KATALOĞU (Wan 2.2 vb.)        -->
-    <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <div id="viewWanStudio" class="site-studio-view" hidden>
-      <!-- Klasik stüdyo ve model kataloğu -->
-      <section id="labStudioSection" class="site-studio-wrap">
-        <div class="site-studio-grid">
-          <div class="site-card site-studio-form-card">
-            <div class="site-studio-header">
-              <div>
-                <span class="site-badge site-badge-free" id="studioActiveBadge">Stüdyo Hazır</span>
-                <h2 id="studioActiveModelTitle" style="margin: 6px 0 2px; font-size: 1.25rem;">
-                  Wan 2.2 I2V &amp; T2V Lightning (4-Step)
-                </h2>
-                <p id="studioActiveModelDesc" style="margin: 0; font-size: 0.83rem; color: var(--site-text-dim);">
-                  Görselden videoya (I2V) ve metinden videoya (T2V) 4 adımda gerçek fizik hareketi
-                </p>
-              </div>
-            </div>
-
-            <form id="labGenerateForm" novalidate>
-              <div class="site-studio-row-2">
-                <div class="site-field">
-                  <label for="studioModelSelect">1. I2V / Video Modeli</label>
-                  <select id="studioModelSelect" class="site-select"></select>
-                </div>
-                <div class="site-field">
-                  <label for="studioImageModelSelect">2. Anahtar Görsel Modeli</label>
-                  <select id="studioImageModelSelect" class="site-select">
-                    <option value="flux2-klein" selected>FLUX.2 Klein 4B</option>
-                    <option value="z-image-turbo">Z-Image Turbo 6B</option>
-                    <option value="realvis-xl">RealVisXL V4.0</option>
-                    <option value="animagine-xl">Animagine XL 3.1</option>
-                    <option value="sdxl-turbo">SDXL Turbo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="site-studio-row-2" style="margin-top:6px;">
-                <div class="site-field">
-                  <label for="studioModeSelect">3. Üretim Akışı (Önce Görsel Önerilir)</label>
-                  <select id="studioModeSelect" class="site-select">
-                    <option value="image_first_preview" selected>🖼️ 1. Önce Görsel Üret → Beğen/Onayla → I2V</option>
-                    <option value="image_then_i2v">🎬 2. Otomatik 2 Aşama: Görsel → I2V</option>
-                    <option value="i2v">📸 3. Yüklenen Görselden Doğrudan I2V</option>
-                    <option value="t2v">📝 4. Doğrudan Metinden Video (T2V)</option>
-                  </select>
-                </div>
-                <div class="site-field">
-                  <label for="studioStyleSelect">4. Görsel Tarzı</label>
-                  <select id="studioStyleSelect" class="site-select">
-                    <option value="cinematic_realism" selected>🎬 Sinematik</option>
-                    <option value="pixar_3d_animation">🧸 3D Animasyon</option>
-                    <option value="anime_2d">⛩️ Anime / 2D</option>
-                    <option value="astrology_mystic">🔮 Astroloji / Mistik</option>
-                    <option value="tech_futuristic">🤖 Teknoloji</option>
-                    <option value="history_documentary">🏛️ Belgesel</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="site-field">
-                <label for="studioPromptInput">Video Promptu</label>
-                <textarea id="studioPromptInput" class="site-textarea" rows="3" placeholder="Sahneyi tanımlayın..."></textarea>
-              </div>
-
-              <div class="site-field">
-                <label for="studioNegPromptInput">Negatif Prompt (İsteğe bağlı)</label>
-                <input id="studioNegPromptInput" type="text" class="site-input" placeholder="blurry, distorted, low quality..." />
-              </div>
-
-              <div class="site-studio-row-2">
-                <div class="site-field">
-                  <label for="studioAspectSelect">Oran</label>
-                  <select id="studioAspectSelect" class="site-select">
-                    <option value="16:9" selected>16:9 Yatay</option>
-                    <option value="9:16">9:16 Dikey</option>
-                    <option value="1:1">1:1 Kare</option>
-                  </select>
-                </div>
-                <div class="site-field">
-                  <label for="studioDurationSelect">Süre</label>
-                  <select id="studioDurationSelect" class="site-select">
-                    <option value="5" selected>5 saniye</option>
-                    <option value="10">10 saniye</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="site-studio-row-2">
-                <div class="site-field">
-                  <label for="studioFpsSelect">FPS</label>
-                  <select id="studioFpsSelect" class="site-select">
-                    <option value="16" selected>16 fps (Wan GPU)</option>
-                    <option value="24">24 fps</option>
-                  </select>
-                </div>
-                <div class="site-field">
-                  <label for="studioCameraSelect">Kamera Hareketi</label>
-                  <select id="studioCameraSelect" class="site-select">
-                    <option value="otomatik" selected>Otomatik</option>
-                    <option value="push_in">Yavaş Yakınlaşma</option>
-                    <option value="orbital">Yörünge (Orbital)</option>
-                  </select>
-                </div>
-              </div>
-
-                <div class="site-field">
-                  <label for="studioVoiceSelect">Seslendirme</label>
-                  <select id="studioVoiceSelect" class="site-select">
-                    <option value="Aoede" selected>Aoede (Gemini TTS)</option>
-                    <option value="Puck">Puck (Gemini TTS)</option>
-                    <option value="Charon">Charon (Gemini TTS)</option>
-                    <option value="Kore">Kore (Gemini TTS)</option>
-                    <option value="Fenrir">Fenrir (Gemini TTS)</option>
-                    <option value="none">Sessiz</option>
-                  </select>
-                </div>
-
-              <div class="site-field" style="display:flex; align-items:center; gap:8px;">
-                <input id="studioSubtitlesCheck" type="checkbox" checked />
-                <label for="studioSubtitlesCheck" style="margin:0;">Türkçe Altyazı (SRT/ASS) Ekle</label>
-              </div>
-
-              <div id="studioDropzone" class="site-dropzone" style="border:1px dashed #334155; border-radius:8px; padding:12px; text-align:center; cursor:pointer; margin:8px 0;">
-                <input id="studioImageInput" type="file" accept="image/png,image/jpeg,image/webp" hidden />
-                <div id="studioUploadPrompt" style="font-size:0.82rem; color:var(--site-text-dim);">
-                  🖼️ I2V için görsel sürükleyip bırakın veya tıklayıp seçin (PNG / JPEG)
-                </div>
-                <div id="studioUploadPreviewWrap" hidden style="display:flex; align-items:center; justify-content:center; gap:10px;">
-                  <img id="studioUploadPreviewImg" alt="I2V Önizleme" style="max-height:76px; border-radius:8px; border:1px solid #334155;" />
-                  <div style="text-align:left; font-size:0.78rem;">
-                    <div id="studioUploadFileName"></div>
-                    <div id="studioUploadFileSize" style="color:var(--site-text-muted);"></div>
-                    <button type="button" id="studioClearImageBtn" class="site-btn site-btn-ghost" style="padding:4px 8px; font-size:0.72rem; margin-top:4px;">Kaldır</button>
-                  </div>
-                </div>
-              </div>
-
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" id="studioPreviewFluxBtn" class="site-btn site-btn-ghost" style="flex:1; margin-top:8px;">
-                  🖼️ Önce Görsel Üret (Seçili Görsel Modeli)
-                </button>
-                <button type="submit" class="site-btn site-btn-primary" id="studioGenerateBtn" style="flex:1; margin-top:8px;">
-                  🎬 Seçili Akışı / GPU I2V'yi Başlat
-                </button>
-              </div>
-              <p id="studioStatusMsg" class="site-studio-status" aria-live="polite"></p>
-            </form>
-          </div>
-
-          <div class="site-card site-studio-player-card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="margin:0; font-size:1.08rem;">🎞️ Video Önizleme &amp; Çıktı</h3>
-              <span class="site-badge" id="studioOutputBadge">Hazır</span>
-            </div>
-            <div class="site-video-stage" id="studioVideoStage">
-              <video id="studioVideoPlayer" controls playsinline preload="metadata" style="width:100%; max-height:420px; border-radius:12px; display:none; background:#000;"></video>
-              <div id="studioVideoPlaceholder" class="site-video-placeholder">
-                <div style="font-size:2.4rem; margin-bottom:8px;">🎬</div>
-                <strong>Klasik difüzyon modeli çıktısı</strong>
-              </div>
-            </div>
-            <div id="studioOutputMeta" class="site-model-meta" hidden style="margin-top:10px;">
-              <div>Model<strong id="metaModelName">-</strong></div>
-              <div>Çözünürlük<strong id="metaResFps">-</strong></div>
-              <div>Süre<strong id="metaDurScenes">-</strong></div>
-              <div>Boyut<strong id="metaFileSize">-</strong></div>
-            </div>
-            <div id="studioOutputActions" hidden style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-              <a id="studioDownloadLink" href="#" download="kovalab_video.mp4"
-                 style="background:#059669; color:#fff; padding:10px 18px; border-radius:8px; font-weight:600; text-decoration:none; display:inline-block;">
-                ⬇️ Videoyu İndir (MP4)
-              </a>
-              <button type="button" id="studioReuseBtn" class="site-btn site-btn-ghost" style="padding:10px 16px;">
-                🔁 Ayarları Geri Yükle
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="labCatalogSection" style="padding-top: 32px;">
-        <h2 style="margin:0 0 4px; font-size:1.45rem;">🧩 Video Modelleri Kataloğu</h2>
-        <div class="site-lab-tabs" id="labTabs" role="tablist"></div>
-        <div id="labPanels"></div>
-      </section>
-
-      <section id="labHistorySection" style="padding-top: 38px;">
-        <h2 style="margin:0 0 4px; font-size:1.35rem;">🎞️ Üretilen Videolar Galerisi</h2>
-        <div id="labHistoryGrid" class="site-model-grid"></div>
-      </section>
-    </div>
+    </section>
 
   </div>
 
-  <!-- Tema kapsülü (Link #164 Oil UI) -->
+  <!-- Tema (Açık / Koyu) -->
   <div class="site-theme-pod" role="group" aria-label="Görsel tema">
-    <button type="button" data-site-theme-btn="cyber" aria-pressed="true" title="Dark Tech / Cyber">🌙</button>
-    <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Modern SaaS">🏢</button>
-    <button type="button" data-site-theme-btn="minimal" aria-pressed="false" title="Minimalist">✨</button>
+    <button type="button" data-site-theme-btn="cyber" aria-pressed="true" title="Koyu Tema">🌙</button>
+    <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=14"></script>
-  <script src="/lab.js?v=23"></script>
+  <script src="/site.js?v=15"></script>
+  <script src="/lab.js?v=24"></script>
 </body>
 </html>

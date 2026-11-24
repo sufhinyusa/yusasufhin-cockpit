@@ -451,9 +451,8 @@ class VideoStudioController:
         self.storage_dir = Path(storage_dir) if storage_dir else Path(__file__).resolve().parent / "video_factory"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.jobs_file = self.storage_dir / "studio_jobs.json"
-        # MEDYA SUNUM DİZİNİ: `/api/media/file` buradan servis eder.
-        # (main.py: MEDIA_DIR = BASE_DIR/"static"/"media")
-        self.media_dir = Path(__file__).resolve().parent / "static" / "media"
+        # MEDYA SUNUM DİZİNİ: `/api/media/file` buradan servis eder (static dışında yalıtılmış).
+        self.media_dir = Path(__file__).resolve().parent / "storage" / "media"
         self._ensure_jobs_file()
 
     def _ensure_jobs_file(self):

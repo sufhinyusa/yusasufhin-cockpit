@@ -599,35 +599,10 @@ class ChannelStore:
             return True
 
     def get_youtube_status(self, channel_id: Optional[str] = None) -> Dict[str, Any]:
-        """YouTube API v3 kimlik doğrulama durumunu dürüstçe raporlar (asla uydurmaz)."""
-        self.auth_dir.mkdir(parents=True, exist_ok=True)
-        client_secret = self.auth_dir / "client_secret.json"
-        token_global = self.auth_dir / "youtube_token.json"
-        token_ch = (self.auth_dir / f"{_slugify_channel_id(channel_id)}_token.json") if channel_id else None
-        token_exists = bool(
-            (token_ch and token_ch.is_file())
-            or token_global.is_file()
-            or os.environ.get("YOUTUBE_REFRESH_TOKEN")
-        )
-        try:
-            import googleapiclient.discovery  # noqa: F401
-            api_lib_ok = True
-        except ImportError:
-            api_lib_ok = False
+        """YouTube API v3 kimlik doğrulama durumunu dürüstçe raporlar (disk + env destekli)."""
+        from youtube_uploader import youtube_status
 
-        ready = client_secret.is_file() and token_exists and api_lib_ok
-        return {
-            "ready_for_live_upload": ready,
-            "client_secret_present": client_secret.is_file(),
-            "oauth_token_present": token_exists,
-            "google_api_client_installed": api_lib_ok,
-            "status": "active" if ready else "not_authenticated",
-            "message": (
-                "YouTube Data API v3 canlı yükleme için hazır."
-                if ready
-                else "YouTube OAuth kimlik bilgisi (client_secret.json / token) henüz bağlı değil. Videolar SEO paketi + kapak görseliyle yerel olarak hazırlanır (simülasyon)."
-            ),
-        }
+        return youtube_status(self.auth_dir, channel_id)
 
     def save_client_secret(self, raw_json: str) -> Dict[str, Any]:
         try:
@@ -767,7 +742,9 @@ class ChannelStore:
         return bundle
 
     def attempt_youtube_upload(self, job: Dict[str, Any], media_dir: Path) -> Dict[str, Any]:
-        """Gerçek YouTube OAuth token varsa yükler; yoksa dürüstçe (simülasyon) + bundle döner."""
+        """Gerçek YouTube OAuth token varsa saf HTTP Resumable v3 ile yükler; yoksa dürüstçe (simülasyon) + bundle döner."""
+        from youtube_uploader import upload_video_resumable
+
         bundle = self.build_publish_bundle(job, media_dir)
         jid = bundle["job_id"]
         video_path = media_dir / f"{jid}.mp4"
@@ -788,47 +765,14 @@ class ChannelStore:
                 "bundle": bundle,
                 "message": f"(simülasyon) {yt_state['message']} Yayın paketi ({jid}_youtube.json) hazırlandı.",
             }
-        # Gerçek googleapiclient yükleme yolu
+        thumb_path = None
+        for cand_name in (f"{jid}_preview.png", f"{jid}_input.png"):
+            cand = media_dir / cand_name
+            if cand.is_file():
+                thumb_path = cand
+                break
         try:
-            from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
-            from googleapiclient.http import MediaFileUpload
-
-            cid = _slugify_channel_id(bundle["channel_id"])
-            tok_file = self.auth_dir / f"{cid}_token.json"
-            if not tok_file.is_file():
-                tok_file = self.auth_dir / "youtube_token.json"
-            creds = Credentials.from_authorized_user_file(
-                str(tok_file), ["https://www.googleapis.com/auth/youtube.upload"]
-            )
-            srv = build("youtube", "v3", credentials=creds)
-            req = srv.videos().insert(
-                part="snippet,status",
-                body={
-                    "snippet": {
-                        "title": bundle["title"][:100],
-                        "description": bundle["description"][:5000],
-                        "tags": bundle["tags"][:15],
-                        "categoryId": "22",
-                    },
-                    "status": {
-                        "privacyStatus": bundle["privacy"],
-                        "selfDeclaredMadeForKids": False,
-                    },
-                },
-                media_body=MediaFileUpload(str(video_path), chunksize=-1, resumable=True, mimetype="video/mp4"),
-            )
-            resp = req.execute()
-            vid_id = resp.get("id")
-            return {
-                "success": True,
-                "simulasyon": False,
-                "status": "uploaded",
-                "youtube_video_id": vid_id,
-                "youtube_url": f"https://www.youtube.com/watch?v={vid_id}" if vid_id else None,
-                "bundle": bundle,
-                "message": "Video YouTube kanalına başarıyla yüklendi.",
-            }
+            return upload_video_resumable(video_path, bundle, self.auth_dir, thumbnail_path=thumb_path)
         except Exception as e:
             logger.error("[Channels] YouTube canlı yükleme hatası (%s): %s", jid, e)
             return {
