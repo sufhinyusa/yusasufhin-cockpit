@@ -20,7 +20,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (let name of names) {
-          if (name !== 'fabrika-pwa-v30-mobile') caches.delete(name);
+          if (name !== 'fabrika-pwa-v31-mobile') caches.delete(name);
         }
       });
     }
@@ -54,7 +54,7 @@
             <span class="fab-remote-pill" id="fabDesktopSyncBadge">UZAKTAN • 443</span>
           </div>
 
-          <button type="button" class="fab-center-orb state-sleeping" id="btnCenterOrb" title="Durum / EQ Modu Geçişi">
+          <button type="button" class="fab-center-orb state-sleeping" id="btnCenterOrb" title="Uyku / Aktif Mod Geçişi">
             🌙 UYKUDA
           </button>
 
@@ -572,7 +572,7 @@
     </div>
   </div>
 
-  <script src="/fabrika_desktop.js?v=28"></script>
+  <script src="/fabrika_desktop.js?v=31"></script>
   <script src="/app.js?v=30"></script>
 </body>
 </html>

@@ -1568,9 +1568,12 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         assert "/lab.js?v=30" in lab_txt
         assert "/site.css?v=30" in idx_txt and "/site.css?v=30" in lab_txt
         assert "/styles.css?v=9" in fab_txt
-        assert "fabrika-pwa-v30-mobile" in sw_txt
-        assert "fabrika-pwa-v30-mobile" in lab_txt
-        assert "fabrika-pwa-v30-mobile" in fab_txt
+        assert "fabrika-pwa-v31-mobile" in sw_txt
+        assert "fabrika-pwa-v31-mobile" in lab_txt
+        assert "fabrika-pwa-v31-mobile" in fab_txt
+        fab_js = (Path(__file__).resolve().parent.parent / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
+        assert "window.sendUiAction(willWake ? 'wake' : 'sleep')" in fab_js
+        assert "sendUiAction('music_mode')" not in fab_js
         assert "♈ Burç" not in lab_txt and "♈ Astroloji" not in lab_txt
         lab_js = (Path(__file__).resolve().parent.parent / "static" / "lab.js").read_text(encoding="utf-8")
         assert "'♈ <strong>'" not in lab_js

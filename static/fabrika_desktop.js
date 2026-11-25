@@ -302,11 +302,6 @@
     if (brainBtn) {
       brainBtn.classList.toggle('active', mode === 'log' || mode === 'xai');
     }
-    if (mode === 'eq') {
-      setCenterOrbState('MUSIC');
-    } else if (centerOrbState === 'MUSIC') {
-      setCenterOrbState(lastMacOnline ? 'ACTIVE' : 'SLEEPING');
-    }
   }
 
   function toggleLogViewer() {
@@ -695,20 +690,16 @@
     const tlMax = document.getElementById('btnTlMax');
     if (tlMax) tlMax.addEventListener('click', () => toggleRightPanel());
 
-    // Center Orb
+    // Center Orb: Gerçek masaüstü CenterButtonLogic ile 1:1 — yalnızca UYKUDA <-> AKTİF geçişi yapar
     const centerOrb = document.getElementById('btnCenterOrb');
     if (centerOrb) {
       centerOrb.addEventListener('click', () => {
+        const willWake = (centerOrbState === 'SLEEPING');
         if (desktopLive && typeof window.sendUiAction === 'function') {
-          if (centerOrbState === 'SLEEPING') window.sendUiAction('wake');
-          else if (centerOrbState === 'MUSIC') window.sendUiAction('active_mode');
-          else window.sendUiAction('music_mode');
+          window.sendUiAction(willWake ? 'wake' : 'sleep');
         }
-        if (currentTopMode === 'eq') {
-          setTopMode('reaktor');
-        } else {
-          setTopMode('eq');
-        }
+        setCenterOrbState(willWake ? 'ACTIVE' : 'SLEEPING');
+        appendLog(willWake ? '🟢 Uyku modundan çıkılıyor (AKTİF)...' : '🌙 Uyku moduna geçiliyor...', 'info');
       });
     }
 
@@ -1092,8 +1083,8 @@
       const hasCpu = data && data.cpu !== null && data.cpu !== undefined;
       const hasRam = data && data.ram !== null && data.ram !== undefined;
 
-      if (centerOrbState !== 'MUSIC' && centerOrbState !== 'BUSY') {
-        setCenterOrbState(macOn ? 'ACTIVE' : 'SLEEPING');
+      if (!desktopLive && centerOrbState !== 'BUSY') {
+        if (!macOn) setCenterOrbState('SLEEPING');
       }
 
       if (macOn) {

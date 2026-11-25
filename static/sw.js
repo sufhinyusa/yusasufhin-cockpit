@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fabrika-pwa-v30-mobile';
+const CACHE_NAME = 'fabrika-pwa-v31-mobile';
 const ASSETS_TO_CACHE = [
   '/',
   '/site.css?v=30',
@@ -6,7 +6,7 @@ const ASSETS_TO_CACHE = [
   '/home_demo.js?v=30',
   '/fabrika.html',
   '/fabrika_desktop.css?v=28',
-  '/fabrika_desktop.js?v=28',
+  '/fabrika_desktop.js?v=31',
   '/lab.html',
   '/admin_portal.js?v=30',
   '/lab.js?v=30',
