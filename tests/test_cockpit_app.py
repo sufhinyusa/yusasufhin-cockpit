@@ -1568,9 +1568,9 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         assert "/lab.js?v=30" in lab_txt
         assert "/site.css?v=30" in idx_txt and "/site.css?v=30" in lab_txt
         assert "/styles.css?v=9" in fab_txt
-        assert "fabrika-pwa-v31-mobile" in sw_txt
-        assert "fabrika-pwa-v31-mobile" in lab_txt
-        assert "fabrika-pwa-v31-mobile" in fab_txt
+        assert "fabrika-pwa-v32-mobile" in sw_txt
+        assert "fabrika-pwa-v32-mobile" in lab_txt
+        assert "fabrika-pwa-v32-mobile" in fab_txt
         fab_js = (Path(__file__).resolve().parent.parent / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
         assert "window.sendUiAction(willWake ? 'wake' : 'sleep')" in fab_js
         assert "sendUiAction('music_mode')" not in fab_js
@@ -1864,126 +1864,6 @@ def test_mac_port443_bridge_and_websocket_relay(client, auth_headers, auth_token
     finally:
         bridge_hub.reset()
 
-def test_v30_rbac_users_recipients_music_and_interactive_home(client, auth_headers, monkeypatch, tmp_path):
-    """v30: Çoklu yönetici/kullanıcı RBAC, çoklu e-posta alıcısı, Lyria 3.5 müzik stüdyosu ve interaktif ana sayfa."""
-    import time
-    import main as main_mod
-    import music_studio as ms
-
-    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(main_mod, "MEDIA_DIR", tmp_path / "media")
-
-    # 1. İnteraktif ana sayfa + hareketli Fabrika arayüzü + 3 butonlu yönetici paneli
-    r_home = client.get("/")
-    assert r_home.status_code == 200
-    assert 'id="homeReactiveCanvas"' in r_home.text
-    assert 'id="fabrikaShowcase"' in r_home.text
-    assert 'id="fabrika-ozellikler"' in r_home.text
-    assert r_home.text.count("<div") == r_home.text.count("</div>")
-
-    r_panel = client.get("/panel")
-    assert r_panel.status_code == 200
-    for bid in ("hubCardFabrika", "hubCardVideo", "hubCardMuzik", "fabrikaUsersSlot", "videoUsersSlot", "muzikUsersSlot"):
-        assert bid in r_panel.text
-
-    # 2. Yönetici & kullanıcı ekleme (PBKDF2 hash + 0600 izin + bölüm bazlı 403 zorlama)
-    r_u = client.post(
-        "/api/admin/users",
-        headers=auth_headers,
-        json={
-            "username": "ali.video",
-            "display_name": "Ali Video",
-            "password": "GucluParola123!",
-            "role": "user",
-            "sections": ["video"],
-        },
-    )
-    assert r_u.status_code == 200
-    users_file = tmp_path / ".users.json"
-    assert (users_file.stat().st_mode & 0o777) == 0o600
-    assert "GucluParola123!" not in users_file.read_text(encoding="utf-8")
-
-    # Kullanıcı girişi ve rol/bölüm izolasyonu
-    r_login = client.post("/api/auth/login", json={"username": "ali.video", "password": "GucluParola123!"})
-    assert r_login.status_code == 200
-    u_tok = r_login.json()["token"]
-    u_hdr = {"Authorization": f"Bearer {u_tok}"}
-
-    chk = client.get("/api/auth/check", headers=u_hdr)
-    assert chk.status_code == 200 and chk.json()["role"] == "user" and chk.json()["sections"] == ["video"]
-    assert client.get("/api/studio/catalog", headers=u_hdr).status_code == 200
-    assert client.get("/api/music/models", headers=u_hdr).status_code == 403
-    assert client.get("/api/bridge/status", headers=u_hdr).status_code == 403
-    assert client.get("/api/admin/users", headers=u_hdr).status_code == 403
-    assert client.get("/api/contact/recipients", headers=u_hdr).status_code == 403
-
-    # Ek yönetici ekleme ve kullanıcı silindiğinde oturumun anında feshi
-    r_adm = client.post(
-        "/api/admin/users",
-        headers=auth_headers,
-        json={"username": "zeynep.admin", "password": "AdminParola456!", "role": "admin"},
-    )
-    assert r_adm.status_code == 200
-    r_adm_login = client.post("/api/auth/login", json={"username": "zeynep.admin", "password": "AdminParola456!"})
-    adm2_hdr = {"Authorization": f"Bearer {r_adm_login.json()['token']}"}
-    assert client.get("/api/admin/users", headers=adm2_hdr).status_code == 200
-
-    assert client.delete("/api/admin/users/ali.video", headers=adm2_hdr).status_code == 200
-    assert client.get("/api/studio/catalog", headers=u_hdr).status_code == 401  # oturum anında iptal!
-
-    # 3. Çoklu e-posta alıcısı ekleme / silme / son alıcı koruması + çoklu iletim
-    r_rec0 = client.get("/api/contact/recipients", headers=auth_headers)
-    assert r_rec0.status_code == 200 and "ys@yusasufhin.com" in r_rec0.json()["recipients"]
-    assert client.post("/api/contact/recipients", headers=auth_headers, json={"email": "bozuk-mail"}).status_code == 400
-    r_add = client.post("/api/contact/recipients", headers=auth_headers, json={"email": "ekip@yusasufhin.com"})
-    assert r_add.status_code == 200 and r_add.json()["recipients"] == ["ys@yusasufhin.com", "ekip@yusasufhin.com"]
-
-    yakalanan_to: list = []
-    from mac_bridge import bridge_hub
-    monkeypatch.setattr(
-        bridge_hub,
-        "relay_contact_email",
-        lambda payload, **kw: (yakalanan_to.append(payload.get("to_emails")) or {"email_sent": True, "provider": "mac_gmail_relay"}),
-    )
-    for k in ("RESEND_API_KEY", "SMTP_PASS"):
-        monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(main_mod, "get_secret_from_env", lambda k: None)
-    r_ct = client.post("/api/contact", json={"name": "Deniz Arslan", "email": "deniz@ornek.com", "message": "Çoklu alıcı test mesajı gönderiliyor."})
-    assert r_ct.status_code == 200 and r_ct.json()["email_sent"] is True
-    assert yakalanan_to[-1] == ["ys@yusasufhin.com", "ekip@yusasufhin.com"]
-
-    assert client.delete("/api/contact/recipients?email=ekip@yusasufhin.com", headers=auth_headers).status_code == 200
-    assert client.delete("/api/contact/recipients?email=ys@yusasufhin.com", headers=auth_headers).status_code == 400
-
-    # 4. Çoklu Model Müzik Stüdyosu (anahtar eksikse dürüst red + Lyria 3.5 monkeypatch üretimi)
-    r_mm = client.get("/api/music/models", headers=auth_headers)
-    assert r_mm.status_code == 200
-    ids = [m["id"] for m in r_mm.json()["models"]]
-    assert "lyria-3.5" in ids and "elevenlabs-music" in ids and "stable-audio-2" in ids and "replicate-musicgen" in ids
-
-    r_no_key = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "Epik piyano bestesi"})
-    assert r_no_key.status_code == 400 and "GEMINI_API_KEY" in r_no_key.json()["detail"]
-
-    r_mk = client.post("/api/music/config", headers=auth_headers, json={"GEMINI_API_KEY": "fake-gemini-key-test"})
-    assert r_mk.status_code == 200
-    assert ((tmp_path / ".music_secrets.json").stat().st_mode & 0o777) == 0o600
-
-    monkeypatch.setattr(ms, "_generate_google_lyria", lambda mid, key, prompt: (b"ID3" + b"\x00" * 2048, "mp3", "[Verse 1]\nFabrika sahnede"))
-    r_mg = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "Sinematik piyano ve yaylılar", "duration_sec": 30})
-    assert r_mg.status_code == 200
-    jid = r_mg.json()["job"]["job_id"]
-    son_job = None
-    for _ in range(30):
-        time.sleep(0.05)
-        rj = client.get(f"/api/music/job/{jid}", headers=auth_headers)
-        son_job = rj.json()["job"]
-        if son_job["status"] == "completed":
-            break
-    assert son_job is not None and son_job["status"] == "completed"
-    assert son_job["audio_url"] and son_job["audio_url"].startswith("/api/media/file?path=mus_")
-    assert client.get(son_job["audio_url"], headers=auth_headers).status_code == 200
-    r_mh = client.get("/api/music/history", headers=auth_headers)
-    assert r_mh.status_code == 200 and any(x["job_id"] == jid for x in r_mh.json()["items"])
 
 
 
@@ -2290,126 +2170,6 @@ def test_live_desktop_mirror_poll_sync_and_ui_actions(client, auth_headers, monk
     finally:
         bridge_hub.reset()
 
-def test_v30_rbac_users_recipients_music_and_interactive_home(client, auth_headers, monkeypatch, tmp_path):
-    """v30: Çoklu yönetici/kullanıcı RBAC, çoklu e-posta alıcısı, Lyria 3.5 müzik stüdyosu ve interaktif ana sayfa."""
-    import time
-    import main as main_mod
-    import music_studio as ms
-
-    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(main_mod, "MEDIA_DIR", tmp_path / "media")
-
-    # 1. İnteraktif ana sayfa + hareketli Fabrika arayüzü + 3 butonlu yönetici paneli
-    r_home = client.get("/")
-    assert r_home.status_code == 200
-    assert 'id="homeReactiveCanvas"' in r_home.text
-    assert 'id="fabrikaShowcase"' in r_home.text
-    assert 'id="fabrika-ozellikler"' in r_home.text
-    assert r_home.text.count("<div") == r_home.text.count("</div>")
-
-    r_panel = client.get("/panel")
-    assert r_panel.status_code == 200
-    for bid in ("hubCardFabrika", "hubCardVideo", "hubCardMuzik", "fabrikaUsersSlot", "videoUsersSlot", "muzikUsersSlot"):
-        assert bid in r_panel.text
-
-    # 2. Yönetici & kullanıcı ekleme (PBKDF2 hash + 0600 izin + bölüm bazlı 403 zorlama)
-    r_u = client.post(
-        "/api/admin/users",
-        headers=auth_headers,
-        json={
-            "username": "ali.video",
-            "display_name": "Ali Video",
-            "password": "GucluParola123!",
-            "role": "user",
-            "sections": ["video"],
-        },
-    )
-    assert r_u.status_code == 200
-    users_file = tmp_path / ".users.json"
-    assert (users_file.stat().st_mode & 0o777) == 0o600
-    assert "GucluParola123!" not in users_file.read_text(encoding="utf-8")
-
-    # Kullanıcı girişi ve rol/bölüm izolasyonu
-    r_login = client.post("/api/auth/login", json={"username": "ali.video", "password": "GucluParola123!"})
-    assert r_login.status_code == 200
-    u_tok = r_login.json()["token"]
-    u_hdr = {"Authorization": f"Bearer {u_tok}"}
-
-    chk = client.get("/api/auth/check", headers=u_hdr)
-    assert chk.status_code == 200 and chk.json()["role"] == "user" and chk.json()["sections"] == ["video"]
-    assert client.get("/api/studio/catalog", headers=u_hdr).status_code == 200
-    assert client.get("/api/music/models", headers=u_hdr).status_code == 403
-    assert client.get("/api/bridge/status", headers=u_hdr).status_code == 403
-    assert client.get("/api/admin/users", headers=u_hdr).status_code == 403
-    assert client.get("/api/contact/recipients", headers=u_hdr).status_code == 403
-
-    # Ek yönetici ekleme ve kullanıcı silindiğinde oturumun anında feshi
-    r_adm = client.post(
-        "/api/admin/users",
-        headers=auth_headers,
-        json={"username": "zeynep.admin", "password": "AdminParola456!", "role": "admin"},
-    )
-    assert r_adm.status_code == 200
-    r_adm_login = client.post("/api/auth/login", json={"username": "zeynep.admin", "password": "AdminParola456!"})
-    adm2_hdr = {"Authorization": f"Bearer {r_adm_login.json()['token']}"}
-    assert client.get("/api/admin/users", headers=adm2_hdr).status_code == 200
-
-    assert client.delete("/api/admin/users/ali.video", headers=adm2_hdr).status_code == 200
-    assert client.get("/api/studio/catalog", headers=u_hdr).status_code == 401  # oturum anında iptal!
-
-    # 3. Çoklu e-posta alıcısı ekleme / silme / son alıcı koruması + çoklu iletim
-    r_rec0 = client.get("/api/contact/recipients", headers=auth_headers)
-    assert r_rec0.status_code == 200 and "ys@yusasufhin.com" in r_rec0.json()["recipients"]
-    assert client.post("/api/contact/recipients", headers=auth_headers, json={"email": "bozuk-mail"}).status_code == 400
-    r_add = client.post("/api/contact/recipients", headers=auth_headers, json={"email": "ekip@yusasufhin.com"})
-    assert r_add.status_code == 200 and r_add.json()["recipients"] == ["ys@yusasufhin.com", "ekip@yusasufhin.com"]
-
-    yakalanan_to: list = []
-    from mac_bridge import bridge_hub
-    monkeypatch.setattr(
-        bridge_hub,
-        "relay_contact_email",
-        lambda payload, **kw: (yakalanan_to.append(payload.get("to_emails")) or {"email_sent": True, "provider": "mac_gmail_relay"}),
-    )
-    for k in ("RESEND_API_KEY", "SMTP_PASS"):
-        monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(main_mod, "get_secret_from_env", lambda k: None)
-    r_ct = client.post("/api/contact", json={"name": "Deniz Arslan", "email": "deniz@ornek.com", "message": "Çoklu alıcı test mesajı gönderiliyor."})
-    assert r_ct.status_code == 200 and r_ct.json()["email_sent"] is True
-    assert yakalanan_to[-1] == ["ys@yusasufhin.com", "ekip@yusasufhin.com"]
-
-    assert client.delete("/api/contact/recipients?email=ekip@yusasufhin.com", headers=auth_headers).status_code == 200
-    assert client.delete("/api/contact/recipients?email=ys@yusasufhin.com", headers=auth_headers).status_code == 400
-
-    # 4. Çoklu Model Müzik Stüdyosu (anahtar eksikse dürüst red + Lyria 3.5 monkeypatch üretimi)
-    r_mm = client.get("/api/music/models", headers=auth_headers)
-    assert r_mm.status_code == 200
-    ids = [m["id"] for m in r_mm.json()["models"]]
-    assert "lyria-3.5" in ids and "elevenlabs-music" in ids and "stable-audio-2" in ids and "replicate-musicgen" in ids
-
-    r_no_key = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "Epik piyano bestesi"})
-    assert r_no_key.status_code == 400 and "GEMINI_API_KEY" in r_no_key.json()["detail"]
-
-    r_mk = client.post("/api/music/config", headers=auth_headers, json={"GEMINI_API_KEY": "fake-gemini-key-test"})
-    assert r_mk.status_code == 200
-    assert ((tmp_path / ".music_secrets.json").stat().st_mode & 0o777) == 0o600
-
-    monkeypatch.setattr(ms, "_generate_google_lyria", lambda mid, key, prompt: (b"ID3" + b"\x00" * 2048, "mp3", "[Verse 1]\nFabrika sahnede"))
-    r_mg = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "Sinematik piyano ve yaylılar", "duration_sec": 30})
-    assert r_mg.status_code == 200
-    jid = r_mg.json()["job"]["job_id"]
-    son_job = None
-    for _ in range(30):
-        time.sleep(0.05)
-        rj = client.get(f"/api/music/job/{jid}", headers=auth_headers)
-        son_job = rj.json()["job"]
-        if son_job["status"] == "completed":
-            break
-    assert son_job is not None and son_job["status"] == "completed"
-    assert son_job["audio_url"] and son_job["audio_url"].startswith("/api/media/file?path=mus_")
-    assert client.get(son_job["audio_url"], headers=auth_headers).status_code == 200
-    r_mh = client.get("/api/music/history", headers=auth_headers)
-    assert r_mh.status_code == 200 and any(x["job_id"] == jid for x in r_mh.json()["items"])
 
 
 
@@ -2659,3 +2419,98 @@ def test_v30_rbac_users_recipients_music_and_interactive_home(client, auth_heade
 
 
 
+
+
+def test_v32_api_waterfall_leaked_and_quota_failover(client, auth_headers, monkeypatch, tmp_path):
+    """v32: Çoklu hesap API şelalesi — 403 sızdırılmış ve 429 kota dolu anahtarları atlar, sıradaki hesaba geçer."""
+    import time
+    import api_waterfall as aw
+    import main as main_mod
+    import music_studio as ms
+
+    aw.reset_all_health()
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(main_mod, "MEDIA_DIR", tmp_path / "media")
+
+    env_map = {
+        "GEMINI_API_KEY": "leaked-key-0",
+        "GEMINI_API_KEY_1": "quota-key-1",
+        "GEMINI_API_KEY_2": "working-key-2",
+        "ELEVENLABS_API_KEY": "el-working-key",
+    }
+    monkeypatch.setattr(main_mod, "get_secret_from_env", lambda k: env_map.get(k))
+
+    denenen_keys = []
+
+    def _fake_lyria(model_id, api_key, prompt):
+        denenen_keys.append(api_key)
+        if api_key == "leaked-key-0":
+            raise aw.WaterfallProviderError(403, 'Your API key was reported as leaked. Please use another API key.')
+        if api_key == "quota-key-1":
+            raise aw.WaterfallProviderError(429, 'RESOURCE_EXHAUSTED: quota exceeded')
+        return (b"ID3" + b"\x00" * 2048, "mp3", "[Chorus]\nŞelale Çalıştı")
+
+    monkeypatch.setattr(ms, "_generate_google_lyria", _fake_lyria)
+
+    # 1. İlk çağrı: leaked-key-0 (403) -> quota-key-1 (429) -> working-key-2 (BAŞARI)
+    r1 = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "Şelale testi"})
+    assert r1.status_code == 200
+    jid1 = r1.json()["job"]["job_id"]
+    j1 = None
+    for _ in range(30):
+        time.sleep(0.04)
+        j1 = client.get(f"/api/music/job/{jid1}", headers=auth_headers).json()["job"]
+        if j1["status"] == "completed":
+            break
+    assert j1 is not None and j1["status"] == "completed"
+    assert j1["used_key_label"] == "GEMINI_API_KEY_2"
+    assert denenen_keys == ["leaked-key-0", "quota-key-1", "working-key-2"]
+
+    # 2. İkinci çağrı: engelli & soğumadaki anahtarları hiç çağırmadan doğrudan GEMINI_API_KEY_2'yi kullanmalı
+    denenen_keys.clear()
+    r2 = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "lyria-3.5", "prompt": "İkinci parça"})
+    assert r2.status_code == 200
+    jid2 = r2.json()["job"]["job_id"]
+    j2 = None
+    for _ in range(30):
+        time.sleep(0.04)
+        j2 = client.get(f"/api/music/job/{jid2}", headers=auth_headers).json()["job"]
+        if j2["status"] == "completed":
+            break
+    assert j2 is not None and j2["status"] == "completed"
+    assert denenen_keys == ["working-key-2"]
+
+    # 3. /api/music/waterfall ham anahtar sızdırmadan sağlık raporunu döner
+    rwf = client.get("/api/music/waterfall", headers=auth_headers)
+    assert rwf.status_code == 200
+    wf_txt = rwf.text
+    for secret in env_map.values():
+        assert secret not in wf_txt
+    gem_wf = rwf.json()["providers"]["GEMINI_API_KEY"]
+    assert gem_wf["total_keys"] == 3 and gem_wf["healthy_keys"] == 1 and gem_wf["leaked_or_invalid_keys"] == 1 and gem_wf["cooldown_keys"] == 1
+
+    # 4. Çapraz model auto_waterfall: tüm Gemini anahtarları başarısız olursa ElevenLabs'e geçer
+    monkeypatch.setattr(ms, "_generate_google_lyria", lambda mid, k, p: (_ for _ in ()).throw(aw.WaterfallProviderError(403, "paid tier required")))
+    monkeypatch.setattr(ms, "_generate_elevenlabs_music", lambda k, p, d: (b"ID3" + b"\x01" * 2048, "mp3", ""))
+    r3 = client.post("/api/music/generate", headers=auth_headers, json={"model_id": "auto_waterfall", "prompt": "Otomatik şelale"})
+    assert r3.status_code == 200
+    jid3 = r3.json()["job"]["job_id"]
+    j3 = None
+    for _ in range(30):
+        time.sleep(0.04)
+        j3 = client.get(f"/api/music/job/{jid3}", headers=auth_headers).json()["job"]
+        if j3["status"] == "completed":
+            break
+    assert j3 is not None and j3["status"] == "completed"
+    assert j3["model_id"] == "elevenlabs-music" and j3["used_key_label"] == "ELEVENLABS_API_KEY"
+
+    # 5. Şelale sıfırlama ucu + panelden çoklu satır anahtar ekleme
+    r_rst = client.post("/api/music/waterfall/reset", headers=auth_headers)
+    assert r_rst.status_code == 200 and r_rst.json()["providers"]["GEMINI_API_KEY"]["healthy_keys"] if "providers" in r_rst.json() else r_rst.json()["waterfall"]["providers"]["GEMINI_API_KEY"]["healthy_keys"] == 3
+    r_cfg = client.post(
+        "/api/music/config",
+        headers=auth_headers,
+        json={"append": True, "GEMINI_API_KEY": "panel-key-a\npanel-key-b"},
+    )
+    assert r_cfg.status_code == 200 and r_cfg.json()["waterfall"]["providers"]["GEMINI_API_KEY"]["total_keys"] == 5
+    aw.reset_all_health()

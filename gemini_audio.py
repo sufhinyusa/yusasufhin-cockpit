@@ -39,12 +39,32 @@ GEMINI_VOICES = {
 # Repoya gömülü yedek anahtar yoktur — sızıntı ve faturalama riski taşır.
 
 def collect_gemini_keys() -> List[str]:
-    """Sistem ortamından ve Persona/.env adaylarından tüm Gemini API anahtarlarını toplar."""
+    """Sistem ortamından, panel kasasından ve Persona/.env adaylarından tüm Gemini API anahtarlarını şelale sırasında toplar."""
     keys: List[str] = []
-    # 1. Ortam değişkenleri
-    for k, v in os.environ.items():
-        if "GEMINI_API_KEY" in k.upper() and v and v.strip() and v.strip() not in keys:
-            keys.append(v.strip().strip('"\''))
+    try:
+        from api_waterfall import collect_provider_keys, get_key_health
+
+        panel_entries = collect_provider_keys("GEMINI_API_KEY", data_dir=BASE_DIR / "data")
+        healthy = [k for _, k in panel_entries if get_key_health(k)[0]]
+        for k in healthy:
+            if k not in keys:
+                keys.append(k)
+    except Exception:
+        pass
+
+    # 1. Ortam değişkenleri (sayısal sıra: GEMINI_API_KEY, _1.._25)
+    env_ordered = ["GEMINI_API_KEY"] + [f"GEMINI_API_KEY_{i}" for i in range(1, 26)]
+    for k in env_ordered:
+        v = os.environ.get(k)
+        if v and v.strip():
+            cv = v.strip().strip('"\'')
+            if cv and cv not in keys:
+                keys.append(cv)
+    for k, v in sorted(os.environ.items()):
+        if "GEMINI_API_KEY" in k.upper() and v and v.strip():
+            cv = v.strip().strip('"\'')
+            if cv and cv not in keys:
+                keys.append(cv)
 
     # 2. .env adayları
     candidates = [

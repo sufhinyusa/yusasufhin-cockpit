@@ -17,7 +17,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v31-mobile') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v32-mobile') caches.delete(names[i]);
         }
       });
     }
@@ -477,6 +477,7 @@
             <div class="site-field">
               <label for="musicModelSelect">1. Müzik Üretim Modeli</label>
               <select id="musicModelSelect" class="site-select">
+                <option value="auto_waterfall">⚡ Otomatik Şelale (Tüm Hesaplar &amp; Modeller)</option>
                 <option value="lyria-3.5">Google Lyria 3.5 (Tam Şarkı)</option>
               </select>
             </div>
@@ -554,21 +555,29 @@
             Sahte ses üretilmez: yalnızca API anahtarı tanımlı veya canlı Mac bağlantılı modeller çalışır.
           </div>
 
-          <h4 style="margin:0 0 8px; font-size:0.9rem;">📋 Desteklenen Müzik Modelleri</h4>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+            <h4 style="margin:0; font-size:0.9rem;">🌊 Çoklu Hesap API Şelalesi &amp; Modeller</h4>
+            <button type="button" class="site-chip-btn" data-admin-only="1" hidden onclick="resetMusicWaterfall()">🔄 Şelaleyi Sıfırla</button>
+          </div>
+          <div id="musicWaterfallSummary" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; font-size:0.75rem;"></div>
           <div id="musicModelsStatusGrid" style="display:grid; grid-template-columns:1fr; gap:8px;">
             <div class="site-empty">Modeller kontrol ediliyor…</div>
           </div>
 
           <details data-admin-only="1" hidden style="margin-top:14px; border:1px solid var(--site-border-strong); border-radius:10px; padding:10px 12px;">
-            <summary style="cursor:pointer; font-weight:600; font-size:0.84rem;">🔑 Yönetici: Müzik Model API Anahtarlarını Kaydet (0600)</summary>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px; margin-top:10px;">
-              <input id="musicKeyGemini" type="password" class="site-input" placeholder="GEMINI_API_KEY (Lyria 3.5)" autocomplete="off">
-              <input id="musicKeyElevenlabs" type="password" class="site-input" placeholder="ELEVENLABS_API_KEY" autocomplete="off">
-              <input id="musicKeyStability" type="password" class="site-input" placeholder="STABILITY_API_KEY (Stable Audio 2)" autocomplete="off">
-              <input id="musicKeyReplicate" type="password" class="site-input" placeholder="REPLICATE_API_TOKEN (MusicGen)" autocomplete="off">
+            <summary style="cursor:pointer; font-weight:600; font-size:0.84rem;">🔑 Yönetici: Çoklu Hesap API Şelalesi Anahtarlarını Ekle (0600)</summary>
+            <p style="margin:8px 0 6px; font-size:0.76rem; color:var(--site-text-dim);">
+              Her kutuya <strong>birden fazla hesabın API anahtarını alt alta veya virgülle</strong> yapıştırabilirsiniz. Render ortamındaki <code>GEMINI_API_KEY</code> … <code>GEMINI_API_KEY_8</code> anahtarları da şelaleye otomatik katılır; sızdırılmış/kota dolu anahtar otomatik atlanır.
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; margin-top:8px;">
+              <textarea id="musicKeyGemini" rows="2" class="site-textarea" placeholder="GEMINI_API_KEY (alt alta birden fazla hesap anahtarı)" autocomplete="off"></textarea>
+              <textarea id="musicKeyElevenlabs" rows="2" class="site-textarea" placeholder="ELEVENLABS_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
+              <textarea id="musicKeyStability" rows="2" class="site-textarea" placeholder="STABILITY_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
+              <textarea id="musicKeyReplicate" rows="2" class="site-textarea" placeholder="REPLICATE_API_TOKEN (çoklu anahtar)" autocomplete="off"></textarea>
             </div>
             <div style="display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap;">
-              <button type="button" class="site-btn site-btn-primary" onclick="saveMusicApiKeys()" style="padding:7px 14px; font-size:0.8rem;">💾 Anahtarları Kaydet</button>
+              <button type="button" class="site-btn site-btn-primary" onclick="saveMusicApiKeys(true)" style="padding:7px 14px; font-size:0.8rem;">➕ Şelaleye Ekle</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="saveMusicApiKeys(false)" style="padding:7px 14px; font-size:0.8rem;">💾 Üzerine Yaz</button>
               <span id="musicKeySaveStatus" style="font-size:0.78rem; color:var(--site-text-dim);"></span>
             </div>
           </details>
@@ -999,7 +1008,7 @@
   </div>
 
   <script src="/site.js?v=30"></script>
-  <script src="/admin_portal.js?v=30"></script>
+  <script src="/admin_portal.js?v=32"></script>
   <script src="/lab.js?v=30"></script>
 </body>
 </html>

@@ -366,7 +366,7 @@
       .catch(function (err) { if (st) st.textContent = '❌ Hata: ' + err.message; });
   };
 
-  /* ── ÇOKLU MODEL MÜZİK STÜDYOSU (/api/music/*) ──────────────────────── */
+  /* ── ÇOKLU MODEL MÜZİK STÜDYOSU (/api/music/* + ŞELALE) ─────────────── */
   window.loadMusicStudio = function () {
     if (!hasSection('muzik')) return;
     af('/api/music/models')
@@ -375,9 +375,39 @@
         if (!d || !Array.isArray(d.models)) return;
         _musicModels = d.models;
         renderMusicModels(d.models);
+        if (d.waterfall) renderMusicWaterfall(d.waterfall);
       })
       .catch(function () { });
     window.loadMusicHistory();
+  };
+
+  function renderMusicWaterfall(wf) {
+    var box = document.getElementById('musicWaterfallSummary');
+    if (!box || !wf || !wf.providers) return;
+    box.textContent = '';
+    Object.keys(wf.providers).forEach(function (k) {
+      var p = wf.providers[k];
+      var chip = document.createElement('span');
+      chip.className = p.healthy_keys > 0 ? 'site-badge site-badge-free' : 'site-badge';
+      var shortName = k.replace('_API_KEY', '').replace('_API_TOKEN', '');
+      var extra = '';
+      if (p.leaked_or_invalid_keys > 0) extra += ' · ' + p.leaked_or_invalid_keys + ' engelli';
+      if (p.cooldown_keys > 0) extra += ' · ' + p.cooldown_keys + ' soğumada';
+      chip.textContent = shortName + ': ' + p.healthy_keys + '/' + p.total_keys + ' hesap' + extra;
+      box.appendChild(chip);
+    });
+  }
+
+  window.resetMusicWaterfall = function () {
+    var st = document.getElementById('musicKeySaveStatus');
+    af('/api/music/waterfall/reset', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.waterfall) renderMusicWaterfall(d.waterfall);
+        if (d && Array.isArray(d.models)) renderMusicModels(d.models);
+        if (st) { st.textContent = '🔄 Şelale sağlık tablosu sıfırlandı (' + (d.cleared_count || 0) + ' kayıt).'; st.style.color = 'var(--site-accent)'; }
+      })
+      .catch(function () { });
   };
 
   function renderMusicModels(models) {
@@ -501,7 +531,11 @@
           if (job.status === 'completed') {
             clearInterval(_musicPollTimer);
             if (badge) { badge.textContent = '✅ Tamamlandı'; badge.className = 'site-badge site-badge-free'; }
-            if (hud) hud.textContent = '✅ ' + job.model_name + ' ile üretildi.' + (job.lyrics ? ('\n\nŞarkı Sözleri / Yapı:\n' + job.lyrics) : '');
+            var keyInfo = job.used_key_label ? (' · Hesap: ' + job.used_key_label) : '';
+            var traceTxt = (Array.isArray(job.waterfall_trace) && job.waterfall_trace.length > 1)
+              ? ('\n🌊 Şelale: ' + job.waterfall_trace.join(' → '))
+              : '';
+            if (hud) hud.textContent = '✅ ' + job.model_name + ' ile üretildi' + keyInfo + '.' + traceTxt + (job.lyrics ? ('\n\nŞarkı Sözleri / Yapı:\n' + job.lyrics) : '');
             if (stage && job.audio_url) {
               var tk = window.token ? window.token() : '';
               var src = job.audio_url + (tk ? ('&token=' + encodeURIComponent(tk)) : '');
@@ -529,7 +563,11 @@
           } else if (job.status === 'failed') {
             clearInterval(_musicPollTimer);
             if (badge) badge.textContent = '❌ Başarısız';
-            if (hud) hud.textContent = '❌ Üretim başarısız: ' + (job.error || 'Bilinmeyen hata');
+            var fTrace = (Array.isArray(job.waterfall_trace) && job.waterfall_trace.length)
+              ? ('\n🌊 Denenen Şelale: ' + job.waterfall_trace.join(' → '))
+              : '';
+            if (hud) hud.textContent = '❌ Üretim başarısız: ' + (job.error || 'Bilinmeyen hata') + fTrace;
+            window.loadMusicStudio();
           }
         });
     }, 2500);
@@ -586,9 +624,9 @@
       });
   };
 
-  window.saveMusicApiKeys = function () {
+  window.saveMusicApiKeys = function (appendMode) {
     var st = document.getElementById('musicKeySaveStatus');
-    var payload = {};
+    var payload = { append: appendMode !== false };
     var map = {
       GEMINI_API_KEY: 'musicKeyGemini',
       ELEVENLABS_API_KEY: 'musicKeyElevenlabs',
@@ -605,7 +643,7 @@
       if (st) st.textContent = '⚠️ En az bir sağlayıcı anahtarı girin.';
       return;
     }
-    if (st) st.textContent = '⏳ Kaydediliyor…';
+    if (st) st.textContent = '⏳ Şelaleye kaydediliyor…';
     af('/api/music/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -618,8 +656,9 @@
             var el = document.getElementById(map[k]);
             if (el) el.value = '';
           });
-          if (st) { st.textContent = '✅ Anahtarlar 0600 izinle kaydedildi!'; st.style.color = 'var(--site-accent)'; }
+          if (st) { st.textContent = '✅ Anahtarlar 0600 izinle şelaleye eklendi ve soğuma sıfırlandı!'; st.style.color = 'var(--site-accent)'; }
           if (Array.isArray(res.d.models)) renderMusicModels(res.d.models);
+          if (res.d.waterfall) renderMusicWaterfall(res.d.waterfall);
         } else {
           if (st) { st.textContent = '⚠️ ' + ((res.d && res.d.detail) || 'Kaydedilemedi.'); st.style.color = 'var(--site-danger)'; }
         }

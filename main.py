@@ -1313,19 +1313,44 @@ async def admin_delete_user(username: str, admin_sess: Dict[str, Any] = Depends(
 
 
 # -----------------------------------------------------------------------------
-# 3c. ÇOKLU MODEL MÜZİK STÜDYOSU (LYRIA 3.5, ELEVENLABS, STABLE AUDIO, MUSICGEN)
+# 3c. ÇOKLU MODEL MÜZİK STÜDYOSU & ÇOKLU HESAP API ŞELALESİ (WATERFALL)
 # -----------------------------------------------------------------------------
 @app.get("/api/music/models", dependencies=[Depends(require_section("muzik"))])
 async def api_music_models():
     from mac_bridge import bridge_hub
-    from music_studio import list_music_models, make_music_env_getter
+    from music_studio import get_waterfall_report, list_music_models
 
-    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
-    models = list_music_models(env_getter, mac_online=bridge_hub.is_online())
+    models = list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR)
+    waterfall = get_waterfall_report(DATA_DIR, get_secret_from_env)
     return {
         "success": True,
         "models": models,
-        "ready_count": sum(1 for m in models if m["ready"]),
+        "ready_count": sum(1 for m in models if m["id"] != "auto_waterfall" and m["ready"]),
+        "waterfall": waterfall,
+    }
+
+
+@app.get("/api/music/waterfall", dependencies=[Depends(require_section("muzik"))])
+async def api_music_waterfall():
+    """Tüm müzik sağlayıcıları için çoklu hesap şelale sağlığını (anahtar ifşa etmeden) döner."""
+    from music_studio import get_waterfall_report
+
+    return {"success": True, **get_waterfall_report(DATA_DIR, get_secret_from_env)}
+
+
+@app.post("/api/music/waterfall/reset", dependencies=[Depends(require_admin)])
+async def api_music_waterfall_reset():
+    """Şelaledeki geçici soğuma ve engelli anahtar önbelleğini sıfırlar."""
+    from api_waterfall import reset_all_health
+    from mac_bridge import bridge_hub
+    from music_studio import get_waterfall_report, list_music_models
+
+    cleared = reset_all_health()
+    return {
+        "success": True,
+        "cleared_count": cleared,
+        "waterfall": get_waterfall_report(DATA_DIR, get_secret_from_env),
+        "models": list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR),
     }
 
 
@@ -1335,16 +1360,15 @@ async def api_music_generate(
     session: Dict[str, Any] = Depends(require_section("muzik")),
 ):
     from mac_bridge import bridge_hub
-    from music_studio import make_music_env_getter, start_music_job
+    from music_studio import start_music_job
 
     try:
         body = await req.json()
     except Exception:
         body = {}
-    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
     try:
         job = start_music_job(
-            model_id=str(body.get("model_id") or "lyria-3.5").strip(),
+            model_id=str(body.get("model_id") or "auto_waterfall").strip(),
             prompt=str(body.get("prompt") or ""),
             genre=str(body.get("genre") or ""),
             mood=str(body.get("mood") or ""),
@@ -1354,7 +1378,7 @@ async def api_music_generate(
             created_by=str(session.get("username") or "owner"),
             data_dir=DATA_DIR,
             media_dir=MEDIA_DIR,
-            get_env=env_getter,
+            get_env=get_secret_from_env,
             mac_dispatch_fn=lambda cmd: bridge_hub.enqueue_and_wait(cmd, timeout_sec=18.0),
         )
         return {"success": True, "job": job}
@@ -1385,21 +1409,22 @@ async def api_music_history(limit: int = Query(30)):
 
 @app.post("/api/music/config", dependencies=[Depends(require_admin)])
 async def api_music_config(req: Request):
-    """Müzik sağlayıcı API anahtarlarını atomik 0600 izinle kaydeder (yalnızca yönetici)."""
+    """Çoklu hesap müzik API anahtarlarını atomik 0600 izinle kaydeder (yalnızca yönetici)."""
     from mac_bridge import bridge_hub
-    from music_studio import ALLOWED_SECRET_KEYS, list_music_models, make_music_env_getter, save_music_secrets
+    from music_studio import ALLOWED_SECRET_KEYS, get_waterfall_report, list_music_models, save_music_secrets
 
     try:
         body = await req.json()
     except Exception:
         body = {}
     updates = {k: body.get(k) for k in ALLOWED_SECRET_KEYS if k in body}
-    configured = save_music_secrets(DATA_DIR, updates)
-    env_getter = make_music_env_getter(DATA_DIR, get_secret_from_env)
+    append_mode = bool(body.get("append", False))
+    configured = save_music_secrets(DATA_DIR, updates, append=append_mode)
     return {
         "success": True,
         "configured": configured,
-        "models": list_music_models(env_getter, mac_online=bridge_hub.is_online()),
+        "waterfall": get_waterfall_report(DATA_DIR, get_secret_from_env),
+        "models": list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR),
     }
 
 @app.get("/api/system/stats", dependencies=[Depends(verify_auth)])
@@ -4414,33 +4439,63 @@ async def omniroute_generate(req: Request):
     body = await req.json()
     prompt = str(body.get("prompt", "")).strip()
 
-    # 1. Gerçek Gemini API çağrısı dene
-    gemini_key = get_secret_from_env("GEMINI_API_KEY")
-    if gemini_key and prompt:
-        basla = time.perf_counter()
-        try:
-            import urllib.request
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
-            payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
-            api_req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(api_req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
+    # 1. Çoklu hesap Gemini API şelalesi (GEMINI_API_KEY .. GEMINI_API_KEY_25 + panel havuzu)
+    if prompt:
+        from api_waterfall import WaterfallProviderError, collect_provider_keys, execute_key_waterfall
+
+        if collect_provider_keys("GEMINI_API_KEY", data_dir=DATA_DIR, base_get_env=get_secret_from_env):
+            basla = time.perf_counter()
+
+            def _call_gemini_text(api_key: str) -> Tuple[str, str]:
+                import requests as _req
+
+                for mdl in ("gemini-4-hydrogen", "gemini-3.5-flash-lite"):
+                    resp = _req.post(
+                        "https://generativelanguage.googleapis.com/v1beta/interactions",
+                        headers={
+                            "x-goog-api-key": api_key,
+                            "Api-Revision": "2026-05-20",
+                            "Content-Type": "application/json",
+                        },
+                        json={"model": mdl, "input": prompt},
+                        timeout=15,
+                    )
+                    if resp.ok:
+                        jd = resp.json()
+                        for step in jd.get("steps") or []:
+                            if isinstance(step, dict) and step.get("type") == "model_output":
+                                txts = [b.get("text", "") for b in (step.get("content") or []) if isinstance(b, dict) and b.get("type") == "text"]
+                                joined = "\n".join(t for t in txts if t).strip()
+                                if joined:
+                                    return joined, mdl
+                    elif resp.status_code in (401, 403, 429):
+                        raise WaterfallProviderError(resp.status_code, f"HTTP {resp.status_code}: {resp.text[:160]}")
+                raise WaterfallProviderError(502, "Gemini Interactions metin yanıtı alınamadı.")
+
+            try:
+                (text, used_mdl), used_lbl, trace = await run_in_threadpool(
+                    lambda: execute_key_waterfall(
+                        "GEMINI_API_KEY",
+                        _call_gemini_text,
+                        data_dir=DATA_DIR,
+                        base_get_env=get_secret_from_env,
+                    )
+                )
                 return {
                     "success": True,
                     "result": {
-                        "display_name": "Gemini 2.0 Flash (Live Free Tier)",
+                        "display_name": f"{used_mdl} (Şelale · {used_lbl})",
                         "tier": 1,
                         "provider": "Google Cloud",
                         "latency_ms": round((time.perf_counter() - basla) * 1000),
-                        "fallbacks_attempted": [],
+                        "fallbacks_attempted": trace,
                         "cost": "$0.00",
                         "simulasyon": False,
-                        "content": text
-                    }
+                        "content": text,
+                    },
                 }
-        except Exception as e:
-            logger.warning("Canlı Gemini API çağrısı başarısız: %s", e)
+            except Exception as e:
+                logger.warning("Canlı Gemini şelalesi başarısız: %s", e)
 
     # 2. Canlı API yoksa Kural 1 uyarınca açıkça simülasyon etiketiyle dön
     return {
