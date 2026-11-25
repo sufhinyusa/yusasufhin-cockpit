@@ -1564,13 +1564,13 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=30" in sw_txt
-        assert "/lab.js?v=30" in lab_txt
+        assert "/lab.js?v=33" in sw_txt
+        assert "/lab.js?v=33" in lab_txt
         assert "/site.css?v=30" in idx_txt and "/site.css?v=30" in lab_txt
         assert "/styles.css?v=9" in fab_txt
-        assert "fabrika-pwa-v32-mobile" in sw_txt
-        assert "fabrika-pwa-v32-mobile" in lab_txt
-        assert "fabrika-pwa-v32-mobile" in fab_txt
+        assert "fabrika-pwa-v33-mobile" in sw_txt
+        assert "fabrika-pwa-v33-mobile" in lab_txt
+        assert "fabrika-pwa-v33-mobile" in fab_txt
         fab_js = (Path(__file__).resolve().parent.parent / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
         assert "window.sendUiAction(willWake ? 'wake' : 'sleep')" in fab_js
         assert "sendUiAction('music_mode')" not in fab_js
@@ -2514,3 +2514,174 @@ def test_v32_api_waterfall_leaked_and_quota_failover(client, auth_headers, monke
     )
     assert r_cfg.status_code == 200 and r_cfg.json()["waterfall"]["providers"]["GEMINI_API_KEY"]["total_keys"] == 5
     aw.reset_all_health()
+
+
+def test_v33_locked_camera_real_tts_kaggle_music_and_button_audit(client, auth_headers, monkeypatch, tmp_path):
+    """v33: Sabit kadrajda sıfır kamera kayması, Gemini 3.8 + Edge TTS, Kaggle GPU MusicGen ve tüm buton uçları."""
+    import struct
+    import wave
+    import hyperframes_motor as hf
+    import ai_video_montaj as avm
+    import gemini_audio as ga
+    import gpu_worker as gw
+    import main as main_mod
+    import music_studio as ms
+
+    # 1. Sabit kadraj (`wind_cloth_glow` / `locked` / `static` / `sabit`) kesinlikle z='1.0' olmalı, aşağı/yukarı kaymamalı!
+    for locked_mode in ("wind_cloth_glow", "locked", "static", "sabit"):
+        filt = hf._kamera_filtre_ifadesi(locked_mode, 150, 1280, 720)
+        assert "zoompan=z='1.0':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'" in filt
+        assert "cos(" not in filt and "sin(" not in filt and "on/" not in filt
+
+    avm_src = (Path(__file__).resolve().parent.parent / "ai_video_montaj.py").read_text(encoding="utf-8")
+    assert 'mod in ("wind_cloth_glow", "locked", "static", "sabit")' in avm_src
+    vr_src = (Path(__file__).resolve().parent.parent / "video_render.py").read_text(encoding="utf-8")
+    assert "anullsrc=r=44100:cl=mono" in vr_src
+    assert "sine=frequency=" not in vr_src
+
+    # 2. Gemini 3.8 Flash TTS + ücretsiz Edge Neural TTS yedeği (eski 2.5 preview kapalı!)
+    ga_src = (Path(__file__).resolve().parent.parent / "gemini_audio.py").read_text(encoding="utf-8")
+    assert "gemini-3.8-flash-tts" in ga_src
+    assert "gemini-2.5-flash-preview-tts" not in ga_src
+    assert "edge_tts" in ga_src
+
+    # voice_clone_tts tüm gerçek TTS motorları çökerse sahte sinüs/chiptune bip sesi DÖNMEMELİ!
+    monkeypatch.setattr(ga, "synthesize_gemini_speech", lambda *a, **k: (None, 0.0))
+    orig_isfile = os.path.isfile
+    monkeypatch.setattr(main_mod.os.path, "isfile", lambda p: False if str(p) == "/usr/bin/say" else orig_isfile(p))
+    r_tts_fail = client.post(
+        "/api/audio/process",
+        headers=auth_headers,
+        json={"action": "voice_clone_tts", "params": {"prompt": "Merhaba dünya", "voice": "Aoede"}},
+    )
+    assert r_tts_fail.status_code == 200
+    assert r_tts_fail.json()["success"] is False
+    assert "sahte bip" in r_tts_fail.json()["detail"].lower() or "yanıt vermedi" in r_tts_fail.json()["detail"].lower()
+
+    # 3. Kaggle GPU Ücretsiz Yerel AI Müzik (MusicGen) tam uçtan uca turu:
+    #    POST /api/music/generate (gpu-musicgen) → GET /api/worker/claim?mod=musicgen → POST /api/worker/upload (audio) → GET /api/music/job/{id}
+    monkeypatch.setattr(main_mod, "DATA_DIR", tmp_path)
+    ms._MUSIC_JOBS.clear()
+    r_models = client.get("/api/music/models", headers=auth_headers)
+    assert r_models.status_code == 200
+    model_ids = [m["id"] for m in r_models.json()["models"]]
+    assert "gpu-musicgen" in model_ids
+
+    r_gen = client.post(
+        "/api/music/generate",
+        headers=auth_headers,
+        json={"model_id": "gpu-musicgen", "prompt": "Epik orkestra ve elektronik synth", "duration_sec": 15},
+    )
+    assert r_gen.status_code == 200
+    mjob = r_gen.json()["job"]
+    mjid = mjob["job_id"]
+    assert mjob["status"] == "queued_gpu"
+
+    # Video stüdyosu kuyruğunda müzik işi görünmemeli
+    r_vq = client.get("/api/studio/queue", headers=auth_headers)
+    assert r_vq.status_code == 200
+    assert all(it.get("job_id") != mjid for it in r_vq.json()["items"])
+
+    # GPU işçisi `?mod=musicgen` ile işi çekmeli
+    wh = {"X-Worker-Key": main_mod.get_worker_key()}
+    r_claim = client.get("/api/worker/claim?worker_id=kaggle_t4_music&mod=musicgen", headers=wh)
+    assert r_claim.status_code == 200
+    claimed = r_claim.json()["job"]
+    assert claimed is not None and claimed["job_id"] == mjid
+    assert claimed["method"] == "musicgen"
+
+    # İlerleme bildirimi `/api/music/job/{id}` içine yansımalı
+    r_prog = client.post(
+        "/api/worker/progress",
+        headers=wh,
+        json={"job_id": mjid, "progress_pct": 55, "stage": "MusicGen 32kHz üretiliyor"},
+    )
+    assert r_prog.status_code == 200
+    r_poll_mid = client.get(f"/api/music/job/{mjid}", headers=auth_headers)
+    assert r_poll_mid.status_code == 200
+    assert r_poll_mid.json()["job"]["progress_pct"] == 55
+
+    # Gerçek WAV oluştur ve `/api/worker/upload` ile `media_type="audio"` olarak yükle
+    wav_file = tmp_path / f"{mjid}.wav"
+    with wave.open(str(wav_file), "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(32000)
+        wf.writeframes(struct.pack("<hh", 0, 0) * 1600)
+
+    uploaded_media = main_mod.MEDIA_DIR / f"{mjid}.wav"
+    try:
+        r_up = client.post(
+            "/api/worker/upload",
+            headers=wh,
+            data={"job_id": mjid, "media_type": "audio"},
+            files={"file": (f"{mjid}.wav", wav_file.read_bytes(), "audio/wav")},
+        )
+        assert r_up.status_code == 200
+        up_json = r_up.json()
+        assert up_json["success"] is True and up_json["media_type"] == "audio"
+        assert up_json["audio_url"] == f"/api/media/file?path={mjid}.wav"
+
+        r_poll_done = client.get(f"/api/music/job/{mjid}", headers=auth_headers)
+        assert r_poll_done.status_code == 200
+        done_job = r_poll_done.json()["job"]
+        assert done_job["status"] == "completed"
+        assert done_job["audio_url"] == f"/api/media/file?path={mjid}.wav"
+
+        r_dl = client.get(done_job["audio_url"], headers=auth_headers)
+        assert r_dl.status_code == 200 and r_dl.content[:4] == b"RIFF"
+
+        r_hist = client.get("/api/music/history", headers=auth_headers)
+        assert r_hist.status_code == 200
+        assert any(it["job_id"] == mjid for it in r_hist.json()["items"])
+    finally:
+        uploaded_media.unlink(missing_ok=True)
+
+    # 4. gpu_worker.py MusicGen sabitleri ve fonksiyonu doğrulanmalı
+    assert gw.MUSICGEN_MEDIUM == "facebook/musicgen-medium"
+    assert callable(gw.muzik_uret)
+
+    # 5. Bilinmeyen `/api/*` uçları index.html 200 yerine JSON 404 dönmeli
+    r_404 = client.get("/api/olmayan_bir_uc_v33")
+    assert r_404.status_code == 404
+    assert "detail" in r_404.json()
+
+    # 6. Sayfa & buton bütünlüğü kontrolleri (HTML + JS + 4 adım tutarlılığı)
+    root_dir = Path(__file__).resolve().parent.parent / "static"
+    idx_html = (root_dir / "index.html").read_text(encoding="utf-8")
+    assert "Dört mekanik adımda" in idx_html
+    assert "Beş mekanik adımda" not in idx_html
+    fab_js = (root_dir / "fabrika_desktop.js").read_text(encoding="utf-8")
+    assert "Mac Fabrika masaüstü bağlı değil" in fab_js
+    app_js = (root_dir / "app.js").read_text(encoding="utf-8")
+    assert "event.code === 4403" in app_js
+    assert "VAPID anahtarı tanımlı değil" in app_js
+    lab_html = (root_dir / "lab.html").read_text(encoding="utf-8")
+    assert "switchStudioView('audio')" in lab_html
+    assert "Gemini 3.8" in lab_html
+
+    # 7. Tüm ana sayfalar ve buton arkası GET uçları 200 dönmeli (kırık uç yok)
+    for page_path in ("/", "/lab.html", "/fabrika", "/panel", "/Fabrika_GPU_Renderer.ipynb", "/surum.json"):
+        rp = client.get(page_path)
+        assert rp.status_code == 200, f"{page_path} failed: {rp.status_code}"
+    for api_path in (
+        "/api/auth/public_info",
+        "/api/burc/list",
+        "/api/music/models",
+        "/api/music/waterfall",
+        "/api/music/history",
+        "/api/studio/queue",
+        "/api/audio/history",
+        "/api/gpu/cluster/status",
+        "/api/youtube/status",
+        "/api/channels",
+        "/api/admin/users",
+        "/api/contact/messages",
+        "/api/contact/recipients",
+        "/api/bridge/status",
+        "/api/links/pool",
+        "/api/system/stats",
+        "/api/rea/history",
+    ):
+        ra = client.get(api_path, headers=auth_headers)
+        assert ra.status_code == 200, f"{api_path} failed: {ra.status_code}"

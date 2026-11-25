@@ -17,7 +17,7 @@
     if ('caches' in window) {
       caches.keys().then(function(names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v32-mobile') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v33-mobile') caches.delete(names[i]);
         }
       });
     }
@@ -467,10 +467,13 @@
             <div>
               <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Çoklu Model Müzik Stüdyosu</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Google Lyria 3.5, Lyria 3 Clip, ElevenLabs Music, Stable Audio 2, Meta MusicGen ve Mac yerel hattıyla gerçek müzik üretin.
+                Google Lyria 3.5, Lyria 3 Clip, ElevenLabs, Stable Audio, <strong>Ücretsiz Kaggle GPU MusicGen</strong> ve Mac yerel hattıyla gerçek müzik üretin.
               </p>
             </div>
-            <span class="site-badge" id="musicReadyCountBadge">Modeller yükleniyor…</span>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button type="button" class="site-chip-btn" onclick="switchStudioView('audio')" title="Konuşma Seslendirme (TTS)">🎙️ Seslendirme (TTS)</button>
+              <span class="site-badge" id="musicReadyCountBadge">Modeller yükleniyor…</span>
+            </div>
           </div>
 
           <form id="musicStudioForm" onsubmit="handleMusicGenerateSubmit(event)">
@@ -552,7 +555,7 @@
             </div>
           </div>
           <div class="site-hud-box" id="musicOutputHud" style="margin-bottom:14px; white-space:pre-wrap;">
-            Sahte ses üretilmez: yalnızca API anahtarı tanımlı veya canlı Mac bağlantılı modeller çalışır.
+            Sahte ses üretilmez: Ücretsiz Kaggle/Colab GPU MusicGen (yerel AI), API anahtarlı bulut modelleri veya canlı Mac bağlantılı modeller çalışır.
           </div>
 
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
@@ -606,9 +609,9 @@
         <div class="site-card">
           <div class="site-studio-header">
             <div>
-              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Nöral Seslendirme (Gemini TTS)</h2>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Nöral Seslendirme (Gemini 3.8 + Edge TTS)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Metninizi Google Gemini 2.5 Neural TTS ile stüdyo kalitesinde indirilebilir WAV ses dosyasına dönüştürür.
+                Metninizi Google Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) ve ücretsiz Türkçe Edge Neural TTS yedeğiyle indirilebilir WAV ses dosyasına dönüştürür.
               </p>
             </div>
             <span class="site-badge site-badge-free">Gerçek TTS</span>
@@ -647,7 +650,7 @@
             </div>
           </div>
           <div class="site-hud-box" id="audioOutputHud">
-            Gemini 2.5 Neural TTS hazır. Yerel ses klonlama için Mac Fabrika sekmesini kullanabilirsiniz.
+            Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) + ücretsiz Türkçe Edge Neural TTS hazır. Sahte bip/sinyal üretilmez.
           </div>
         </div>
       </div>
@@ -778,8 +781,8 @@
           <div id="youtubeAuthBox" class="site-hud-box" style="margin-bottom:12px;">
             YouTube OAuth durumu sorgulanıyor…
           </div>
-          <div class="site-field">
-            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code></label>
+          <div class="site-field" data-admin-only="1" hidden>
+            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code> (Yalnızca Yönetici)</label>
             <textarea id="ytSecretJsonInput" class="site-textarea" rows="3" placeholder='{"web":{"client_id":"...","client_secret":"..."}}'></textarea>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
               <button type="button" class="site-btn site-btn-ghost" onclick="handleSaveYtSecret()">🔐 Anahtarı Kaydet</button>
@@ -814,8 +817,8 @@
             </div>
           </div>
 
-          <div class="site-field">
-            <label for="gpuModeSelect">Dağıtım Önceliği</label>
+          <div class="site-field" data-admin-only="1" hidden>
+            <label for="gpuModeSelect">Dağıtım Önceliği (Yalnızca Yönetici)</label>
             <select id="gpuModeSelect" class="site-select" onchange="handleGpuModeChange(this.value)">
               <option value="kaggle_first" selected>🚀 Kaggle Öncelikli (Dual T4)</option>
               <option value="colab_first">☁️ Colab Öncelikli</option>
@@ -823,8 +826,8 @@
             </select>
           </div>
 
-          <div style="background:color-mix(in srgb, var(--site-accent) 6%, transparent); border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-top:10px;">
-            <strong style="font-size:0.86rem; display:block; margin-bottom:6px;">🔑 Korumalı GPU İşçi Komutu (X-Worker-Key)</strong>
+          <div data-admin-only="1" hidden style="background:color-mix(in srgb, var(--site-accent) 6%, transparent); border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-top:10px;">
+            <strong style="font-size:0.86rem; display:block; margin-bottom:6px;">🔑 Korumalı GPU İşçi Komutu (X-Worker-Key · Video + Ücretsiz AI Müzik MusicGen)</strong>
             <code id="gpuWorkerCmdCode" style="display:block; background:#090d16; padding:9px 10px; border-radius:8px; color:#38bdf8; font-size:0.78rem; user-select:all;">
               Anahtarlı komutu almak için aşağıdaki düğmeye basın.
             </code>
@@ -1007,8 +1010,8 @@
     <button type="button" data-site-theme-btn="saas" aria-pressed="false" title="Açık Tema">☀️</button>
   </div>
 
-  <script src="/site.js?v=30"></script>
-  <script src="/admin_portal.js?v=32"></script>
-  <script src="/lab.js?v=30"></script>
+  <script src="/site.js?v=33"></script>
+  <script src="/admin_portal.js?v=33"></script>
+  <script src="/lab.js?v=33"></script>
 </body>
 </html>

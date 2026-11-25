@@ -694,8 +694,12 @@
     const centerOrb = document.getElementById('btnCenterOrb');
     if (centerOrb) {
       centerOrb.addEventListener('click', () => {
+        if (!desktopLive) {
+          appendLog('⚪ Mac Fabrika masaüstü bağlı değil — uyku/uyanma komutu gönderilemedi.', 'warn');
+          return;
+        }
         const willWake = (centerOrbState === 'SLEEPING');
-        if (desktopLive && typeof window.sendUiAction === 'function') {
+        if (typeof window.sendUiAction === 'function') {
           window.sendUiAction(willWake ? 'wake' : 'sleep');
         }
         setCenterOrbState(willWake ? 'ACTIVE' : 'SLEEPING');

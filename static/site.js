@@ -90,7 +90,7 @@
           if (errorBox) errorBox.textContent = 'Sunucuya ulaşılamadı. Bağlantınızı kontrol edin.';
         })
         .finally(function () {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Stüdyoya Gir'; }
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Panele Gir'; }
         });
     });
   }
@@ -140,6 +140,21 @@
         email: emailEl ? emailEl.value.trim() : '',
         message: msgEl ? msgEl.value.trim() : ''
       };
+      if (payload.name.length < 2) {
+        if (contactStatus) { contactStatus.textContent = '⚠️ Lütfen adınızı girin (en az 2 karakter).'; contactStatus.style.color = 'var(--site-danger)'; }
+        if (nameEl) nameEl.focus();
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) {
+        if (contactStatus) { contactStatus.textContent = '⚠️ Lütfen geçerli bir e-posta adresi girin.'; contactStatus.style.color = 'var(--site-danger)'; }
+        if (emailEl) emailEl.focus();
+        return;
+      }
+      if (payload.message.length < 10) {
+        if (contactStatus) { contactStatus.textContent = '⚠️ Lütfen en az 10 karakterlik bir mesaj yazın.'; contactStatus.style.color = 'var(--site-danger)'; }
+        if (msgEl) msgEl.focus();
+        return;
+      }
       if (contactStatus) { contactStatus.textContent = ''; contactStatus.style.color = ''; }
       if (contactBtn) { contactBtn.disabled = true; contactBtn.textContent = 'Gönderiliyor…'; }
 

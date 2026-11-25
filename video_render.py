@@ -329,8 +329,8 @@ def video_render_et(
         cmd += ["-i", str(ses_yolu)]
         ses_harita = "1:a"
     else:
-        cmd += ["-f", "lavfi", "-i",
-                f"sine=frequency={pilot_frekans}:duration={sure:.3f}:sample_rate=44100"]
+        # Seslendirme yoksa 440Hz bip/sinyal basma; sessiz AAC kanal üret (v33 dürüstlük)
+        cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono"]
         ses_harita = "1:a"
 
     cmd += [

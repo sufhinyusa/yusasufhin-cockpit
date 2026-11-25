@@ -739,6 +739,18 @@ async def public_info():
 
     mac_on = bridge_hub.is_online()
     st = storage_status(MEDIA_DIR)
+    tts_ready = False
+    try:
+        from gemini_audio import collect_gemini_keys
+        tts_ready = bool(collect_gemini_keys())
+    except Exception:
+        pass
+    if not tts_ready:
+        try:
+            import importlib.util
+            tts_ready = importlib.util.find_spec("edge_tts") is not None
+        except Exception:
+            pass
     return {
         "status": "online",
         "domain": "https://yusasufhin.com/",
@@ -753,7 +765,7 @@ async def public_info():
             "web_cockpit": "online",
             "mac_bridge": "online" if mac_on else "offline",
             "video_studio": "ready",
-            "tts_audio": "ready",
+            "tts_audio": "ready" if tts_ready else "standby",
             "youtube_upload": "ready",
             "kaggle_gpu_worker": "active" if _has_live_gpu_worker() else "standby",
         },
@@ -1315,16 +1327,55 @@ async def admin_delete_user(username: str, admin_sess: Dict[str, Any] = Depends(
 # -----------------------------------------------------------------------------
 # 3c. ÇOKLU MODEL MÜZİK STÜDYOSU & ÇOKLU HESAP API ŞELALESİ (WATERFALL)
 # -----------------------------------------------------------------------------
+def _enqueue_music_gpu_job(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Kaggle/Colab GPU işçisi (`gpu_worker.py`) için MusicGen görevini kuyruğa yazar."""
+    jid = str(payload.get("job_id") or _new_job_id("mus"))
+    dur = max(5, min(30, int(payload.get("duration_sec") or 15)))
+    rec: Dict[str, Any] = {
+        "id": jid,
+        "job_id": jid,
+        "method": "musicgen",
+        "mode": "musicgen",
+        "workflow": "musicgen",
+        "prompt": str(payload.get("prompt") or "")[:1200],
+        "raw_prompt": str(payload.get("raw_prompt") or "")[:600],
+        "genre": str(payload.get("genre") or "")[:60],
+        "mood": str(payload.get("mood") or "")[:60],
+        "instrumental": bool(payload.get("instrumental", True)),
+        "audio_model": str(payload.get("audio_model") or "medium"),
+        "music_model": str(payload.get("audio_model") or "medium"),
+        "sure_sn": dur,
+        "duration": dur,
+        "created_by": str(payload.get("created_by") or "owner"),
+        "gpu_kuyruk": True,
+        "gpu_durum": "bekliyor",
+        "status": "kuyrukta (GPU müzik)",
+        "progress_pct": 0,
+        "current_stage": "Kaggle/Colab GPU MusicGen işçisi bekleniyor",
+        "simulasyon": False,
+        "output_url": None,
+        "audio_url": None,
+        "download_url": None,
+        "created_at": time.time(),
+    }
+    _append_job_record(rec)
+    return rec
+
+
 @app.get("/api/music/models", dependencies=[Depends(require_section("muzik"))])
 async def api_music_models():
     from mac_bridge import bridge_hub
     from music_studio import get_waterfall_report, list_music_models
 
-    models = list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR)
+    gpu_on = _has_live_gpu_worker()
+    models = list_music_models(
+        get_secret_from_env, mac_online=bridge_hub.is_online(), gpu_online=gpu_on, data_dir=DATA_DIR
+    )
     waterfall = get_waterfall_report(DATA_DIR, get_secret_from_env)
     return {
         "success": True,
         "models": models,
+        "gpu_worker_online": gpu_on,
         "ready_count": sum(1 for m in models if m["id"] != "auto_waterfall" and m["ready"]),
         "waterfall": waterfall,
     }
@@ -1350,7 +1401,9 @@ async def api_music_waterfall_reset():
         "success": True,
         "cleared_count": cleared,
         "waterfall": get_waterfall_report(DATA_DIR, get_secret_from_env),
-        "models": list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR),
+        "models": list_music_models(
+            get_secret_from_env, mac_online=bridge_hub.is_online(), gpu_online=_has_live_gpu_worker(), data_dir=DATA_DIR
+        ),
     }
 
 
@@ -1380,6 +1433,7 @@ async def api_music_generate(
             media_dir=MEDIA_DIR,
             get_env=get_secret_from_env,
             mac_dispatch_fn=lambda cmd: bridge_hub.enqueue_and_wait(cmd, timeout_sec=18.0),
+            enqueue_gpu_fn=_enqueue_music_gpu_job,
         )
         return {"success": True, "job": job}
     except PermissionError as exc:
@@ -1396,6 +1450,20 @@ async def api_music_job(job_id: str):
     job = get_music_job(jid)
     if not job:
         raise HTTPException(status_code=404, detail="Müzik işi bulunamadı.")
+    if job.get("status") == "queued_gpu":
+        with JOBS_LOCK:
+            qrec = next((dict(j) for j in _load_jobs_unlocked().get("jobs", []) if _is_job(j, jid)), None)
+        if qrec:
+            job["progress_pct"] = int(qrec.get("progress_pct") or 0)
+            job["current_stage"] = str(qrec.get("current_stage") or qrec.get("status") or "GPU kuyruğunda")
+            job["gpu_durum"] = qrec.get("gpu_durum")
+            job["gpu_worker_online"] = _has_live_gpu_worker()
+            if qrec.get("gpu_durum") == "basarisiz":
+                job["status"] = "failed"
+                job["error"] = str(qrec.get("error") or "Kaggle GPU işçisi hata bildirdi.")
+            elif qrec.get("audio_url") and qrec.get("gpu_durum") == "tamam":
+                job["status"] = "completed"
+                job["audio_url"] = qrec.get("audio_url")
     return {"success": True, "job": job}
 
 
@@ -1424,7 +1492,9 @@ async def api_music_config(req: Request):
         "success": True,
         "configured": configured,
         "waterfall": get_waterfall_report(DATA_DIR, get_secret_from_env),
-        "models": list_music_models(get_secret_from_env, mac_online=bridge_hub.is_online(), data_dir=DATA_DIR),
+        "models": list_music_models(
+            get_secret_from_env, mac_online=bridge_hub.is_online(), gpu_online=_has_live_gpu_worker(), data_dir=DATA_DIR
+        ),
     }
 
 @app.get("/api/system/stats", dependencies=[Depends(verify_auth)])
@@ -2929,12 +2999,13 @@ async def studio_video_generate(req: Request):
         scene_prompts = [s.get("image_prompt", "") for s in (story.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")] or [img_prompt]
         audio_url = None
         subtitle_url = None
+        tts_info: Dict[str, Any] = {"ok": False, "engine": "kapalı", "neden": "Seslendirme kapalı seçildi"}
         if method not in ("flux2_resim", "image_first_preview"):
             if voice and voice.lower() not in ("none", "yok", ""):
-                tts = await run_in_threadpool(
+                tts_info = await run_in_threadpool(
                     lambda: _burc_tts_yaz(narration_txt, voice, MEDIA_DIR / f"{job_id}.wav")
                 )
-                if tts.get("ok"):
+                if tts_info.get("ok"):
                     audio_url = f"/api/worker/audio/{job_id}"
             bmod = _burc_modulu()
             if bmod is not None:
@@ -2978,7 +3049,8 @@ async def studio_video_generate(req: Request):
                 {"ad": f"2. Görsel ({image_model}) / I2V ({i2v_model})", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
                 {"ad": "3. Mux & YouTube Paketi", "durum": "beklemede"},
             ],
-            "artifacts": {"kaynak": "gpu_kuyruk", "image_model": image_model, "i2v_model": i2v_model},
+            "artifacts": {"kaynak": "gpu_kuyruk", "image_model": image_model, "i2v_model": i2v_model, "tts": tts_info},
+            "tts": tts_info,
             "output_url": None,
             "download_url": None,
             "simulasyon": False,
@@ -3131,11 +3203,12 @@ def _synthesize_audio_wav(action: str, params: Dict[str, Any], out_path: Path) -
         params.get("prompt") or params.get("text") or params.get("topic") or "Fabrika ses üretimi"
     ).strip()
 
-    # 1) Google Gemini 2.5 Nöral TTS (Hem Linux/Render bulutta hem macOS'ta %100 saf API, Microsoft Edge KESİNLİKLE YASAKTIR)
+    # 1) Gerçek Nöral TTS (Google Gemini 3.8 Flash TTS çoklu hesap şelalesi + ücretsiz Edge Neural Türkçe yedek)
     if action in ("voice_clone_tts", "generate_podcast"):
+        tts_diag = ""
         try:
-            from gemini_audio import synthesize_gemini_speech
-            tts_text = prompt_text[:350]
+            from gemini_audio import last_tts_diagnostics, synthesize_gemini_speech
+            tts_text = prompt_text[:500]
             if action == "generate_podcast":
                 tts_text = f"Fabrika Podcast yayınına hoş geldiniz. Bugünkü konumuz: {tts_text}."
             voice_choice = str(params.get("voice") or "Aoede")
@@ -3147,15 +3220,20 @@ def _synthesize_audio_wav(action: str, params: Dict[str, Any], out_path: Path) -
             )
             if g_path and out_path.is_file() and out_path.stat().st_size > 1000:
                 sz = out_path.stat().st_size
+                diag = last_tts_diagnostics()
+                eng_label = str(diag.get("engine") or f"Google Gemini 3.8 Neural TTS ({voice_choice})")
                 return {
                     "duration_sec": g_dur,
                     "file_size_bytes": sz,
                     "simulasyon": False,
                     "status": "tamamlandi",
-                    "engine": f"Google Gemini 2.5 Neural TTS ({voice_choice})",
+                    "engine": eng_label,
                 }
+            diag = last_tts_diagnostics()
+            tts_diag = str(diag.get("error") or diag.get("last_error") or "")
         except Exception as e_gemini:
-            logger.debug("Gemini TTS atlandı: %s", e_gemini)
+            tts_diag = str(e_gemini)[:180]
+            logger.debug("Gemini/Edge TTS atlandı: %s", e_gemini)
 
     # 2) macOS üzerinde yerel seslendirme dene (voice_clone_tts / generate_podcast)
     if action in ("voice_clone_tts", "generate_podcast") and os.path.isfile("/usr/bin/say"):
@@ -3197,6 +3275,14 @@ def _synthesize_audio_wav(action: str, params: Dict[str, Any], out_path: Path) -
                     }
         except Exception as e_tts:
             logger.debug("macOS TTS fallback: %s", e_tts)
+
+    # Kural 1 (Dürüstlük): Konuşma / podcast istendiyse sahte sinüs/chiptune bip sesi ASLA döndürme!
+    if action in ("voice_clone_tts", "generate_podcast"):
+        raise RuntimeError(
+            "Gerçek seslendirme motorları (Gemini 3.8 TTS / Edge Neural TTS) yanıt vermedi; "
+            "sahte bip sesi üretilmedi."
+            + (f" ({tts_diag[:140]})" if tts_diag else "")
+        )
 
     # 2) Saf Python çok-harmonikli ritmik / melodik WAV sentezi (Linux/Render dahil %100 garantili)
     sample_rate = 44100
@@ -3451,21 +3537,27 @@ def _burc_altyazi_yaz(mod: Any, metin: str, sure_sn: float,
 
 
 def _burc_tts_yaz(metin: str, ses: str, hedef: Path) -> Dict[str, Any]:
-    """Gemini anahtarı varsa gerçek TTS WAV üretir; yoksa sahte ses üretmez."""
+    """Gemini 3.8 TTS (+ ücretsiz Edge Neural yedek) ile gerçek WAV üretir; yoksa sahte ses üretmez."""
     try:
-        from gemini_audio import synthesize_gemini_speech
+        from gemini_audio import last_tts_diagnostics, synthesize_gemini_speech
     except Exception as e:
         return {"ok": False, "engine": "yok", "neden": f"gemini_audio içe aktarılamadı: {e}"}
     try:
         yol, sure = synthesize_gemini_speech(
             text=metin, voice_name=ses, output_path=hedef, output_format="wav")
     except Exception as e:
-        logger.warning("[Burç] Gemini TTS başarısız: %s", e)
+        logger.warning("[Burç] TTS başarısız: %s", e)
         return {"ok": False, "engine": "yok", "neden": f"{type(e).__name__}: {str(e)[:160]}"}
+    diag = {}
+    try:
+        diag = last_tts_diagnostics() or {}
+    except Exception:
+        pass
     if yol is None or not hedef.is_file() or hedef.stat().st_size <= 1000:
-        return {"ok": False, "engine": "yok", "neden": "GEMINI_API_KEY yok veya TTS yanıt vermedi"}
-    return {"ok": True, "engine": f"Google Gemini TTS ({ses})",
-            "duration_sec": round(float(sure or 0.0), 3)}
+        neden = str(diag.get("error") or diag.get("last_error") or "GEMINI_API_KEY veya Edge TTS yanıt vermedi")
+        return {"ok": False, "engine": "yok", "neden": neden[:180]}
+    eng = str(diag.get("engine") or f"Google Gemini 3.8 TTS ({ses})")
+    return {"ok": True, "engine": eng, "duration_sec": round(float(sure or 0.0), 3)}
 
 
 @app.get("/api/burc/list")
@@ -3518,6 +3610,7 @@ async def burc_video_generate(req: Request):
     dil = str(body.get("dil") or "tr").strip().lower()[:8]
     aspect_ratio = str(body.get("aspect_ratio") or "9:16").strip()
     raw_prompt = bool(body.get("raw_prompt"))
+    camera_motion = str(body.get("camera_motion") or "otomatik").strip()
     try:
         sure_sn = max(3.0, min(120.0, float(body.get("sure_sn") or 15)))
     except (TypeError, ValueError):
@@ -3527,7 +3620,7 @@ async def burc_video_generate(req: Request):
         senaryo = await run_in_threadpool(
             lambda: mod.burc_senaryo_olustur(
                 burc_kodu=burc_kodu, konu=konu, sure_sn=int(round(sure_sn)), dil=dil,
-                aspect_ratio=aspect_ratio, raw_prompt=raw_prompt))
+                aspect_ratio=aspect_ratio, raw_prompt=raw_prompt, camera_motion=camera_motion))
     except TypeError:
         # Farklı imza (eski 4 parametre veya konumsal) ihtimaline karşı savunma.
         try:
@@ -3648,6 +3741,8 @@ async def burc_video_generate(req: Request):
         "i2v_model": i2v_model,
         "video_model": i2v_model,
         "style_preset": burc_stili,
+        "camera_motion": camera_motion,
+        "tts": tts,
         "prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "image_prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "motion_prompt": str(senaryo.get("motion_prompt") or "")[:400],
@@ -3701,7 +3796,7 @@ async def burc_video_generate(req: Request):
                 motion_prompt=job["motion_prompt"],
                 aspect_ratio=job["aspect_ratio"],
                 style_preset=burc_stili,
-                camera_motion=str(body.get("camera_motion") or "orbital"),
+                camera_motion=camera_motion,
                 duration_sec=sure_sn,
                 execution_mode=execution_mode or "instant_cloud",
             )
@@ -3793,7 +3888,10 @@ async def get_studio_queue(status: str = "all", limit: int = 50):
     _release_expired_claims()
     _prune_stale_workers()
     with JOBS_LOCK:
-        jobs = list(_load_jobs_unlocked().get("jobs", []))
+        jobs = [
+            j for j in _load_jobs_unlocked().get("jobs", [])
+            if str(j.get("method") or "").lower() not in ("musicgen", "gpu_muzik")
+        ]
     jobs.sort(key=lambda j: float(j.get("created_at") or 0), reverse=True)
     waiting_count = sum(1 for j in jobs if j.get("gpu_kuyruk") and j.get("gpu_durum") in ("bekliyor", "isleniyor"))
     st = (status or "all").strip().lower()
@@ -4104,9 +4202,11 @@ def _worker_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
     # motion_prompt varsa işçiye aynen taşınır: Wan2.1 I2V animasyonunu bu sürer.
     if job.get("motion_prompt"):
         job["motion_prompt"] = str(job["motion_prompt"])[:500]
-    for anahtar in ("image_model", "i2v_model", "video_model", "negative_prompt", "workflow", "style_preset"):
+    for anahtar in ("image_model", "i2v_model", "video_model", "negative_prompt", "workflow", "style_preset", "audio_model", "music_model"):
         if job.get(anahtar):
             job[anahtar] = str(job[anahtar])[:400]
+    if "instrumental" in job:
+        job["instrumental"] = bool(job["instrumental"])
     jid = str(job.get("job_id") or job.get("id") or "")
     if not jid or not JOB_ID_RE.match(jid):
         return job
@@ -4125,15 +4225,33 @@ def _worker_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
     return job
 
 @app.get("/api/worker/claim", dependencies=[Depends(verify_worker_key)])
-async def worker_claim(worker_id: Optional[str] = Query(None)):
-    """Kaggle veya Colab GPU işçisinin sıradaki video görevini alması.
+async def worker_claim(
+    worker_id: Optional[str] = Query(None),
+    mod: Optional[str] = Query(None),
+):
+    """Kaggle veya Colab GPU işçisinin sıradaki video veya müzik görevini alması.
 
-    `gpu_kuyruk=True` işaretli kayıtlar önceliklidir. Claim/kuyruk işlemleri
-    kilit altında ve atomik yazılır; 45 dakikayı aşan claim'ler geri bırakılır.
+    `gpu_kuyruk=True` işaretli kayıtlar önceliklidir. Opsiyonel `mod` parametresiyle
+    (örn. `mod=musicgen` veya `mod=video,musicgen`) iş türü filtrelenebilir.
     """
     _prune_stale_workers()
     secilen: Optional[Dict[str, Any]] = None
-    mod = ""
+    claim_mod = ""
+    izinli_modlar = {
+        m.strip().lower() for m in str(mod or "").split(",") if m.strip()
+    }
+
+    def _mod_uygun_mu(j: Dict[str, Any]) -> bool:
+        if not izinli_modlar:
+            return True
+        jm = str(j.get("method") or j.get("mode") or "").strip().lower()
+        is_music = jm in ("musicgen", "gpu_muzik")
+        if is_music:
+            return bool(izinli_modlar & {"musicgen", "gpu_muzik", "music", "muzik", "audio"})
+        if "video" in izinli_modlar:
+            return True
+        return jm in izinli_modlar
+
     with JOBS_LOCK:
         data = _load_jobs_unlocked()
         degisti = _release_expired_claims_data(data)
@@ -4141,19 +4259,20 @@ async def worker_claim(worker_id: Optional[str] = Query(None)):
 
         # 1) Açıkça GPU'ya bırakılmış işler (öncelik)
         for j in jobs:
-            if j.get("gpu_kuyruk") and j.get("gpu_durum") == "bekliyor":
+            if j.get("gpu_kuyruk") and j.get("gpu_durum") == "bekliyor" and _mod_uygun_mu(j):
                 j["gpu_durum"] = "isleniyor"
                 j["claimed_by"] = worker_id or "gpu_worker"
                 j["claimed_at"] = time.time()
-                j["status"] = "isleniyor (GPU render)"
+                is_mus = str(j.get("method") or "").lower() in ("musicgen", "gpu_muzik")
+                j["status"] = "isleniyor (GPU müzik)" if is_mus else "isleniyor (GPU render)"
                 secilen = j
-                mod = "gpu_kuyruk"
+                claim_mod = "gpu_kuyruk"
                 break
 
         # 2) Eski davranış (geriye dönük uyumluluk) — zaten claim edilmişi atla
         if secilen is None:
             for j in jobs:
-                if j.get("gpu_kuyruk") or j.get("claimed_by"):
+                if j.get("gpu_kuyruk") or j.get("claimed_by") or not _mod_uygun_mu(j):
                     continue
                 st = str(j.get("status", ""))
                 if "kuyrukta" in st or "onizleme_hazir" in st:
@@ -4161,7 +4280,7 @@ async def worker_claim(worker_id: Optional[str] = Query(None)):
                     j["claimed_by"] = worker_id or "gpu_worker"
                     j["claimed_at"] = time.time()
                     secilen = j
-                    mod = "eski"
+                    claim_mod = "eski"
                     break
 
         if secilen is not None or degisti:
@@ -4169,7 +4288,7 @@ async def worker_claim(worker_id: Optional[str] = Query(None)):
 
     if secilen is not None:
         _worker_job_payload(secilen)
-        return {"success": True, "job": secilen, "mod": mod}
+        return {"success": True, "job": secilen, "mod": claim_mod}
     return {"success": True, "job": None, "message": "İş yok"}
 
 @app.post("/api/worker/progress", dependencies=[Depends(verify_worker_key)])
@@ -4209,6 +4328,12 @@ async def worker_progress(req: Request):
     except OSError as e:
         logger.error("[WorkerProgress] Kayıt güncellenemedi (%s): %s", jid, e)
         raise HTTPException(status_code=500, detail="İş kaydı güncellenemedi.")
+    if failed and jid.startswith("mus_"):
+        try:
+            from music_studio import fail_music_job
+            fail_music_job(jid, str(body.get("error") or stage))
+        except Exception:
+            pass
     return {"success": True, "job_id": jid, "failed": failed}
 
 def _mark_worker_failed(job_id: str, hata: str) -> None:
@@ -4223,6 +4348,22 @@ def _mark_worker_failed(job_id: str, hata: str) -> None:
             j["error"] = hata[:300]
             break
     _update_jobs(_guncelle)
+    if job_id.startswith("mus_"):
+        try:
+            from music_studio import fail_music_job
+            fail_music_job(job_id, hata)
+        except Exception:
+            pass
+
+def _audio_turu(ham: bytes) -> Optional[str]:
+    """WAV (RIFF..WAVE) veya MP3 (ID3 / MPEG frame sync) sihirli baytlarını doğrular."""
+    if len(ham) >= 12 and ham[:4] == b"RIFF" and ham[8:12] == b"WAVE":
+        return "wav"
+    if len(ham) >= 3 and ham[:3] == b"ID3":
+        return "mp3"
+    if len(ham) >= 2 and ham[0] == 0xFF and (ham[1] & 0xE0) == 0xE0:
+        return "mp3"
+    return None
 
 def _gorsel_media_type(yol: Path) -> str:
     try:
@@ -4267,7 +4408,9 @@ async def worker_upload(
 
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     uzanti = Path(file.filename or "").suffix.lower()
-    gorsel_mi = (media_type or "").strip().lower() == "image" or uzanti in (".png", ".jpg", ".jpeg")
+    m_norm = (media_type or "").strip().lower()
+    gorsel_mi = m_norm == "image" or uzanti in (".png", ".jpg", ".jpeg")
+    ses_mi = m_norm == "audio" or uzanti in (".wav", ".mp3")
     gecici = MEDIA_DIR / f".{jid}.upload.part"
     boyut = 0
 
@@ -4328,6 +4471,60 @@ async def worker_upload(
                 "media_type": "image",
                 "file_size_bytes": boyut,
                 "preview_image_url": onizleme_url,
+            }
+
+        if ses_mi:
+            with gecici.open("rb") as fh:
+                ses_tur = _audio_turu(fh.read(16))
+            if ses_tur is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Ses dosyası geçerli WAV veya MP3 değil (sihirli baytlar doğrulanamadı).",
+                )
+            hedef = MEDIA_DIR / f"{jid}.{ses_tur}"
+            os.replace(gecici, hedef)
+            mime_ses = "audio/wav" if ses_tur == "wav" else "audio/mpeg"
+            try:
+                from cloud_storage import put_file
+                await run_in_threadpool(lambda: put_file(hedef, content_type=mime_ses))
+            except Exception:
+                pass
+            ses_url = f"/api/media/file?path={hedef.name}"
+            indirme_url = f"{ses_url}&download=1"
+
+            def _ses_kaydet(data: Dict[str, Any]) -> None:
+                for j in data.get("jobs", []):
+                    if not _is_job(j, jid):
+                        continue
+                    j["status"] = "tamamlandi (GPU müzik)"
+                    j["progress_pct"] = 100
+                    j["file_size_bytes"] = boyut
+                    j["size_kb"] = max(1, round(boyut / 1024))
+                    j["simulasyon"] = False
+                    j["gpu_durum"] = "tamam"
+                    j["kaynak"] = "gpu_worker_musicgen"
+                    j["output_url"] = ses_url
+                    j["audio_url"] = ses_url
+                    j["download_url"] = indirme_url
+                    j.pop("error", None)
+                    break
+            try:
+                _update_jobs(_ses_kaydet)
+            except OSError as e:
+                logger.error("[WorkerUpload] Müzik iş kaydı güncellenemedi (%s): %s", jid, e)
+            try:
+                from music_studio import complete_music_job
+                complete_music_job(jid, ses_url, hedef.name, DATA_DIR, engine_label="Kaggle GPU MusicGen")
+            except Exception as e:
+                logger.warning("[WorkerUpload] complete_music_job atlandı (%s): %s", jid, e)
+            return {
+                "success": True,
+                "job_id": jid,
+                "media_type": "audio",
+                "file_size_bytes": boyut,
+                "audio_url": ses_url,
+                "output_url": ses_url,
+                "download_url": indirme_url,
             }
 
         if not _mp4_oynatilabilir(gecici):
@@ -4927,6 +5124,8 @@ async def catch_all_router(full_path: str):
         return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
 
     low = raw.lower()
+    if low == "api" or low.startswith("api/"):
+        return JSONResponse(status_code=404, content={"detail": "API ucu bulunamadı."})
     if low.startswith("media/") or low.startswith("static/media") or "/media/" in low or low.startswith(".") or "/." in low:
         return JSONResponse(status_code=403, content={"detail": "Bu kaynağa doğrudan erişim yasaktır."})
 

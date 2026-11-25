@@ -50,6 +50,7 @@ AUTO_WATERFALL_ORDER = (
     "elevenlabs-music",
     "stable-audio-2",
     "replicate-musicgen",
+    "gpu-musicgen",
     "local-musicgen-mac",
 )
 MAX_JOBS = 120
@@ -130,6 +131,18 @@ MUSIC_MODELS: List[Dict[str, Any]] = [
         "default_duration_sec": 15,
         "format": "wav",
         "description": "Açık kaynak Meta MusicGen Stereo Large modeli (Replicate bulut GPU üzerinde).",
+    },
+    {
+        "id": "gpu-musicgen",
+        "name": "🚀 Kaggle/Colab Ücretsiz GPU MusicGen (Yerel AI)",
+        "provider": "gpu_queue",
+        "env_key": None,
+        "supports_vocals": False,
+        "supports_lyrics": False,
+        "max_duration_sec": 30,
+        "default_duration_sec": 15,
+        "format": "wav",
+        "description": "Meta MusicGen (medium) modeli Kaggle/Colab T4 GPU işçisinde yerel çalışır; ücret/kota yok, sahte ses üretilmez.",
     },
     {
         "id": "local-musicgen-mac",
@@ -256,6 +269,7 @@ def list_music_models(
     get_env: Callable[[str], Optional[str]],
     *,
     mac_online: bool = False,
+    gpu_online: bool = False,
     data_dir: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """Tüm müzik modellerini çoklu hesap anahtar sayısı ve şelale durumuyla listeler."""
@@ -282,6 +296,18 @@ def list_music_models(
                 reason = f"Şelale ({n_tot} hesap engelli/soğumada)"
             else:
                 reason = f"API anahtarı eksik: {env_key}"
+        elif spec.get("provider") == "gpu_queue":
+            n_tot = 1 if gpu_online else 0
+            n_ok = n_tot
+            ready = bool(gpu_online)
+            if ready:
+                any_real_ready = True
+                total_ready_keys = max(total_ready_keys, 1)
+            reason = (
+                "Kaggle/Colab GPU bağlı (Ücretsiz)"
+                if ready
+                else "GPU işçisi çevrimdışı — kuyruğa alınabilir"
+            )
         else:
             n_tot = 1 if mac_online else 0
             n_ok = n_tot
@@ -558,6 +584,99 @@ def get_music_job(job_id: str) -> Optional[Dict[str, Any]]:
         return dict(job) if job else None
 
 
+def _gpu_kuyruga_al(
+    *,
+    job_id: str,
+    composed: str,
+    clean_prompt: str,
+    dur: int,
+    genre: str,
+    mood: str,
+    instrumental: bool,
+    created_by: str,
+    enqueue_gpu_fn: Callable[[Dict[str, Any]], Any],
+    trace: Optional[List[str]] = None,
+    chosen_model: str = "gpu-musicgen",
+) -> bool:
+    """İşi Kaggle/Colab GPU kuyruğuna yazar; işçi çevrimdışıyken de kuyruğa alınabilir."""
+    payload: Dict[str, Any] = {
+        "job_id": job_id,
+        "prompt": composed,
+        "raw_prompt": clean_prompt,
+        "duration_sec": int(dur),
+        "genre": genre.strip()[:60],
+        "mood": mood.strip()[:60],
+        "instrumental": bool(instrumental),
+        "audio_model": "musicgen-medium",
+        "created_by": created_by,
+    }
+    try:
+        enqueue_gpu_fn(payload)
+    except Exception as exc:
+        logger.warning("[MusicStudio] GPU kuyruğuna alınamadı (%s): %s", job_id, exc)
+        with _JOBS_LOCK:
+            job = _MUSIC_JOBS.get(job_id)
+            if job is not None:
+                job["status"] = "failed"
+                job["error"] = f"GPU kuyruğuna alınamadı: {str(exc)[:280]}"
+        return False
+    with _JOBS_LOCK:
+        job = _MUSIC_JOBS.get(job_id)
+        if job is None:
+            return False
+        job["status"] = "queued_gpu"
+        job["gpu_job_id"] = job_id
+        job["model_id"] = chosen_model
+        job["model_name"] = MUSIC_MODELS_BY_ID[chosen_model]["name"]
+        job["queued_at"] = time.time()
+        if trace is not None:
+            job["waterfall_trace"] = trace[-12:]
+    return True
+
+
+def complete_music_job(
+    job_id: str,
+    audio_url: str,
+    filename: str,
+    data_dir: Path,
+    engine_label: str = "Kaggle GPU MusicGen",
+) -> Optional[Dict[str, Any]]:
+    """GPU işçisinin yüklediği WAV/MP3'ü müzik işine bağlar ve geçmişe yazar.
+
+    `/api/worker/upload` `media_type=audio` için bu fonksiyonu çağırır; böylece
+    panelde `status=completed` + oynatılabilir `audio_url` görünür.
+    """
+    temiz_url = str(audio_url or "").strip()
+    if not job_id or not temiz_url:
+        raise ValueError("complete_music_job için job_id ve audio_url zorunludur.")
+    with _JOBS_LOCK:
+        job = _MUSIC_JOBS.get(job_id)
+        if job is None:
+            logger.warning("[MusicStudio] Tamamlanacak müzik işi bulunamadı: %s", job_id)
+            return None
+        job["status"] = "completed"
+        job["audio_url"] = temiz_url
+        job["filename"] = str(filename or "")
+        job["used_key_label"] = engine_label
+        job["completed_at"] = time.time()
+        job["error"] = None
+        _append_history(data_dir, dict(job))
+        return dict(job)
+
+
+def fail_music_job(job_id: str, error_msg: str) -> bool:
+    """GPU işçisinin başarısız bildirdiği müzik işini dürüstçe işaretler."""
+    with _JOBS_LOCK:
+        job = _MUSIC_JOBS.get(job_id)
+        if job is None:
+            logger.warning("[MusicStudio] Başarısız işaretlenecek müzik işi bulunamadı: %s", job_id)
+            return False
+        job["status"] = "failed"
+        job["error"] = str(error_msg or "GPU işçisi işi başarısız bildirdi.")[:360]
+        job["failed_at"] = time.time()
+        return True
+
+
 def start_music_job(
     *,
     model_id: str,
@@ -572,6 +691,7 @@ def start_music_job(
     media_dir: Path,
     get_env: Callable[[str], Optional[str]],
     mac_dispatch_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
+    enqueue_gpu_fn: Optional[Callable[[Dict[str, Any]], Any]] = None,
 ) -> Dict[str, Any]:
     """Çoklu hesap şelalesiyle gerçek bir müzik üretim işini doğrular ve başlatır."""
     spec = MUSIC_MODELS_BY_ID.get(model_id)
@@ -596,11 +716,16 @@ def start_music_job(
             collect_provider_keys(k, data_dir=data_dir, base_get_env=get_env)
             for k in ALLOWED_SECRET_KEYS
         )
-        if not any_keys and mac_dispatch_fn is None:
+        if not any_keys and mac_dispatch_fn is None and enqueue_gpu_fn is None:
             raise PermissionError(
                 "Otomatik Şelale için en az bir sağlayıcı anahtarı (GEMINI_API_KEY, ELEVENLABS_API_KEY, "
                 "STABILITY_API_KEY veya REPLICATE_API_TOKEN) gereklidir."
             )
+
+    if model_id == "gpu-musicgen" and enqueue_gpu_fn is None:
+        raise PermissionError(
+            "GPU kuyruğu köprüsü etkin değil: Kaggle/Colab işçisine iş gönderilemiyor."
+        )
 
     job_id = f"mus_{int(time.time())}_{secrets.token_hex(4)}"
     composed = _compose_music_prompt(
@@ -625,6 +750,7 @@ def start_music_job(
         "used_key_label": None,
         "waterfall_trace": [],
         "error": None,
+        "gpu_job_id": None,
     }
     with _JOBS_LOCK:
         if len(_MUSIC_JOBS) >= MAX_JOBS:
@@ -632,6 +758,22 @@ def start_music_job(
             for k in oldest:
                 _MUSIC_JOBS.pop(k, None)
         _MUSIC_JOBS[job_id] = job
+
+    # GPU kuyruğu: işçi şu an standby olsa bile iş kuyruğa alınır (Kaggle sonra başlatılabilir).
+    if model_id == "gpu-musicgen":
+        _gpu_kuyruga_al(
+            job_id=job_id,
+            composed=composed,
+            clean_prompt=clean_prompt,
+            dur=dur,
+            genre=genre,
+            mood=mood,
+            instrumental=instrumental,
+            created_by=created_by,
+            enqueue_gpu_fn=enqueue_gpu_fn,  # type: ignore[arg-type]
+        )
+        with _JOBS_LOCK:
+            return dict(_MUSIC_JOBS[job_id])
 
     def _run() -> None:
         all_traces: List[str] = []
@@ -657,6 +799,25 @@ def start_music_job(
                 last_exc: Optional[Exception] = None
                 for cand_id in AUTO_WATERFALL_ORDER:
                     cspec = MUSIC_MODELS_BY_ID[cand_id]
+                    if cand_id == "gpu-musicgen":
+                        if enqueue_gpu_fn is not None:
+                            all_traces.append("[gpu-musicgen] GPU kuyruğuna alındı")
+                            _gpu_kuyruga_al(
+                                job_id=job_id,
+                                composed=composed,
+                                clean_prompt=clean_prompt,
+                                dur=dur,
+                                genre=genre,
+                                mood=mood,
+                                instrumental=instrumental,
+                                created_by=created_by,
+                                enqueue_gpu_fn=enqueue_gpu_fn,
+                                trace=all_traces,
+                                chosen_model=cand_id,
+                            )
+                            return
+                        all_traces.append("[gpu-musicgen] GPU kuyruğu köprüsü etkin değil")
+                        continue
                     if cand_id == "local-musicgen-mac":
                         if mac_dispatch_fn is not None:
                             res = mac_dispatch_fn(f"müzik üret ({dur} sn): {composed}")

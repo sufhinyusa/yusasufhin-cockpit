@@ -1,30 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-gemini_audio.py — Google Gemini Nöral Ses ve TTS Motoru (yusasufhin.com)
------------------------------------------------------------------------
-Google Gemini 2.5 Flash TTS API'sini kullanarak stüdyo videoları ve podcast'ler
-için yüksek kaliteli stüdyo seslendirmesi üretir.
-Microsoft Edge kullanılmaz; %100 saf Google Gemini altyapısıdır.
+gemini_audio.py — Google Gemini 3.8 Nöral TTS + Ücretsiz Edge Neural Yedek
+---------------------------------------------------------------------------
+Birincil motor: Gemini 3.8 Flash TTS (`v1beta/interactions`, Api-Revision
+2026-05-20). Tüm hesaplar `api_waterfall` şelalesinden sırayla denenir; 403
+sızdırılmış ve 429 kota anahtarları anında atlanır.
+
+Yedek motor: Gemini anahtarı yoksa veya tüm anahtarlar tükendiyse Microsoft
+Edge Neural Türkçe sesleri (edge-tts) devreye girer. Böylece Render Free
+Tier'da bile gerçek insan sesi üretilir; sahte beep/sine sesi ASLA üretilmez.
 """
 from __future__ import annotations
 
 import base64
-import json
+import io
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
 import time
+import types
+import wave
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+
+from api_waterfall import WaterfallProviderError, execute_key_waterfall
 
 logger = logging.getLogger("YusasufhinCockpit.GeminiAudio")
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Gemini 3.8 TTS REST uç noktası (2.5 *-preview-tts 2026-11-17'de kapandı).
+INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+API_REVISION = "2026-05-20"
+GEMINI_TTS_MODELS = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
+REQUEST_TIMEOUT = (8, 45)
 
 # Gemini Ses Profilleri
 GEMINI_VOICES = {
@@ -35,22 +51,54 @@ GEMINI_VOICES = {
     "Fenrir": "Fenrir (Güçlü, Dramatik Erkek — Sinematik ve Fragman)",
 }
 
-# Gemini API anahtarları ortam değişkenlerinden ve yerel .env adaylarından okunur.
-# Repoya gömülü yedek anahtar yoktur — sızıntı ve faturalama riski taşır.
+# Gemini ses profilini gerçek Türkçe Microsoft Neural sesine eşler.
+EDGE_VOICE_MAP = {
+    "Aoede": "tr-TR-EmelNeural",
+    "Kore": "tr-TR-EmelNeural",
+    "Puck": "tr-TR-AhmetNeural",
+    "Charon": "tr-TR-AhmetNeural",
+    "Fenrir": "tr-TR-AhmetNeural",
+}
+
+# Son TTS çağrısının sonucu (çağıranlar `last_tts_diagnostics()` ile okur).
+_DIAG_LOCK = threading.Lock()
+_LAST_DIAGNOSTICS: Dict[str, Any] = {
+    "ok": False,
+    "engine": "none",
+    "reason": "henüz çalıştırılmadı",
+    "key_label": "",
+}
+
+
+def last_tts_diagnostics() -> Dict[str, Any]:
+    """Son TTS denemesinin güvenli özetini döner (ham API anahtarı içermez)."""
+    with _DIAG_LOCK:
+        return dict(_LAST_DIAGNOSTICS)
+
+
+def _set_diagnostics(ok: bool, engine: str, reason: str, key_label: str = "") -> None:
+    with _DIAG_LOCK:
+        _LAST_DIAGNOSTICS.clear()
+        _LAST_DIAGNOSTICS.update({
+            "ok": bool(ok),
+            "engine": str(engine),
+            "reason": str(reason),
+            "key_label": str(key_label),
+        })
+
 
 def collect_gemini_keys() -> List[str]:
     """Sistem ortamından, panel kasasından ve Persona/.env adaylarından tüm Gemini API anahtarlarını şelale sırasında toplar."""
     keys: List[str] = []
     try:
-        from api_waterfall import collect_provider_keys, get_key_health
+        from api_waterfall import collect_provider_keys
 
         panel_entries = collect_provider_keys("GEMINI_API_KEY", data_dir=BASE_DIR / "data")
-        healthy = [k for _, k in panel_entries if get_key_health(k)[0]]
-        for k in healthy:
-            if k not in keys:
+        for _, k in panel_entries:
+            if k and k not in keys:
                 keys.append(k)
-    except Exception:
-        pass
+    except Exception as exc:  # panel kasası opsiyonel; ortam anahtarlarıyla devam et
+        logger.debug("[GeminiAudio] Panel anahtar kasası okunamadı: %s", exc)
 
     # 1. Ortam değişkenleri (sayısal sıra: GEMINI_API_KEY, _1.._25)
     env_ordered = ["GEMINI_API_KEY"] + [f"GEMINI_API_KEY_{i}" for i in range(1, 26)]
@@ -84,8 +132,8 @@ def collect_gemini_keys() -> List[str]:
                         val = k_val.strip().strip('"\'')
                         if val and val not in keys:
                             keys.append(val)
-            except Exception:
-                pass
+            except Exception as exc:  # okunamayan .env adayı diğerlerini engellemesin
+                logger.debug("[GeminiAudio] .env adayı okunamadı (%s): %s", c, exc)
 
     return keys
 
@@ -104,6 +152,398 @@ def get_channel_gemini_voice(channel: str) -> str:
     return "Aoede"
 
 
+def _find_ffmpeg() -> Optional[str]:
+    """PATH, Homebrew veya imageio-ffmpeg üzerinden ffmpeg ikilisini bulur."""
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin and os.path.isfile("/opt/homebrew/bin/ffmpeg"):
+        ffmpeg_bin = "/opt/homebrew/bin/ffmpeg"
+    if not ffmpeg_bin:
+        try:
+            import imageio_ffmpeg
+
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception as exc:
+            logger.debug("[GeminiAudio] imageio-ffmpeg bulunamadı: %s", exc)
+    return ffmpeg_bin or None
+
+
+def _wav_duration_from_bytes(raw: bytes) -> float:
+    try:
+        with wave.open(io.BytesIO(raw), "rb") as wf:
+            rate = wf.getframerate()
+            frames = wf.getnframes()
+            return round(frames / float(rate), 2) if rate else 0.0
+    except Exception:
+        return 0.0
+
+
+def _wav_duration(path: Path) -> float:
+    try:
+        with wave.open(str(path), "rb") as wf:
+            rate = wf.getframerate()
+            frames = wf.getnframes()
+            return round(frames / float(rate), 2) if rate else 0.0
+    except Exception:
+        return 0.0
+
+
+def _media_duration(path: Path) -> float:
+    """WAV dışındaki MP3 için ffprobe varsa süreyi okur; yoksa 0.0 döner."""
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return 0.0
+    try:
+        res = subprocess.run(
+            [
+                ffprobe, "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return round(float(res.stdout.strip()), 2)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        logger.debug("[GeminiAudio] ffprobe süre okuması başarısız: %s", exc)
+    return 0.0
+
+
+def _write_wav_from_pcm(raw_pcm: bytes, target: Path) -> None:
+    """24 kHz / mono / 16-bit little-endian PCM'i stdlib wave ile WAV'a sarar."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(24000)
+        wf.writeframes(raw_pcm)
+
+
+def _convert_with_ffmpeg(input_args: List[str], source: Path, target: Path) -> bool:
+    ffmpeg_bin = _find_ffmpeg()
+    if not ffmpeg_bin:
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [ffmpeg_bin, "-y", *input_args, "-i", str(source), "-c:a", "libmp3lame", "-b:a", "192k", str(target)]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("[GeminiAudio] FFmpeg dönüşümü çalıştırılamadı: %s", exc)
+        return False
+    if res.returncode != 0 or not target.is_file() or target.stat().st_size <= 500:
+        logger.warning("[GeminiAudio] FFmpeg dönüşümü başarısız: %s", (res.stderr or "")[-200:])
+        return False
+    return True
+
+
+def _pcm_to_mp3(raw_pcm: bytes, target: Path) -> bool:
+    with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as tmp:
+        tmp.write(raw_pcm)
+        tmp_path = Path(tmp.name)
+    try:
+        return _convert_with_ffmpeg(
+            ["-f", "s16le", "-ar", "24000", "-ac", "1"], tmp_path, target
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _wav_bytes_to_mp3(raw_wav: bytes, target: Path) -> bool:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp.write(raw_wav)
+        tmp_path = Path(tmp.name)
+    try:
+        return _convert_with_ffmpeg([], tmp_path, target)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _finalize_audio(raw_audio: bytes, target_out: Path, output_format: str) -> Tuple[Optional[Path], float]:
+    """Gemini çıktısını (tam WAV veya çıplak PCM) hedef formata yazar."""
+    if not raw_audio:
+        return None, 0.0
+
+    target_out = Path(target_out)
+    target_out.parent.mkdir(parents=True, exist_ok=True)
+
+    if raw_audio[:4] == b"RIFF":
+        # Gemini 3.8 unary yanıtı tam WAV olarak gelir.
+        duration = _wav_duration_from_bytes(raw_audio)
+        if output_format == "mp3":
+            mp3_target = target_out if target_out.suffix.lower() == ".mp3" else target_out.with_suffix(".mp3")
+            if _wav_bytes_to_mp3(raw_audio, mp3_target):
+                return mp3_target, duration or _media_duration(mp3_target)
+            # ffmpeg yoksa WAV olarak yaz; sahte ses üretmektense gerçek WAV döner.
+            wav_target = target_out if target_out.suffix.lower() == ".wav" else target_out.with_suffix(".wav")
+            wav_target.write_bytes(raw_audio)
+            return wav_target, duration
+        wav_target = target_out if target_out.suffix.lower() == ".wav" else target_out.with_suffix(".wav")
+        wav_target.write_bytes(raw_audio)
+        return wav_target, duration
+
+    # 24 kHz s16le PCM: stdlib wave ile ffmpeg'siz WAV üretilebilir.
+    duration = round(len(raw_audio) / (24000 * 2), 2)
+    if output_format == "mp3":
+        mp3_target = target_out if target_out.suffix.lower() == ".mp3" else target_out.with_suffix(".mp3")
+        if _pcm_to_mp3(raw_audio, mp3_target):
+            return mp3_target, duration
+    wav_target = target_out if target_out.suffix.lower() == ".wav" else target_out.with_suffix(".wav")
+    _write_wav_from_pcm(raw_audio, wav_target)
+    return wav_target, duration
+
+
+def _strip_data_uri(value: str) -> str:
+    text = value.strip()
+    if text.startswith("data:") and "," in text:
+        return text.split(",", 1)[1].strip()
+    return text
+
+
+def _extract_audio_base64(data: Dict[str, Any]) -> Optional[str]:
+    """Gemini interactions yanıtındaki model_output/audio bloğunu bulur."""
+    steps = data.get("steps") or []
+    if isinstance(steps, dict):
+        steps = [steps]
+    if not isinstance(steps, list):
+        return None
+
+    for step in steps:
+        if not isinstance(step, dict) or step.get("type") != "model_output":
+            continue
+        content = step.get("content") or []
+        if isinstance(content, dict):
+            content = [content]
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "audio":
+                    continue
+                b64 = block.get("data") or block.get("audio")
+                if isinstance(b64, str) and b64.strip():
+                    return _strip_data_uri(b64)
+
+    # Eski biçimle karşılaşılırsa (inlineData) geriye dönük uyumluluk.
+    for candidate in data.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        parts = (candidate.get("content") or {}).get("parts") or []
+        for part in parts:
+            inline = part.get("inlineData") or part.get("inline_data") or {}
+            b64 = inline.get("data")
+            if isinstance(b64, str) and b64.strip():
+                return _strip_data_uri(b64)
+    return None
+
+
+def _request_gemini_tts(
+    api_key: str,
+    model_name: str,
+    clean_text: str,
+    selected_voice: str,
+) -> bytes:
+    """Tek anahtar + tek model için Gemini 3.8 interactions çağrısı yapar."""
+    payload = {
+        "model": model_name,
+        "input": [
+            {
+                "type": "user_input",
+                "content": [{"type": "text", "text": clean_text}],
+            }
+        ],
+        "response_format": {"type": "audio"},
+        "generation_config": {"speech_config": [{"voice": selected_voice}]},
+    }
+    headers = {
+        "x-goog-api-key": api_key,
+        "Api-Revision": API_REVISION,
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = requests.post(
+            INTERACTIONS_URL,
+            json=payload,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+    except requests.Timeout as exc:
+        raise WaterfallProviderError(504, f"{model_name} zaman aşımı") from exc
+    except requests.RequestException as exc:
+        raise WaterfallProviderError(502, f"{model_name} ağ hatası: {exc}") from exc
+
+    if resp.status_code != 200:
+        message = (resp.text or "").strip()[:200]
+        if resp.status_code == 404:
+            raise WaterfallProviderError(404, f"{model_name} bulunamadı")
+        raise WaterfallProviderError(
+            resp.status_code,
+            f"{model_name} HTTP {resp.status_code}: {message}",
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise WaterfallProviderError(502, f"{model_name} geçersiz JSON yanıtı") from exc
+
+    b64 = _extract_audio_base64(data if isinstance(data, dict) else {})
+    if not b64:
+        raise WaterfallProviderError(502, f"{model_name} yanıtında ses bloğu yok")
+    try:
+        raw_audio = base64.b64decode(b64, validate=False)
+    except (ValueError, TypeError) as exc:
+        raise WaterfallProviderError(502, f"{model_name} base64 ses çözülemedi") from exc
+    if not raw_audio:
+        raise WaterfallProviderError(502, f"{model_name} boş ses verisi döndürdü")
+    return raw_audio
+
+
+def _build_env_getter(all_keys: List[str]):
+    """api_waterfall'un env katmanına panel + .env dahil tüm anahtarları verir."""
+    joined = ",".join(all_keys)
+
+    def _getter(name: str) -> Optional[str]:
+        if name == "GEMINI_API_KEY":
+            return joined or None
+        return None
+
+    return _getter
+
+
+def _synthesize_with_waterfall(
+    clean_text: str,
+    selected_voice: str,
+    keys: List[str],
+) -> Tuple[bytes, str, str]:
+    """Tüm anahtarları api_waterfall üzerinden dener; (ses, model, etiket) döner."""
+    def _call(api_key: str) -> Tuple[bytes, str]:
+        last_404: Optional[WaterfallProviderError] = None
+        for model_name in GEMINI_TTS_MODELS:
+            try:
+                raw_audio = _request_gemini_tts(api_key, model_name, clean_text, selected_voice)
+            except WaterfallProviderError as exc:
+                if exc.status_code == 404:
+                    # Model yoksa aynı anahtarla hemen bir sonraki modele geç.
+                    last_404 = exc
+                    continue
+                raise
+            return raw_audio, model_name
+        raise last_404 or WaterfallProviderError(
+            404, "Gemini 3.8 TTS modeli bulunamadı"
+        )
+
+    (raw_audio, model_name), key_label, _trace = execute_key_waterfall(
+        "GEMINI_API_KEY",
+        _call,
+        data_dir=BASE_DIR / "data",
+        base_get_env=_build_env_getter(keys),
+        retry_cooldown_if_all_blocked=False,
+    )
+    return raw_audio, model_name, key_label
+
+
+def _edge_tts_allowed() -> bool:
+    """pytest içinde edge-tts'i yalnızca açıkça izin/mock varsa çalıştır."""
+    if os.environ.get("GEMINI_AUDIO_ALLOW_EDGE_TTS_IN_TESTS") == "1":
+        return True
+    if "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST"):
+        edge_module = sys.modules.get("edge_tts")
+        # Testlerde sahte/mock modül açıkça enjekte edildiyse gerçek ağa çıkmaz.
+        if edge_module is not None and (
+            not isinstance(edge_module, types.ModuleType)
+            or not getattr(edge_module, "__file__", None)
+        ):
+            return True
+        return False
+    return True
+
+
+def _edge_tts_save(text: str, voice: str, destination: Path) -> None:
+    """edge-tts'i temiz bir asyncio döngüsünde çalıştırır (çalışan loop'u bozmaz)."""
+    import asyncio
+
+    import edge_tts
+
+    async def _run() -> None:
+        communicate = edge_tts.Communicate(text, voice)
+        await asyncio.wait_for(communicate.save(str(destination)), timeout=60.0)
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_run())
+        return
+
+    # Zaten çalışan bir event loop varsa ayrı iş parçacığında kendi loop'unda çalıştır.
+    errors: List[BaseException] = []
+
+    def _worker() -> None:
+        try:
+            asyncio.run(_run())
+        except BaseException as exc:  # noqa: BLE001 - hatayı ana iş parçacığına taşı
+            errors.append(exc)
+
+    worker = threading.Thread(target=_worker, name="edge-tts", daemon=True)
+    worker.start()
+    worker.join(timeout=75.0)
+    if worker.is_alive():
+        raise TimeoutError("edge-tts zaman aşımı")
+    if errors:
+        raise errors[0]
+
+
+def _edge_tts_synthesize(
+    clean_text: str,
+    selected_voice: str,
+    target_out: Path,
+    output_format: str,
+) -> Tuple[Optional[Path], float, str]:
+    """Ücretsiz Microsoft Neural Türkçe sesiyle gerçek seslendirme üretir."""
+    try:
+        import edge_tts  # noqa: F401 - kullanılabilirlik kontrolü
+    except Exception as exc:
+        return None, 0.0, f"edge-tts yüklü değil: {exc}"
+
+    edge_voice = EDGE_VOICE_MAP.get(selected_voice, "tr-TR-EmelNeural")
+    target_out = Path(target_out)
+    target_out.parent.mkdir(parents=True, exist_ok=True)
+    tmp_mp3: Optional[Path] = None
+
+    try:
+        if output_format == "mp3":
+            mp3_target = target_out if target_out.suffix.lower() == ".mp3" else target_out.with_suffix(".mp3")
+            _edge_tts_save(clean_text, edge_voice, mp3_target)
+            if not mp3_target.is_file() or mp3_target.stat().st_size <= 1000:
+                return None, 0.0, "edge-tts boş MP3 döndürdü"
+            return mp3_target, _media_duration(mp3_target), ""
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp_mp3 = Path(tmp.name)
+        _edge_tts_save(clean_text, edge_voice, tmp_mp3)
+        if not tmp_mp3.is_file() or tmp_mp3.stat().st_size <= 1000:
+            return None, 0.0, "edge-tts boş MP3 döndürdü"
+
+        ffmpeg_bin = _find_ffmpeg()
+        if not ffmpeg_bin:
+            return None, 0.0, "edge-tts MP3 üretildi ancak ffmpeg bulunamadı"
+
+        wav_target = target_out if target_out.suffix.lower() == ".wav" else target_out.with_suffix(".wav")
+        res = subprocess.run(
+            [ffmpeg_bin, "-y", "-i", str(tmp_mp3), "-c:a", "pcm_s16le", str(wav_target)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if res.returncode != 0 or not wav_target.is_file() or wav_target.stat().st_size <= 1000:
+            return None, 0.0, f"edge-tts WAV dönüşümü başarısız: {(res.stderr or '')[-160:]}"
+        return wav_target, _wav_duration(wav_target), ""
+    except Exception as exc:
+        logger.warning("[GeminiAudio] edge-tts hatası: %s", exc)
+        return None, 0.0, f"edge-tts hatası: {type(exc).__name__}: {str(exc)[:160]}"
+    finally:
+        if tmp_mp3 is not None:
+            tmp_mp3.unlink(missing_ok=True)
+
+
 def synthesize_gemini_speech(
     text: str,
     voice_name: str = "Puck",
@@ -111,114 +551,75 @@ def synthesize_gemini_speech(
     output_format: str = "wav",
 ) -> Tuple[Optional[Path], float]:
     """
-    Google Gemini 2.5 TTS kullanarak verilen metni seslendirir.
-    Dönen değer: (çıktı_dosya_yolu, süre_saniye)
+    Gemini 3.8 TTS ile seslendirir; tüm anahtarlar tükenirse edge-tts Neural
+    Türkçe sese düşer. Dönen değer: (çıktı_dosya_yolu, süre_saniye)
     """
     clean_text = (text or "").strip()
     if not clean_text:
+        _set_diagnostics(False, "none", "boş metin")
         return None, 0.0
 
-    keys = collect_gemini_keys()
-    if not keys:
-        logger.warning("[GeminiAudio] Hiçbir GEMINI_API_KEY bulunamadı!")
-        return None, 0.0
-
-    models = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"]
     selected_voice = voice_name if voice_name in GEMINI_VOICES else "Puck"
+    fmt = (output_format or "wav").lower()
+    if fmt not in ("wav", "mp3"):
+        fmt = "wav"
 
-    raw_pcm: Optional[bytes] = None
-    start_ts = time.time()
-
-    # Çoklu anahtar ve model devir havuzu (ölü 400/403 anahtarları atla, çalışan anahtara ulaş)
-    dead_keys = set()
-    for model_name in models:
-        for api_key in keys:
-            if api_key in dead_keys or (time.time() - start_ts) > 15.0:
-                continue
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": clean_text}]}],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {
-                                "voiceName": selected_voice
-                            }
-                        }
-                    }
-                }
-            }
-            try:
-                resp = requests.post(url, json=payload, timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for p in parts:
-                            inline = p.get("inlineData", {})
-                            b64 = inline.get("data")
-                            if b64:
-                                raw_pcm = base64.b64decode(b64)
-                                logger.info("[GeminiAudio] Ses başarıyla üretildi (%d bayt PCM, Model: %s, Ses: %s)", len(raw_pcm), model_name, selected_voice)
-                                break
-                    if raw_pcm:
-                        break
-                elif resp.status_code in (400, 403):
-                    dead_keys.add(api_key)
-                    logger.debug("[GeminiAudio] Geçersiz/engelli anahtar (%s), kara listeye alındı.", api_key[:8])
-                elif resp.status_code == 429:
-                    logger.debug("[GeminiAudio] Kota aşıldı (%s), sıradaki anahtara geçiliyor...", api_key[:8])
-                else:
-                    logger.debug("[GeminiAudio] HTTP %d: %s", resp.status_code, resp.text[:120])
-            except Exception as e:
-                logger.debug("[GeminiAudio] İstek hatası (%s): %s", model_name, e)
-        if raw_pcm or (time.time() - start_ts) > 8.0:
-            break
-
-    if not raw_pcm:
-        logger.warning("[GeminiAudio] Gemini TTS çıktısı alınamadı.")
-        return None, 0.0
-
-    # Raw PCM verisini FFmpeg ile yüksek kaliteli WAV veya MP3'e çevir
-    target_out = output_path or (BASE_DIR / "static" / "media" / f"AUD-GEMINI-{int(time.time()*1000)}.{output_format}")
+    if output_path:
+        target_out = Path(output_path)
+    else:
+        target_out = BASE_DIR / "static" / "media" / f"AUD-GEMINI-{int(time.time() * 1000)}.{fmt}"
     target_out.parent.mkdir(parents=True, exist_ok=True)
 
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if not ffmpeg_bin and os.path.isfile("/opt/homebrew/bin/ffmpeg"):
-        ffmpeg_bin = "/opt/homebrew/bin/ffmpeg"
-    if not ffmpeg_bin:
+    keys = collect_gemini_keys()
+    gemini_reason = ""
+
+    if keys:
         try:
-            import imageio_ffmpeg
-            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            ffmpeg_bin = "ffmpeg"
-
-    with tempfile.NamedTemporaryFile(suffix=".pcm", delete=False) as tmp_pcm:
-        tmp_pcm.write(raw_pcm)
-        tmp_pcm_path = tmp_pcm.name
-
-    try:
-        # Gemini L16 PCM: 24000 Hz, 1 kanal (mono), 16-bit little-endian
-        acodec = ["-c:a", "libmp3lame", "-b:a", "192k"] if output_format == "mp3" else ["-c:a", "pcm_s16le"]
-        cmd = [
-            ffmpeg_bin, "-y",
-            "-f", "s16le", "-ar", "24000", "-ac", "1",
-            "-i", tmp_pcm_path,
-            *acodec,
-            str(target_out)
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0 and target_out.exists() and target_out.stat().st_size > 500:
-            # Süreyi hesapla: 24000 Hz, 16-bit (2 bayt/örnek) mono
-            duration_sec = round(len(raw_pcm) / (24000 * 2), 2)
-            return target_out, duration_sec
+            raw_audio, model_name, key_label = _synthesize_with_waterfall(
+                clean_text, selected_voice, keys
+            )
+        except Exception as exc:
+            gemini_reason = f"Gemini şelalesi başarısız: {type(exc).__name__}: {str(exc)[:200]}"
+            logger.warning("[GeminiAudio] %s", gemini_reason)
         else:
-            logger.warning("[GeminiAudio] FFmpeg PCM dönüşümü başarısız: %s", res.stderr[-200:])
-    finally:
-        if os.path.exists(tmp_pcm_path):
-            os.remove(tmp_pcm_path)
+            try:
+                path, duration = _finalize_audio(raw_audio, target_out, fmt)
+            except OSError as exc:
+                path, duration = None, 0.0
+                gemini_reason = f"Gemini sesi dosyaya yazılamadı: {exc}"
+            else:
+                gemini_reason = "Gemini sesi dosyaya yazılamadı"
+            if path is not None:
+                logger.info(
+                    "[GeminiAudio] Ses üretildi (%s, %s, anahtar=%s, %.2fs)",
+                    model_name, selected_voice, key_label, duration,
+                )
+                _set_diagnostics(
+                    True, "gemini", f"{model_name} · {selected_voice}", key_label
+                )
+                return path, duration
+            logger.warning("[GeminiAudio] %s", gemini_reason)
+    else:
+        gemini_reason = "GEMINI_API_KEY bulunamadı"
+        logger.warning("[GeminiAudio] Hiçbir GEMINI_API_KEY bulunamadı; edge-tts denenecek.")
 
+    # Gemini başarısız/anahtarsız: ücretsiz gerçek Neural Türkçe ses.
+    if _edge_tts_allowed():
+        edge_path, edge_duration, edge_reason = _edge_tts_synthesize(
+            clean_text, selected_voice, target_out, fmt
+        )
+        if edge_path is not None:
+            edge_voice = EDGE_VOICE_MAP.get(selected_voice, "tr-TR-EmelNeural")
+            logger.info(
+                "[GeminiAudio] edge-tts Neural yedeği kullanıldı (%s, %.2fs)",
+                edge_voice, edge_duration,
+            )
+            _set_diagnostics(True, "edge-tts", f"Microsoft Neural · {edge_voice}", "edge-tts")
+            return edge_path, edge_duration
+        reason = f"{gemini_reason} | {edge_reason}"
+    else:
+        reason = f"{gemini_reason} | pytest ortamında edge-tts atlandı"
+
+    logger.warning("[GeminiAudio] TTS başarısız: %s", reason)
+    _set_diagnostics(False, "none", reason)
     return None, 0.0
-

@@ -84,8 +84,20 @@ def verify_onscreen_metrics(narration_text: str, source_text: str) -> Dict[str, 
 def _kamera_filtre_ifadesi(camera_motion: str, kare: int, genislik: int, yukseklik: int) -> str:
     """Seçili kamera hareketi için pürüzsüz FFmpeg `zoompan` filtresi üretir."""
     cam = (camera_motion or "otomatik").strip().lower()
+    # Eş anlamlı hareket adlarını kanonik isimlere indir (slow_dolly_in→push_in vb.).
+    cam = {
+        "slow_dolly_in": "push_in",
+        "slow_zoom_out": "pull_out",
+        "pan_right_60fps": "pan_right",
+    }.get(cam, cam)
     k = max(24, kare)
-    if cam in ("orbital", "wind_cloth_glow"):
+    if cam in ("locked", "static", "sabit", "wind_cloth_glow"):
+        # GERÇEK kilitli kare: zum yok, pan yok, sin/cos kamera kayması yok.
+        z = "1.0"
+        x = "iw/2-(iw/zoom/2)"
+        y = "ih/2-(ih/zoom/2)"
+    elif cam == "orbital":
+        # Nazik yörünge; sin/cos salınımı YALNIZ orbitalde uygulanır.
         z = "1.10+0.05*sin(2*PI*on/{k})".format(k=k)
         x = "(iw-iw/zoom)*(0.5+0.35*sin(2*PI*on/{k}))".format(k=k)
         y = "(ih-ih/zoom)*(0.5+0.25*cos(2*PI*on/{k}))".format(k=k)
@@ -98,7 +110,7 @@ def _kamera_filtre_ifadesi(camera_motion: str, kare: int, genislik: int, yuksekl
         x = f"(iw-iw/zoom)*(on/{k})" if cam == "pan_right" else f"(iw-iw/zoom)*(1-on/{k})"
         y = "ih/2-(ih/zoom/2)"
     else:
-        # push_in veya otomatik
+        # push_in / zoom_in / otomatik
         z = f"min(1.0+0.18*(on/{k}),1.20)"
         x = "iw/2-(iw/zoom/2)"
         y = "ih/2-(ih/zoom/2)"
@@ -351,6 +363,7 @@ def cloud_real_i2v_animate(
     dur_val = max(2.0, min(5.0, float(duration_sec or 3.0)))
 
     gradio_vid_path: Optional[Path] = None
+    gecici: Optional[Path] = None
     try:
         client = Client("Lightricks/ltx-video-distilled", token=tok, verbose=False)
         res = client.predict(
@@ -422,8 +435,12 @@ def cloud_real_i2v_animate(
         logger.info("[HyperFrames] LTX-Video I2V başarısız: %s", str(e)[:160])
         return {"ok": False, "error": f"LTX-Video ZeroGPU I2V hatası: {type(e).__name__}: {str(e)[:140]}"}
     finally:
-        if gradio_vid_path is not None:
-            shutil.rmtree(gradio_vid_path.parent, ignore_errors=True)
+        # Yalnızca kendi geçici çıktımız varsa sil; Gradio'nun paylaşılan /tmp klasörüne dokunma.
+        try:
+            if gradio_vid_path is not None and gradio_vid_path.is_file():
+                gradio_vid_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _kinetic_card_png(
@@ -516,10 +533,16 @@ def hyperframes_studio_render(
                     "error": prev.get("error") or "Gerçek YZ görseli üretilemedi; promptu metin kartı olarak basma devre dışı.",
                 }
 
+        kullanici_hareketi = (camera_motion or "").strip().lower()
+        otomatik_hareket = (not kullanici_hareketi) or kullanici_hareketi == "otomatik"
         parcalar: List[Path] = []
         for idx, png in enumerate(png_list):
             mp4_part = gecici / f"part_{idx}.mp4"
-            hareket = _avm.KAMERA_HAREKETLERI[idx % len(_avm.KAMERA_HAREKETLERI)]
+            hareket = (
+                _avm.KAMERA_HAREKETLERI[idx % len(_avm.KAMERA_HAREKETLERI)]
+                if otomatik_hareket
+                else kullanici_hareketi
+            )
             if _avm._sahne_video(png, mp4_part, w, h, sahne_suresi, hareket=hareket):
                 parcalar.append(mp4_part)
 
@@ -544,7 +567,17 @@ def hyperframes_studio_render(
         else:
             shutil.copy2(sessiz, hedef_mp4)
 
-        hf_scenes = [{"caption": f"Sahne {i+1}: {p[:48]}", "motion": _avm.KAMERA_HAREKETLERI[i % len(_avm.KAMERA_HAREKETLERI)]} for i, p in enumerate(image_prompts[:sahneler_say] or [prompt])]
+        hf_scenes = [
+            {
+                "caption": f"Sahne {i+1}: {p[:48]}",
+                "motion": (
+                    _avm.KAMERA_HAREKETLERI[i % len(_avm.KAMERA_HAREKETLERI)]
+                    if otomatik_hareket
+                    else kullanici_hareketi
+                ),
+            }
+            for i, p in enumerate(image_prompts[:sahneler_say] or [prompt])
+        ]
         build_hyperframes_html(hedef_html, prompt[:70], source_url or style_preset, hf_scenes, len(parcalar) * sahne_suresi, aspect_ratio, style_preset)
 
         from video_render import video_kalite_denetle

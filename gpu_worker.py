@@ -60,6 +60,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+import numpy as np
+
 # --- Doğrulanmış model kimlikleri (HF API: gated=False) ---
 # DİKKAT (2026-11-11 düzeltmesi): diffusers kütüphanesi `model_index.json`
 # ister. `Wan-AI/Wan2.1-T2V-1.3B` ve `Wan-AI/Wan2.1-I2V-14B-480P` depolarında
@@ -77,6 +79,10 @@ WAN22_TI2V = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 LTX_VIDEO = "Lightricks/LTX-Video"
 COGVIDEOX_I2V = "THUDM/CogVideoX-5b-I2V"
 SVD_XT = "stabilityai/stable-video-diffusion-img2vid-xt"
+
+# MusicGen — ücretsiz yerel AI müzik (transformers, T4 15 GB'da fp32 ile çalışır)
+MUSICGEN_MEDIUM = "facebook/musicgen-medium"
+MUSICGEN_SMALL = "facebook/musicgen-small"
 
 IMAGE_MODEL_REPOS: Dict[str, str] = {
     "flux2": FLUX2_KLEIN,
@@ -121,34 +127,71 @@ ISCI_DOSYA = Path(__file__).resolve().parent / "gpu_worker_durum.json"
 # 1. GPU / ORTAM
 # -----------------------------------------------------------------------------
 def gpu_bilgisi() -> Dict[str, Any]:
-    """Gerçek GPU bilgisini nvidia-smi ve torch ile sorgular (uydurma yok)."""
-    bilgi: Dict[str, Any] = {"var": False, "ad": None, "vram_gb": 0.0, "kaynak": None}
+    """Gerçek GPU bilgisini nvidia-smi ve torch ile sorgular (uydurma yok).
+
+    Dual GPU (ör. Kaggle T4 x2) desteği: tüm satırları okur, VRAM'leri toplar,
+    gpu_count ekler. Tek GPU'da da çalışır.
+    """
+    bilgi: Dict[str, Any] = {
+        "var": False, "ad": None, "vram_gb": 0.0, "kaynak": None, "gpu_count": 0
+    }
     try:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=20,
         )
         if r.returncode == 0 and r.stdout.strip():
-            ilk = r.stdout.strip().splitlines()[0]
-            ad, _, mb = ilk.partition(",")
-            bilgi.update({
-                "var": True, "ad": ad.strip(),
-                "vram_gb": round(float(mb.strip()) / 1024, 1),
-                "kaynak": "nvidia-smi",
-            })
-            return bilgi
+            gpu_list = []
+            toplam_vram_mb = 0
+            for satir in r.stdout.strip().splitlines():
+                ad, _, mb = satir.partition(",")
+                ad = ad.strip()
+                try:
+                    vram_mb = float(mb.strip())
+                except ValueError:
+                    continue
+                gpu_list.append({"ad": ad, "vram_gb": round(vram_mb / 1024, 1)})
+                toplam_vram_mb += vram_mb
+            if gpu_list:
+                # İlk GPU adını ana ad olarak kullan, çoklu ise "+N more" ekle
+                ana_ad = gpu_list[0]["ad"]
+                if len(gpu_list) > 1:
+                    ana_ad += f" +{len(gpu_list)-1} more"
+                bilgi.update({
+                    "var": True,
+                    "ad": ana_ad,
+                    "vram_gb": round(toplam_vram_mb / 1024, 1),
+                    "gpu_count": len(gpu_list),
+                    "gpu_list": gpu_list,
+                    "kaynak": "nvidia-smi",
+                })
+                return bilgi
     except Exception:
         pass
     try:
         import torch
 
         if torch.cuda.is_available():
-            prop = torch.cuda.get_device_properties(0)
-            bilgi.update({
-                "var": True, "ad": prop.name,
-                "vram_gb": round(prop.total_memory / 1024**3, 1),
-                "kaynak": "torch",
-            })
+            count = torch.cuda.device_count()
+            gpu_list = []
+            toplam_vram = 0
+            for i in range(count):
+                prop = torch.cuda.get_device_properties(i)
+                vram_gb = round(prop.total_memory / 1024**3, 1)
+                gpu_list.append({"ad": prop.name, "vram_gb": vram_gb})
+                toplam_vram += prop.total_memory
+            if gpu_list:
+                ana_ad = gpu_list[0]["ad"]
+                if len(gpu_list) > 1:
+                    ana_ad += f" +{len(gpu_list)-1} more"
+                bilgi.update({
+                    "var": True,
+                    "ad": ana_ad,
+                    "vram_gb": round(toplam_vram / 1024**3, 1),
+                    "gpu_count": len(gpu_list),
+                    "gpu_list": gpu_list,
+                    "kaynak": "torch",
+                })
     except Exception:
         pass
     return bilgi
@@ -184,6 +227,16 @@ _EXTRA_IMG_PIPE = None
 _EXTRA_IMG_KEY = ""
 _EXTRA_VID_PIPE = None
 _EXTRA_VID_KEY = ""
+_MUZIK_PIPE = None
+_MUZIK_KEY = ""
+
+
+def _muzik_cache_temizle() -> None:
+    """MusicGen boru hattını RAM/VRAM'den bırakır (FLUX/Wan ile VRAM paylaşımı için)."""
+    global _MUZIK_PIPE, _MUZIK_KEY
+    _MUZIK_PIPE = None
+    _MUZIK_KEY = ""
+    _bosalt()
 
 
 def _gorsel_cache_temizle() -> None:
@@ -192,6 +245,7 @@ def _gorsel_cache_temizle() -> None:
     _FLUX_PIPE = None
     _EXTRA_IMG_PIPE = None
     _EXTRA_IMG_KEY = ""
+    _muzik_cache_temizle()
     _bosalt()
 
 
@@ -202,6 +256,7 @@ def _video_cache_temizle() -> None:
     _WAN_I2V = None
     _EXTRA_VID_PIPE = None
     _EXTRA_VID_KEY = ""
+    _muzik_cache_temizle()
     _bosalt()
 
 
@@ -667,6 +722,109 @@ def secimli_i2v_uret(gorsel_yolu: Path, prompt: str, model_key: Optional[str],
 
 
 # -----------------------------------------------------------------------------
+# 4b. MUSICGEN — Ücretsiz Yerel AI Müzik Üretimi (transformers)
+# -----------------------------------------------------------------------------
+def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "medium",
+               hedef_yol: Optional[Path] = None, bildirim_cb=None, log=print) -> Path:
+    """MusicGen ile 32 kHz stereo WAV üretir (transformers, fp32 CUDA / CPU fallback).
+
+    T4 15 GB'da fp16 NaN riski olduğundan fp32 kullanılır; model ~1.5B (medium)
+    ~4.5 GB VRAM + aktivasyonlar ~6-7 GB → 15 GB T4'e sığar.
+
+    Args:
+        prompt: Müzik tanımı (örn. "upbeat electronic, 120 bpm, synth lead").
+        sure_sn: İstenen süre (sn). max_new_tokens ≈ sure * 50 (32 kHz / 512 hop).
+        model_key: "medium" (varsayılan) veya "small".
+        hedef_yol: İsteğe bağlı çıktı yolu; None ise geçici dosya.
+        bildirim_cb: İlerleme callback'i (pct: int, mesaj: str) -> None.
+        log: Konsol log fonksiyonu (mesaj: str) -> None.
+
+    Returns:
+        Yazılan WAV dosyasının Path'i.
+    """
+    global _MUZIK_PIPE, _MUZIK_KEY
+
+    import torch
+
+    def _ilerleme(pct: int, mesaj: str) -> None:
+        log(mesaj)
+        if callable(bildirim_cb):
+            try:
+                bildirim_cb(pct, mesaj)
+            except Exception:
+                pass
+
+    repo = MUSICGEN_SMALL if "small" in str(model_key or "").lower() else MUSICGEN_MEDIUM
+
+    if _MUZIK_PIPE is None or _MUZIK_KEY != repo:
+        _muzik_cache_temizle()
+        _ilerleme(20, f"⏳ MusicGen yükleniyor: {repo} (fp32, CUDA/CPU)…")
+        from transformers import AutoProcessor, MusicgenForConditionalGeneration
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        processor = AutoProcessor.from_pretrained(repo)
+        model = MusicgenForConditionalGeneration.from_pretrained(
+            repo, torch_dtype=torch.float32, low_cpu_mem_usage=True
+        ).to(device)
+        _MUZIK_PIPE = (processor, model, device)
+        _MUZIK_KEY = repo
+        _ilerleme(40, f"✅ MusicGen hazır: {repo} @ {device} (fp32)")
+
+    processor, model, device = _MUZIK_PIPE
+
+    # max_new_tokens ≈ saniye * 50 (32 kHz / 512 hop_length ≈ 62.5 token/sn,
+    # MusicGen varsayılan 50 token/sn ölçeğiyle güvenli üst sınır 1500)
+    try:
+        sn = max(1.0, float(sure_sn))
+    except (TypeError, ValueError):
+        sn = 15.0
+    max_new = min(1500, max(128, int(sn * 50)))
+
+    _ilerleme(55, f"🎵 MusicGen üretimi: {sn:.1f}s → ~{max_new} token (@32kHz)")
+    inputs = processor(text=[prompt], padding=True, return_tensors="pt").to(device)
+
+    with torch.inference_mode():
+        cikti = model.generate(**inputs, do_sample=True, guidance_scale=3.0,
+                               max_new_tokens=max_new)
+
+    # cikti: [batch, channels, samples] → float32 [-1, 1]
+    audio = cikti[0].cpu().float().numpy()  # (channels, samples)
+    if audio.ndim == 1:
+        audio = audio[None, :]
+    # stereo'ya zorla (MusicGen mono üretebilir)
+    if audio.shape[0] == 1:
+        audio = np.repeat(audio, 2, axis=0)
+
+    sample_rate = 32000
+    if hedef_yol is None:
+        hedef_yol = Path(tempfile.gettempdir()) / f"musicgen_{uuid.uuid4().hex[:8]}.wav"
+
+    # 1. deneme: scipy.io.wavfile.write (int16 PCM)
+    yazildi = False
+    try:
+        from scipy.io.wavfile import write as wav_write
+        # float32 [-1,1] → int16
+        pcm = np.clip(audio.T * 32767, -32768, 32767).astype(np.int16)
+        wav_write(str(hedef_yol), sample_rate, pcm)
+        yazildi = True
+    except Exception:
+        pass
+
+    # 2. fallback: stdlib wave (scipy yoksa / hata verirse)
+    if not yazildi:
+        import wave
+        pcm = np.clip(audio.T * 32767, -32768, 32767).astype(np.int16)
+        with wave.open(str(hedef_yol), "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm.tobytes())
+
+    _ilerleme(80, f"✅ Müzik hazır: {hedef_yol.stat().st_size // 1024} KB ({sn:.1f}s, 32kHz stereo)")
+    return hedef_yol
+
+
+# -----------------------------------------------------------------------------
 # 4. GÖREV YÖNLENDİRME — iş kaydındaki `method` alanına göre
 # -----------------------------------------------------------------------------
 def _cozunurluk(oran: str, kalite: str = "480p") -> Tuple[int, int]:
@@ -851,6 +1009,7 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
         "image_first_preview", "image_then_i2v", "flux2_resim", "burc_video",
         "wan_i2v", "i2v", "t2v_direct", "flux2", "hibrit", "hybrid",
         "remotion_cinema", "blender_wan", "opus_canvas", "viral_shorts",
+        "musicgen", "gpu_muzik",
     }
     mod = "remotion_cinema"
     for aday in (job.get("method"), job.get("workflow"), job.get("mode")):
@@ -862,8 +1021,31 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
     oran = str(job.get("aspect_ratio") or "16:9")
     w, h = _cozunurluk(oran, secenekler.get("kalite", "480p"))
     tohum = int(job.get("seed") or 42)
-    sure_sn = float(job.get("sure_sn") or job.get("duration") or 4.0)
+    sure_sn = float(job.get("sure_sn") or job.get("duration") or 15.0)
     flux_adim = secenekler.get("flux_adim")
+    muzik_model_key = (
+        job.get("audio_model")
+        or job.get("music_model")
+        or job.get("model_key")
+        or secenekler.get("muzik_model")
+        or "medium"
+    )
+
+    # MusicGen — ÖNCE müziği işle (VRAM temizliği için görsel/video KONTROLLERİNDEN ÖNCE)
+    if mod in ("musicgen", "gpu_muzik"):
+        _gorsel_cache_temizle()
+        _video_cache_temizle()
+        jid_str = str(job.get("job_id") or job.get("id") or "")
+        hedef = muzik_uret(
+            prompt, sure_sn=sure_sn, model_key=str(muzik_model_key),
+            bildirim_cb=(
+                (lambda pct, msg: ilerleme_bildir(sunucu, jid_str, pct, msg, token=token))
+                if (sunucu and jid_str)
+                else None
+            ),
+            log=log,
+        )
+        return hedef
 
     if mod in ("flux2_resim", "image_first_preview"):
         return secimli_gorsel_uret(
@@ -996,11 +1178,12 @@ def heartbeat(sunucu: str, isci_id: str, tur: str, gpu: Dict[str, Any],
 
 
 def is_al(sunucu: str, isci_id: str,
-          token: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    kod, govde = _istek(
-        sunucu, f"/api/worker/claim?worker_id={urllib.parse.quote(isci_id)}",
-        token=token,
-    )
+          token: Optional[str] = None, mod: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """İş claim eder; `mod` verildiyse ?mod= query parametresi olarak gönderir."""
+    url = f"/api/worker/claim?worker_id={urllib.parse.quote(isci_id)}"
+    if mod:
+        url += f"&mod={urllib.parse.quote(mod)}"
+    kod, govde = _istek(sunucu, url, token=token)
     if kod != 200:
         return None
     try:
@@ -1025,11 +1208,16 @@ def ilerleme_bildir(sunucu: str, job_id: str, pct: int, asama: str,
 def yukle(sunucu: str, job_id: str, dosya: Path,
           token: Optional[str] = None,
           media_type: str = "video") -> Optional[Dict[str, Any]]:
-    """Üretilen MP4/PNG'yi sunucuya yükler. Döner: sunucu yanıtı veya None."""
+    """Üretilen MP4/PNG/WAV/MP3'ü sunucuya yükler. Döner: sunucu yanıtı veya None."""
     gorsel = media_type == "image"
+    ses = media_type == "audio"
     if gorsel:
         mime = {".png": "image/png", ".jpg": "image/jpeg",
                 ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(
+                    dosya.suffix.lower(), "application/octet-stream")
+    elif ses:
+        mime = {".wav": "audio/wav", ".mp3": "audio/mpeg",
+                ".ogg": "audio/ogg", ".flac": "audio/flac"}.get(
                     dosya.suffix.lower(), "application/octet-stream")
     else:
         mime = "video/mp4"
@@ -1080,7 +1268,8 @@ def _isci_turu() -> str:
 def _tek_is_isle(sunucu: str, isci_id: str, secenekler: Dict[str, Any],
                  token: Optional[str], sayac: Dict[str, int]) -> bool:
     """Sıradaki işi alır, üretir, yükler. İş varsa True döner."""
-    job = is_al(sunucu, isci_id, token=token)
+    mod_filtresi = secenekler.get("modlar")
+    job = is_al(sunucu, isci_id, token=token, mod=mod_filtresi)
     if not job:
         return False
 
@@ -1100,11 +1289,18 @@ def _tek_is_isle(sunucu: str, isci_id: str, secenekler: Dict[str, Any],
         return True
 
     gorsel_mi = cikti.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
-    ilerleme_bildir(sunucu, jid, 85,
-                    "Görsel yükleniyor" if gorsel_mi else "Video yükleniyor",
-                    token=token)
-    yanit = yukle(sunucu, jid, cikti, token=token,
-                  media_type="image" if gorsel_mi else "video")
+    ses_mi = cikti.suffix.lower() in {".wav", ".mp3", ".ogg", ".flac"}
+    if gorsel_mi:
+        yukleme_turu = "image"
+        asama_mesaj = "Görsel yükleniyor"
+    elif ses_mi:
+        yukleme_turu = "audio"
+        asama_mesaj = "Ses yükleniyor"
+    else:
+        yukleme_turu = "video"
+        asama_mesaj = "Video yükleniyor"
+    ilerleme_bildir(sunucu, jid, 85, asama_mesaj, token=token)
+    yanit = yukle(sunucu, jid, cikti, token=token, media_type=yukleme_turu)
     if yanit and yanit.get("success"):
         sayac["tamam"] += 1
         print(f"✅ Yüklendi: {yanit.get('output_url')} "
@@ -1124,7 +1320,7 @@ def _tek_is_isle(sunucu: str, isci_id: str, secenekler: Dict[str, Any],
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Kaggle/Colab GPU işçisi — FLUX.2 görsel + Wan2.1 video difüzyonu"
+        description="Kaggle/Colab GPU işçisi — FLUX.2 görsel + Wan2.1 video + MusicGen müzik"
     )
     ap.add_argument("--server", default=os.environ.get("FABRIKA_SUNUCU", VARSAYILAN_SUNUCU))
     ap.add_argument(
@@ -1141,6 +1337,10 @@ def main() -> int:
     ap.add_argument("--t2v-adim", type=int, default=25)
     ap.add_argument("--i2v-adim", type=int, default=20)
     ap.add_argument("--flux-adim", type=int, default=4)
+    ap.add_argument("--modlar", default=None,
+                    help="İş filtresi: 'all', 'musicgen', 'video', 'image' — claim'e ?mod= olarak gönderilir")
+    ap.add_argument("--muzik-model", choices=["medium", "small"], default="medium",
+                    help="MusicGen modeli (varsayılan: medium)")
     ap.add_argument("--gpu-kontrol", action="store_true",
                     help="Yalnız GPU ve model kullanılabilirliğini raporla, çık")
     args = ap.parse_args()
@@ -1148,7 +1348,10 @@ def main() -> int:
     gpu = gpu_bilgisi()
     print("=" * 62)
     print(f"Fabrika GPU İşçisi  |  sunucu={args.server}")
-    print(f"GPU: {gpu.get('ad') or 'BULUNAMADI'}  ({gpu.get('vram_gb')} GB, kaynak={gpu.get('kaynak')})")
+    if gpu.get("gpu_count", 1) > 1:
+        print(f"GPU: {gpu.get('ad')}  (toplam {gpu.get('vram_gb')} GB, {gpu.get('gpu_count')} GPU, kaynak={gpu.get('kaynak')})")
+    else:
+        print(f"GPU: {gpu.get('ad') or 'BULUNAMADI'}  ({gpu.get('vram_gb')} GB, kaynak={gpu.get('kaynak')})")
 
     if not gpu.get("var"):
         print("❌ GPU BULUNAMADI — difüzyon bu ortamda çalışmaz.")
@@ -1167,7 +1370,15 @@ def main() -> int:
             print(f"WanImageToVideoPipeline: {hasattr(diffusers, 'WanImageToVideoPipeline')}")
         except Exception as e:
             print(f"⚠️ diffusers/torch eksik: {e}")
-        print(f"Önerilen modeller: {FLUX2_KLEIN} / {WAN21_T2V} / {WAN21_I2V}")
+        # MusicGen transformers kontrolü
+        try:
+            import transformers
+            print(f"transformers={transformers.__version__}")
+            print(f"MusicgenForConditionalGeneration: {hasattr(transformers, 'MusicgenForConditionalGeneration')}")
+            print(f"AutoProcessor: {hasattr(transformers, 'AutoProcessor')}")
+        except Exception as e:
+            print(f"⚠️ transformers eksik: {e}")
+        print(f"Önerilen modeller: {FLUX2_KLEIN} / {WAN21_T2V} / {WAN21_I2V} / {MUSICGEN_MEDIUM}")
         return 0
 
     isci_id = args.isci_id or f"{_isci_turu()}_{uuid.uuid4().hex[:8]}"
@@ -1177,10 +1388,15 @@ def main() -> int:
         "t2v_adim": args.t2v_adim,
         "i2v_adim": args.i2v_adim,
         "flux_adim": args.flux_adim,
+        "modlar": args.modlar,
+        "muzik_model": args.muzik_model,
     }
     sayac = {"tamam": 0}
     print(f"İşçi kimliği: {isci_id}")
     print(f"Kimlik doğrulama: {'Bearer + X-Worker-Key (ayarlı)' if token else 'YOK'}")
+    if args.modlar:
+        print(f"İş filtresi (mod): {args.modlar}")
+    print(f"MusicGen model: {args.muzik_model}")
     print("=" * 62)
 
     if not heartbeat(args.server, isci_id, _isci_turu(), gpu, "idle", 0, token=token):

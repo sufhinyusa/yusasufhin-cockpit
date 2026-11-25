@@ -197,8 +197,11 @@
     } else if (viewKey === 'mac') {
       window.refreshMacBridgeStatus();
       window.refreshLabReaHistory();
-      window.loadContactInbox();
-      if (window.loadContactRecipients) window.loadContactRecipients();
+      var sess = window.getStudioSession ? window.getStudioSession() : null;
+      if (!sess || sess.role === 'admin') {
+        window.loadContactInbox();
+        if (window.loadContactRecipients) window.loadContactRecipients();
+      }
     }
   };
 
@@ -311,13 +314,23 @@
 
     var label = task.video_difuzyonu
       ? '✅ Gerçek I2V Video'
-      : (task.simulasyon ? '⚠️ Bulut Kurgu (simülasyon)' : '✅ Video Hazır');
+      : (task.simulasyon ? '🎞️ 2D Önizleme (AI Video Değil)' : '✅ Video Hazır');
     if (badge) {
       badge.textContent = label;
       badge.className = task.simulasyon ? 'site-badge site-badge-auto' : 'site-badge site-badge-free';
     }
     if (hud) {
-      hud.innerHTML += '<br>• ✅ <code>' + esc(task.job_id) + '</code> hazır (' + esc(task.kaynak || task.method || '-') + ' ' + esc(kb) + ')';
+      var ttsNote = '';
+      var ttsObj = task.tts || (task.artifacts && task.artifacts.tts);
+      if (ttsObj && ttsObj.ok) {
+        ttsNote = '<br>• 🎙️ Seslendirme: <strong>' + esc(ttsObj.engine || 'Nöral TTS') + '</strong> (' + esc(ttsObj.duration_sec || '?') + ' sn)';
+      } else if (ttsObj && ttsObj.neden && task.voice && String(task.voice).toLowerCase() !== 'none') {
+        ttsNote = '<br>• ⚠️ Seslendirme üretilemedi: ' + esc(ttsObj.neden);
+      }
+      var simWarn = task.simulasyon
+        ? '<br>• ℹ️ <em>Not: Bu çıktı 2D FFmpeg kamera önizlemesidir (AI video difüzyonu değildir). Gerçek AI video için GPU sekmesinden Kaggle işçisini bağlayın.</em>'
+        : '';
+      hud.innerHTML += '<br>• ✅ <code>' + esc(task.job_id) + '</code> hazır (' + esc(task.kaynak || task.method || '-') + ' ' + esc(kb) + ')' + ttsNote + simWarn;
     }
     if (stage) {
       stage.innerHTML =
@@ -414,6 +427,7 @@
           i2v_model: i2vModel,
           method: workflow === 'image_first_preview' ? 'flux2_resim' : workflow,
           execution_mode: execMode,
+          camera_motion: cameraMotion,
           voice: voiceVal,
           image_base64: approvedImageUrl ? null : _studioVideoUploadedB64,
           input_image_url: approvedImageUrl || null
@@ -874,7 +888,8 @@
   };
 
   window.handleStartYoutubeOAuth = function () {
-    var cid = (document.getElementById('chEditIdInput') || {}).value || '';
+    var cid = ((document.getElementById('chEditIdInput') || {}).value || '').trim()
+      || ((document.getElementById('videoChannelSelect') || {}).value || '').trim();
     window.authFetch('/api/youtube/oauth/start?channel_id=' + encodeURIComponent(cid))
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {

@@ -58,7 +58,14 @@ def burc_listesi() -> List[Dict[str, str]]:
 
 
 def _gemini_anahtarlari() -> List[str]:
-    """Yalnızca ortam değişkenlerinden GEMINI_API_KEY* değerlerini toplar."""
+    """Çoklu hesap GEMINI_API_KEY* havuzunu şelale sırasıyla toplar."""
+    try:
+        from gemini_audio import collect_gemini_keys
+        keys = collect_gemini_keys()
+        if keys:
+            return keys
+    except Exception:
+        pass
     anahtarlar: List[str] = []
     for ad, deger in os.environ.items():
         if ad.upper().startswith("GEMINI_API_KEY") and deger and deger.strip():
@@ -231,7 +238,8 @@ def _senaryo_sahneleri_cikar(veri: Dict[str, Any], gorsel: str, hareket: str) ->
 
 def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
                          dil: str = "tr", aspect_ratio: str = "9:16",
-                         raw_prompt: bool = False) -> Dict[str, Any]:
+                         raw_prompt: bool = False,
+                         camera_motion: str = "otomatik") -> Dict[str, Any]:
     """Burç veya doğrudan kullanıcı promptu için sahne/altyazı istemleri üretir.
 
     * `raw_prompt=True` ve `konu` doluysa kullanıcı metnine burç kalıbı/metni
@@ -263,7 +271,7 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
             plan = plan_visual_scenes(
                 prompt=konu,
                 style_preset="cinematic_realism",
-                camera_motion="orbital",
+                camera_motion=camera_motion or "otomatik",
                 scene_count=2,
                 duration_sec=sn,
                 use_llm=True,
@@ -306,12 +314,12 @@ def burc_senaryo_olustur(burc_kodu: str, konu: str = "", sure_sn: int = 15,
 
     t_basla = time.monotonic()
     dead_keys: set[str] = set()
-    for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
-        for anahtar in anahtarlar[:4]:
-            if anahtar in dead_keys or (time.monotonic() - t_basla) > 4.5:
+    for model in ("gemini-4-hydrogen", "gemini-3.5-flash-lite", "gemini-2.5-flash"):
+        for anahtar in anahtarlar[:8]:
+            if anahtar in dead_keys or (time.monotonic() - t_basla) > 12.0:
                 continue
             try:
-                veri = _json_ayikla(_gemini_istek(anahtar, model, istem, zaman_asimi=4))
+                veri = _json_ayikla(_gemini_istek(anahtar, model, istem, zaman_asimi=6))
                 anlatim = str(veri.get("narration_text") or "").strip()
                 gorsel = str(veri.get("image_prompt") or "").strip()
                 hareket = str(veri.get("motion_prompt") or "").strip()

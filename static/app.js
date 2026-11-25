@@ -1,5 +1,8 @@
 // Fabrika PWA — Oil UI 3-Tema Motoru, Bento Grid, Link Havuzu, Alancf/alanadisifre & Face ID Yöneticisi
 let ws = null;
+let statsTimer = null;
+let wsReconnectTimer = null;
+let currentUserRole = null;
 let reconnectInterval = 2000;
 let vapidPublicKey = null;
 let authToken = localStorage.getItem('fabrika_token') || null;
@@ -30,6 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       const data = await res.json();
       if (data.authenticated) {
+        currentUserRole = data.role || 'admin';
+        syncAdminControlsVisibility();
         hidePinModal();
         startApp();
         return;
@@ -44,11 +49,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   showPinModal();
 });
 
+function syncAdminControlsVisibility() {
+  const btnChangePin = document.getElementById('btnOpenChangePin');
+  if (btnChangePin) {
+    btnChangePin.style.display = (currentUserRole && currentUserRole !== 'admin') ? 'none' : '';
+  }
+}
+
 function startApp() {
+  syncAdminControlsVisibility();
   initWebSocket();
   initServiceWorker();
   fetchSystemStats();
-  setInterval(fetchSystemStats, 15000);
+  if (statsTimer) clearInterval(statsTimer);
+  statsTimer = setInterval(fetchSystemStats, 15000);
 }
 
 // 1.2 Oil UI (#164) 3-Yönlü Canlı Tema Motoru
@@ -274,25 +288,17 @@ async function submitCredentialsLogin(enrollBiometricAfter = false) {
   }
 
   try {
-    let res = await fetch('/api/auth/login', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
 
-    // Arka plandaki eski sunucu süreci henüz yeniden başlatılmadıysa /api/auth/verify_pin üzerinden doğrula
-    if (res.status === 404) {
-      res = await fetch('/api/auth/verify_pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: password })
-      });
-    }
-
     const data = await res.json();
 
     if (res.ok && data.success && data.token) {
       authToken = data.token;
+      currentUserRole = data.role || 'admin';
       localStorage.setItem('fabrika_token', authToken);
       if (username) localStorage.setItem('fabrika_username', username);
       if (passInp) passInp.value = '';
@@ -311,7 +317,7 @@ async function submitCredentialsLogin(enrollBiometricAfter = false) {
       }, 300);
       return true;
     } else {
-      triggerPinError(data.detail || 'Hatalı kullanıcı adı veya şifre!');
+      triggerPinError(data.detail || data.message || 'Hatalı kullanıcı adı veya şifre!');
       return false;
     }
   } catch (err) {
@@ -714,14 +720,14 @@ function initChangePinEvents() {
       const newPin = inputNew ? inputNew.value.trim() : '';
       const confirmPin = inputConfirm ? inputConfirm.value.trim() : '';
 
-      if (!oldPin || oldPin.length < 4) {
-        statusEl.textContent = 'Lütfen geçerli mevcut PIN kodunuzu girin.';
+      if (!oldPin || oldPin.length !== 6 || !/^\d{6}$/.test(oldPin)) {
+        statusEl.textContent = 'Lütfen geçerli 6 haneli mevcut PIN kodunuzu girin.';
         statusEl.className = 'pin-change-status error';
         return;
       }
 
-      if (!newPin || newPin.length < 4 || !/^\d+$/.test(newPin)) {
-        statusEl.textContent = 'Yeni PIN en az 4 haneli rakamlardan oluşmalıdır.';
+      if (!newPin || newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
+        statusEl.textContent = 'Yeni PIN tam 6 haneli rakamlardan oluşmalıdır.';
         statusEl.className = 'pin-change-status error';
         return;
       }
@@ -773,10 +779,21 @@ async function logout(callApi = true) {
     } catch (e) {}
   }
   authToken = null;
+  currentUserRole = null;
   localStorage.removeItem('fabrika_token');
+  if (statsTimer) {
+    clearInterval(statsTimer);
+    statsTimer = null;
+  }
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
   if (ws) {
-    ws.close();
+    const oldWs = ws;
     ws = null;
+    oldWs.onclose = null;
+    oldWs.close();
   }
   showPinModal('Oturum kapatıldı. Şifreniz veya Yüz Kilidi ile giriş yapabilirsiniz.');
 }
@@ -784,6 +801,13 @@ async function logout(callApi = true) {
 // 6. WebSocket Haberleşme Motoru
 function initWebSocket() {
   if (!authToken) return;
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws/chat?token=${encodeURIComponent(authToken)}`;
 
@@ -810,8 +834,17 @@ function initWebSocket() {
   };
 
   ws.onclose = (event) => {
+    ws = null;
     if (event.code === 4001 || event.code === 4401) {
       logout(false);
+      return;
+    }
+    if (event.code === 4403) {
+      updateConnectionStatus('Fabrika Yetkisi Yok', 'busy');
+      if (window.FabrikaDesktop) {
+        window.FabrikaDesktop.showPersistentError('ws_forbidden', 'Bu hesabın canlı Fabrika bölümü yetkisi yok — yönetici panelinden izin tanımlanmalıdır.');
+        window.FabrikaDesktop.appendLog('🔒 WebSocket erişimi reddedildi (4403: Fabrika bölümü yetkisi yok).', 'err');
+      }
       return;
     }
     updateConnectionStatus('Koptu, yeniden deneniyor...', 'busy');
@@ -819,8 +852,10 @@ function initWebSocket() {
       window.FabrikaDesktop.showPersistentError('ws_down', 'Canlı WebSocket bağlantısı koptu — yeniden bağlanılıyor...');
       window.FabrikaDesktop.appendLog('⚠️ WebSocket koptu, yeniden bağlanılıyor...', 'warn');
     }
-    setTimeout(initWebSocket, reconnectInterval);
-    reconnectInterval = Math.min(reconnectInterval * 1.5, 15000);
+    if (authToken) {
+      wsReconnectTimer = setTimeout(initWebSocket, reconnectInterval);
+      reconnectInterval = Math.min(reconnectInterval * 1.5, 15000);
+    }
   };
 
   ws.onerror = (err) => {
@@ -1067,10 +1102,14 @@ async function requestPushNotification() {
   }
 
   try {
+    if (!vapidPublicKey) {
+      alert('ℹ️ Web Push sunucu tarafında henüz etkin değil (VAPID anahtarı tanımlı değil). Bildirimler açık pencerede canlı WebSocket üzerinden gösterilmeye devam eder.');
+      return;
+    }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
 
-    if (!sub && vapidPublicKey) {
+    if (!sub) {
       const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -1079,12 +1118,17 @@ async function requestPushNotification() {
     }
 
     if (sub) {
-      await authFetch('/api/push/subscribe', {
+      const subRes = await authFetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sub)
       });
-      alert('✅ Web Push bildirimleri başarıyla aktif edildi! Artık uygulama kapalıyken bile kilit ekranına bildirim düşecek.');
+      const subData = await subRes.json().catch(() => ({}));
+      if (subRes.ok && subData.success !== false) {
+        alert('✅ Web Push bildirimleri başarıyla aktif edildi! Artık uygulama kapalıyken bile kilit ekranına bildirim düşecek.');
+      } else {
+        alert('ℹ️ ' + (subData.detail || subData.message || 'Web Push sunucuda henüz desteklenmiyor.'));
+      }
     }
   } catch (err) {
     console.error('Push abonelik hatası:', err);

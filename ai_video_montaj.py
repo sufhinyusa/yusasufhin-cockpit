@@ -575,16 +575,21 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
     """
     render_fps = 24 if os.environ.get("RENDER") else 30
     kare = max(1, int(sure_sn * render_fps))
-    mod = hareket or ("zoom_in" if zoom_in else "zoom_out")
+    mod = (hareket or ("zoom_in" if zoom_in else "zoom_out")).strip().lower()
     x_ifade = "iw/2-(iw/zoom/2)"
     y_ifade = "ih/2-(ih/zoom/2)"
-    if mod == "pan_right":
+    if mod in ("wind_cloth_glow", "locked", "static", "sabit"):
+        # Sabit kadraj: kesinlikle kamera kayması veya zoom yok (v33 düzeltmesi)
+        z_ifade = "1.0"
+        x_ifade = "iw/2-(iw/zoom/2)"
+        y_ifade = "ih/2-(ih/zoom/2)"
+    elif mod in ("pan_right", "pan_right_60fps"):
         z_ifade = "1.12"
         x_ifade = f"(iw-iw/zoom)*on/{kare}"
     elif mod == "pan_left":
         z_ifade = "1.12"
         x_ifade = f"(iw-iw/zoom)*(1-on/{kare})"
-    elif mod == "zoom_in":
+    elif mod in ("zoom_in", "push_in", "slow_dolly_in", "orbital"):
         z_ifade = "min(zoom+0.0015,1.18)"
     else:
         z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"

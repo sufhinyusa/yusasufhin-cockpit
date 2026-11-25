@@ -644,8 +644,8 @@ class VideoStudioController:
 
         if render_success:
             artifacts["audio_track_origin"] = (
-                f"Google Gemini 2.5 Nöral Seslendirme ({gemini_voice})"
-                if spoken_dur else f"Procedural {sine_freq}Hz pilot tone (simülasyon)"
+                f"Gerçek Nöral Seslendirme ({gemini_voice})"
+                if spoken_dur else "Sessiz ses kanalı (TTS yanıt vermedi)"
             )
 
         # Dürüstlük: hangi katmanlar gerçek, hangileri yankı/önizleme?
@@ -657,9 +657,6 @@ class VideoStudioController:
         if render_success and not yz_montaj:
             simulasyon_katmanlari.append("baslik_karti")
             simulasyon_katmanlari.append("ken_burns")
-        # Pilot ton yalnız başlık kartı yedeğinde çalınır; AI montajı sessizdir.
-        if render_success and not yz_montaj and not spoken_dur:
-            simulasyon_katmanlari.append("prosedurel_ses")
         if render_success and method in ("blender_wan", "opus_canvas"):
             simulasyon_katmanlari.append("motor_yanki")
         # Blender/Canvas yalnız proje iskeleti üretir; teslim edilen video bu
@@ -676,13 +673,12 @@ class VideoStudioController:
         if render_success:
             if render_kaynak.startswith("yz_montaj") or render_kaynak == "flux_montaj":
                 gorsel_durum = (
-                    f"tamamlandi (GERÇEK YZ: {artifacts.get('saglayici', 'flux')} "
-                    f"difüzyonu, {artifacts.get('sahne_sayisi', '?')} sahne, "
-                    f"Ken Burns + xfade)"
+                    f"tamamlandi (2D FFmpeg Görsel Montaj — {artifacts.get('saglayici', 'flux')} "
+                    f"görselleri, {artifacts.get('sahne_sayisi', '?')} sahne; AI video difüzyonu değil)"
                 )
                 if method in ("blender_wan", "opus_canvas"):
                     gorsel_durum += " — motor iskeleti yankı (render edilmedi)"
-                render_durum = "tamamlandi (YZ görsel montajı — video difüzyonu değil)"
+                render_durum = "tamamlandi (2D FFmpeg Görsel Montaj — AI video difüzyonu değil)"
                 yayin_durum = "kuyrukta (Wan/LTX video difüzyonu için GPU kotası bekleniyor)"
 
             else:
@@ -695,7 +691,7 @@ class VideoStudioController:
 
             stages = [
                 {"ad": "1. Prompt & Senaryo Analizi", "durum": "tamamlandi"},
-                {"ad": "2. Ses Tasarımı & Dublaj", "durum": f"tamamlandi (Google Gemini TTS: {gemini_voice})" if spoken_dur else "onizleme (kılavuz pilot ton) (simülasyon)"},
+                {"ad": "2. Ses Tasarımı & Dublaj", "durum": f"tamamlandi (Nöral TTS: {gemini_voice})" if spoken_dur else "sessiz (TTS yanıt vermedi)"},
                 {"ad": "3. Görsel / 3D Sahne Kurgusu", "durum": gorsel_durum},
                 {"ad": f"4. GPU Render ({self.RENDER_TARGETS.get(render_target, {}).get('name', render_target)})", "durum": render_durum},
                 {"ad": "5. YouTube & Yayın Dağıtımı", "durum": yayin_durum},

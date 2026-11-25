@@ -28,3 +28,5 @@ huggingface_hub>=0.26.0
 requests>=2.31.0
 # Wan2.1-I2V-14B'yi T4 16GB'a sığdıran NF4 4-bit kuantizasyon (2026-11-11)
 bitsandbytes>=0.44.0
+# MusicGen WAV yazımı için (stdlib wave+struct fallback de var)
+scipy>=1.11.0

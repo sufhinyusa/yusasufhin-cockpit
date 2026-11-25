@@ -503,7 +503,12 @@
           return;
         }
         var job = res.d.job;
-        if (hud) hud.textContent = '🎼 İş başlatıldı (' + job.job_id + ' · ' + job.model_name + '). Ses dosyası hazırlanıyor…';
+        if (job.status === 'queued_gpu') {
+          if (badge) { badge.textContent = '⚡ GPU Kuyruğunda'; badge.className = 'site-badge site-badge-auto'; }
+          if (hud) hud.textContent = '⚡ Kaggle/Colab GPU MusicGen kuyruğuna alındı (' + job.job_id + '). GPU işçisi bağlıysa otomatik üretilip yüklenecektir…';
+        } else {
+          if (hud) hud.textContent = '🎼 İş başlatıldı (' + job.job_id + ' · ' + job.model_name + '). Ses dosyası hazırlanıyor…';
+        }
         pollMusicJob(job.job_id);
       })
       .catch(function (err) {
@@ -519,7 +524,7 @@
     var tries = 0;
     _musicPollTimer = setInterval(function () {
       tries += 1;
-      if (tries > 90) { clearInterval(_musicPollTimer); return; }
+      if (tries > 240) { clearInterval(_musicPollTimer); return; }
       af('/api/music/job/' + encodeURIComponent(jobId))
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (d) {
@@ -528,6 +533,18 @@
           var badge = document.getElementById('musicTaskBadge');
           var hud = document.getElementById('musicOutputHud');
           var stage = document.getElementById('musicStageArea');
+          if (job.status === 'queued_gpu') {
+            var pct = Number(job.progress_pct || 0);
+            var stg = job.current_stage || 'Kaggle/Colab GPU MusicGen işçisi bekleniyor';
+            if (badge) { badge.textContent = pct > 0 ? ('⚡ GPU %' + pct) : '⚡ GPU Kuyruğunda'; badge.className = 'site-badge site-badge-auto'; }
+            if (hud) {
+              var workerHint = job.gpu_worker_online === false
+                ? '\n💡 Şu an canlı GPU işçisi bağlı değil: GPU sekmesinden Kaggle Notebook\'u başlattığınızda bu parça otomatik üretilecektir.'
+                : '';
+              hud.textContent = '⚡ Kaggle GPU MusicGen (' + job.job_id + ') — ' + stg + (pct > 0 ? (' (%' + pct + ')') : '') + workerHint;
+            }
+            return;
+          }
           if (job.status === 'completed') {
             clearInterval(_musicPollTimer);
             if (badge) { badge.textContent = '✅ Tamamlandı'; badge.className = 'site-badge site-badge-free'; }
