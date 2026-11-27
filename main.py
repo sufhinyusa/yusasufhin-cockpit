@@ -1179,6 +1179,7 @@ async def update_contact_mail_config(req: Request):
     """Yöneticinin uygulama şifresini, Resend anahtarını ve alıcılarını 0600 izinle kaydeder ve Mac'e senkronlar."""
     from contact_notifier import (
         DEFAULT_TO_EMAIL,
+        gmail_app_password_warning,
         make_layered_env_getter,
         notifier_status,
         parse_recipient_list,
@@ -1197,13 +1198,17 @@ async def update_contact_mail_config(req: Request):
     smtp_host = re.sub(r"[\r\n\s]+", "", str(body.get("smtp_host") or "smtp.gmail.com")).strip() or "smtp.gmail.com"
     smtp_port = int(body.get("smtp_port") or 587)
 
+    smtp_warn = gmail_app_password_warning(smtp_host, smtp_pass) if smtp_pass else None
+    if smtp_pass and smtp_warn and not resend_key:
+        raise HTTPException(status_code=400, detail=smtp_warn)
+
     updates: Dict[str, Optional[str]] = {"CONTACT_TO_EMAIL": to_email}
     if "recipients" in body:
         cleaned_rcpt = parse_recipient_list(body.get("recipients"))
         if cleaned_rcpt:
             updates["CONTACT_RECIPIENTS"] = json.dumps(cleaned_rcpt)
             updates["CONTACT_TO_EMAIL"] = cleaned_rcpt[0]
-    if smtp_pass:
+    if smtp_pass and not smtp_warn:
         updates["SMTP_HOST"] = smtp_host
         updates["SMTP_PORT"] = str(smtp_port)
         updates["SMTP_USER"] = smtp_user
@@ -1212,19 +1217,20 @@ async def update_contact_mail_config(req: Request):
         updates["RESEND_API_KEY"] = resend_key
 
     save_mail_config(DATA_DIR, updates)
-    pushed_mac = bridge_hub.push_mail_config_to_mac(smtp_user, smtp_pass, smtp_host, smtp_port) if smtp_pass else False
+    pushed_mac = bridge_hub.push_mail_config_to_mac(smtp_user, smtp_pass, smtp_host, smtp_port) if (smtp_pass and not smtp_warn) else False
     st = bridge_hub.get_status()
     env_getter = make_layered_env_getter(DATA_DIR, get_secret_from_env)
     return {
         "success": True,
         "pushed_to_mac": pushed_mac,
+        "smtp_warning": smtp_warn,
         "notifier": notifier_status(env_getter, mac_online=bool(st.get("online")), mac_smtp_ready=pushed_mac),
     }
 
 
 @app.post("/api/contact/test", dependencies=[Depends(require_admin)])
 async def send_test_contact_email():
-    """Yönetici için kayıtlı tüm alıcı adreslerine gerçek uçtan uca test e-postası gönderir."""
+    """Yönetici için kayıtlı tüm alıcı adreslerine YALNIZCA gerçek e-posta testi yollar (Telegram spamlamaz)."""
     from contact_notifier import dispatch_contact_notification, make_layered_env_getter
     from mac_bridge import bridge_hub
 
@@ -1236,6 +1242,7 @@ async def send_test_contact_email():
             message="Bu mesaj yusasufhin.com iletişim formu e-posta teslim hattını doğrulamak için gönderilmiştir.",
             get_env=env_getter,
             mac_relay_fn=lambda p: bridge_hub.relay_contact_email(p, allow_offline_queue=False, timeout_sec=14.0),
+            send_telegram=False,
         )
     )
     return {"success": bool(res.get("email_sent")), **res}
@@ -1327,23 +1334,131 @@ async def admin_delete_user(username: str, admin_sess: Dict[str, Any] = Depends(
 # -----------------------------------------------------------------------------
 # 3c. ÇOKLU MODEL MÜZİK STÜDYOSU & ÇOKLU HESAP API ŞELALESİ (WATERFALL)
 # -----------------------------------------------------------------------------
+MAX_REF_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB referans ses sınırı
+
+
+def _decode_audio_base64(raw: str) -> Tuple[bytes, str]:
+    """WAV/MP3/FLAC/OGG data URI veya ham base64 ses verisini sihirli baytlarla doğrular."""
+    veri = (raw or "").strip()
+    if not veri:
+        raise ValueError("Ses verisi boş.")
+    if veri.startswith("data:"):
+        _, ayrac, b64 = veri.partition(",")
+        if not ayrac or not b64:
+            raise ValueError("Geçersiz ses data URI.")
+        veri = b64
+    try:
+        ham = base64.b64decode(veri, validate=True)
+    except Exception as exc:
+        raise ValueError("Geçersiz base64 ses verisi.") from exc
+    if not ham or len(ham) > MAX_REF_AUDIO_BYTES:
+        raise ValueError(f"Referans ses 1 B – {MAX_REF_AUDIO_BYTES // (1024 * 1024)} MB arasında olmalıdır.")
+    tur = _audio_turu(ham)
+    if tur is None:
+        raise ValueError("Yalnızca geçerli WAV, MP3, FLAC veya OGG referans ses desteklenir.")
+    return ham, tur
+
+
+def _yerel_medya_ses_coz(url_or_job_id: str) -> Optional[Path]:
+    """Yalnız MEDIA_DIR içindeki doğrulanmış ses dosyasını (WAV/MP3/FLAC/OGG) çözer (SSRF/traversal yok)."""
+    val = str(url_or_job_id or "").strip()
+    if not val:
+        return None
+    base_dir = MEDIA_DIR.resolve()
+
+    def _safe_audio_file(cand: Path) -> Optional[Path]:
+        try:
+            resolved = cand.resolve()
+            if not resolved.is_relative_to(base_dir):
+                return None
+            if resolved.is_file() and resolved.suffix.lower() in (".wav", ".mp3", ".flac", ".ogg"):
+                return resolved
+        except OSError:
+            return None
+        return None
+
+    # Doğrudan job_id verilmişse
+    if JOB_ID_RE.match(val) and ".." not in val:
+        for ext in ("wav", "mp3", "flac", "ogg"):
+            for cand_name in (f"{val}.{ext}", f"{val}_ref.{ext}"):
+                ok = _safe_audio_file(MEDIA_DIR / cand_name)
+                if ok is not None:
+                    return ok
+        return None
+    # /api/media/file?path=<dosya> veya /api/worker/ref-audio/<jid>
+    try:
+        parsed = urllib.parse.urlparse(val)
+        if parsed.scheme or parsed.netloc:
+            return None
+        if parsed.path == "/api/media/file":
+            qs = urllib.parse.parse_qs(parsed.query)
+            rel = (qs.get("path") or [""])[0].strip()
+            if rel and "/" not in rel and "\\" not in rel and ".." not in rel:
+                return _safe_audio_file(MEDIA_DIR / rel)
+        elif parsed.path.startswith("/api/worker/ref-audio/"):
+            jid = parsed.path.rsplit("/", 1)[-1]
+            if JOB_ID_RE.match(jid) and ".." not in jid:
+                return _yerel_medya_ses_coz(jid)
+    except Exception:
+        return None
+    return None
+
+
+def _safe_opt_int(val: Any, lo: int, hi: int) -> Optional[int]:
+    if val is None or str(val).strip() == "":
+        return None
+    try:
+        return max(lo, min(hi, int(val)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_opt_float(val: Any, lo: float, hi: float) -> Optional[float]:
+    if val is None or str(val).strip() == "":
+        return None
+    try:
+        return max(lo, min(hi, float(val)))
+    except (TypeError, ValueError):
+        return None
+
+
 def _enqueue_music_gpu_job(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Kaggle/Colab GPU işçisi (`gpu_worker.py`) için MusicGen görevini kuyruğa yazar."""
+    """Kaggle/Colab GPU işçisi (`gpu_worker.py`) için ACE-Step 1.5 veya MusicGen görevini kuyruğa yazar."""
     jid = str(payload.get("job_id") or _new_job_id("mus"))
-    dur = max(5, min(30, int(payload.get("duration_sec") or 15)))
+    req_method = str(payload.get("method") or "").strip().lower()
+    req_model = str(payload.get("model_id") or payload.get("audio_model") or "").strip().lower()
+    is_acestep = req_method in ("acestep", "gpu_acestep") or "acestep" in req_model
+    max_cap = 240 if is_acestep else 30
+    dur = _safe_opt_int(payload.get("duration_sec"), 5, max_cap) or (60 if is_acestep else 15)
+    eff_method = "acestep" if is_acestep else "musicgen"
+    eff_audio_model = str(payload.get("audio_model") or ("acestep-v15-xl-turbo" if is_acestep else "musicgen-stereo-medium"))
+    cov_strength = _safe_opt_float(payload.get("audio_cover_strength"), 0.0, 1.0)
     rec: Dict[str, Any] = {
         "id": jid,
         "job_id": jid,
-        "method": "musicgen",
-        "mode": "musicgen",
-        "workflow": "musicgen",
+        "model_id": str(payload.get("model_id") or ("gpu-acestep-1.5" if is_acestep else "gpu-musicgen")),
+        "method": eff_method,
+        "mode": eff_method,
+        "workflow": eff_method,
         "prompt": str(payload.get("prompt") or "")[:1200],
+        "composed_prompt": str(payload.get("composed_prompt") or payload.get("prompt") or "")[:1600],
         "raw_prompt": str(payload.get("raw_prompt") or "")[:600],
         "genre": str(payload.get("genre") or "")[:60],
         "mood": str(payload.get("mood") or "")[:60],
-        "instrumental": bool(payload.get("instrumental", True)),
-        "audio_model": str(payload.get("audio_model") or "medium"),
-        "music_model": str(payload.get("audio_model") or "medium"),
+        "instrumental": bool(payload.get("instrumental", not is_acestep)),
+        "lyrics": str(payload.get("lyrics") or "")[:4096],
+        "vocal_language": str(payload.get("vocal_language") or "tr")[:12],
+        "bpm": _safe_opt_int(payload.get("bpm"), 40, 240),
+        "key_scale": str(payload.get("key_scale") or "")[:32],
+        "time_signature": str(payload.get("time_signature") or "")[:12],
+        "music_task": str(payload.get("music_task") or "text2music")[:24],
+        "ref_audio_url": str(payload.get("ref_audio_url") or "") or None,
+        "audio_cover_strength": 0.85 if cov_strength is None else cov_strength,
+        "repaint_start": _safe_opt_float(payload.get("repaint_start"), 0.0, 240.0),
+        "repaint_end": _safe_opt_float(payload.get("repaint_end"), 0.0, 240.0),
+        "seed": _safe_opt_int(payload.get("seed"), 0, 2147483647),
+        "audio_model": eff_audio_model,
+        "music_model": eff_audio_model,
         "sure_sn": dur,
         "duration": dur,
         "created_by": str(payload.get("created_by") or "owner"),
@@ -1351,7 +1466,11 @@ def _enqueue_music_gpu_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         "gpu_durum": "bekliyor",
         "status": "kuyrukta (GPU müzik)",
         "progress_pct": 0,
-        "current_stage": "Kaggle/Colab GPU MusicGen işçisi bekleniyor",
+        "current_stage": (
+            "Kaggle/Colab GPU ACE-Step 1.5 işçisi bekleniyor"
+            if is_acestep
+            else "Kaggle/Colab GPU MusicGen Stereo işçisi bekleniyor"
+        ),
         "simulasyon": False,
         "output_url": None,
         "audio_url": None,
@@ -1407,6 +1526,37 @@ async def api_music_waterfall_reset():
     }
 
 
+@app.post("/api/music/lyrics/generate")
+async def api_music_lyrics_generate(
+    req: Request,
+    session: Dict[str, Any] = Depends(require_section("muzik")),
+):
+    """Gemini çoklu hesap şelalesiyle Suno/ACE-Step yapısında şarkı sözü üretir."""
+    from music_studio import generate_song_lyrics
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    try:
+        res = await run_in_threadpool(
+            lambda: generate_song_lyrics(
+                topic=str(body.get("topic") or body.get("prompt") or ""),
+                genre=str(body.get("genre") or ""),
+                mood=str(body.get("mood") or ""),
+                vocal_language=str(body.get("vocal_language") or "tr"),
+                duration_sec=int(body.get("duration_sec") or 90),
+                data_dir=DATA_DIR,
+                get_env=get_secret_from_env,
+            )
+        )
+        return {"success": True, **res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Şarkı sözü üretilemedi: {str(exc)[:240]}")
+
+
 @app.post("/api/music/generate")
 async def api_music_generate(
     req: Request,
@@ -1419,15 +1569,74 @@ async def api_music_generate(
         body = await req.json()
     except Exception:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
+
+    ref_audio_url: Optional[str] = None
+    try:
+        if body.get("ref_audio_base64"):
+            raw_aud, ext = _decode_audio_base64(str(body["ref_audio_base64"]))
+            MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            ref_id = _new_job_id("REFAUD")
+            ref_path = MEDIA_DIR / f"{ref_id}_ref.{ext}"
+            ref_path.write_bytes(raw_aud)
+            ref_audio_url = f"/api/worker/ref-audio/{ref_id}"
+        elif body.get("ref_audio_url") or body.get("ref_music_job_id"):
+            src_ref = str(body.get("ref_audio_url") or body.get("ref_music_job_id") or "").strip()
+            resolved = _yerel_medya_ses_coz(src_ref)
+            if resolved is None:
+                raise ValueError("Referans ses dosyası MEDIA_DIR içinde bulunamadı (yalnız yerel medya kabul edilir).")
+            ref_id = _new_job_id("REFAUD")
+            ref_ext = resolved.suffix.lower().lstrip(".") or "wav"
+            shutil.copy2(resolved, MEDIA_DIR / f"{ref_id}_ref.{ref_ext}")
+            ref_audio_url = f"/api/worker/ref-audio/{ref_id}"
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        dur_val = int(body.get("duration_sec") or 30)
+    except (TypeError, ValueError):
+        dur_val = 30
+    bpm_raw = body.get("bpm")
+    bpm_val: Optional[int] = None
+    if bpm_raw is not None and str(bpm_raw).strip() != "":
+        try:
+            bpm_val = int(bpm_raw)
+        except (TypeError, ValueError):
+            bpm_val = None
+    seed_raw = body.get("seed")
+    seed_val: Optional[int] = None
+    if seed_raw is not None and str(seed_raw).strip() != "":
+        try:
+            seed_val = int(seed_raw)
+        except (TypeError, ValueError):
+            seed_val = None
+    try:
+        cov_strength = float(body.get("audio_cover_strength", 0.85))
+    except (TypeError, ValueError):
+        cov_strength = 0.85
+    rep_start = float(body["repaint_start"]) if body.get("repaint_start") not in (None, "") else None
+    rep_end = float(body["repaint_end"]) if body.get("repaint_end") not in (None, "") else None
+
     try:
         job = start_music_job(
             model_id=str(body.get("model_id") or "auto_waterfall").strip(),
             prompt=str(body.get("prompt") or ""),
             genre=str(body.get("genre") or ""),
             mood=str(body.get("mood") or ""),
-            duration_sec=int(body.get("duration_sec") or 30),
+            duration_sec=dur_val,
             instrumental=bool(body.get("instrumental", True)),
             lyrics=str(body.get("lyrics") or ""),
+            vocal_language=str(body.get("vocal_language") or "tr"),
+            bpm=bpm_val,
+            key_scale=str(body.get("key_scale") or ""),
+            time_signature=str(body.get("time_signature") or ""),
+            music_task=str(body.get("music_task") or "text2music"),
+            ref_audio_url=ref_audio_url,
+            audio_cover_strength=cov_strength,
+            repaint_start=rep_start,
+            repaint_end=rep_end,
+            seed=seed_val,
             created_by=str(session.get("username") or "owner"),
             data_dir=DATA_DIR,
             media_dir=MEDIA_DIR,
@@ -1447,23 +1656,38 @@ async def api_music_job(job_id: str):
     from music_studio import get_music_job
 
     jid = _validate_job_id(job_id)
-    job = get_music_job(jid)
+    job = get_music_job(jid, data_dir=DATA_DIR)
+    qrec = None
+    with JOBS_LOCK:
+        qrec = next((dict(j) for j in _load_jobs_unlocked().get("jobs", []) if _is_job(j, jid)), None)
+    if not job and qrec:
+        # Sunucu restart sonrası video_jobs.json'dan kurtarma
+        job = {
+            "job_id": jid,
+            "status": "completed" if (qrec.get("audio_url") and qrec.get("gpu_durum") == "tamam") else (
+                "failed" if qrec.get("gpu_durum") == "basarisiz" else "queued_gpu"
+            ),
+            "model_id": qrec.get("model_id") or ("gpu-acestep-1.5" if qrec.get("method") == "acestep" else "gpu-musicgen"),
+            "model_name": str(qrec.get("audio_model") or qrec.get("method") or "Kaggle GPU Müzik"),
+            "prompt": str(qrec.get("raw_prompt") or qrec.get("prompt") or ""),
+            "lyrics": str(qrec.get("lyrics") or ""),
+            "duration_sec": int(qrec.get("sure_sn") or qrec.get("duration") or 30),
+            "audio_url": qrec.get("audio_url") or qrec.get("output_url"),
+            "error": qrec.get("error"),
+        }
     if not job:
         raise HTTPException(status_code=404, detail="Müzik işi bulunamadı.")
-    if job.get("status") == "queued_gpu":
-        with JOBS_LOCK:
-            qrec = next((dict(j) for j in _load_jobs_unlocked().get("jobs", []) if _is_job(j, jid)), None)
-        if qrec:
-            job["progress_pct"] = int(qrec.get("progress_pct") or 0)
-            job["current_stage"] = str(qrec.get("current_stage") or qrec.get("status") or "GPU kuyruğunda")
-            job["gpu_durum"] = qrec.get("gpu_durum")
-            job["gpu_worker_online"] = _has_live_gpu_worker()
-            if qrec.get("gpu_durum") == "basarisiz":
-                job["status"] = "failed"
-                job["error"] = str(qrec.get("error") or "Kaggle GPU işçisi hata bildirdi.")
-            elif qrec.get("audio_url") and qrec.get("gpu_durum") == "tamam":
-                job["status"] = "completed"
-                job["audio_url"] = qrec.get("audio_url")
+    if job.get("status") == "queued_gpu" and qrec:
+        job["progress_pct"] = int(qrec.get("progress_pct") or 0)
+        job["current_stage"] = str(qrec.get("current_stage") or qrec.get("status") or "GPU kuyruğunda")
+        job["gpu_durum"] = qrec.get("gpu_durum")
+        job["gpu_worker_online"] = _has_live_gpu_worker()
+        if qrec.get("gpu_durum") == "basarisiz":
+            job["status"] = "failed"
+            job["error"] = str(qrec.get("error") or "Kaggle GPU işçisi hata bildirdi.")
+        elif qrec.get("audio_url") and qrec.get("gpu_durum") == "tamam":
+            job["status"] = "completed"
+            job["audio_url"] = qrec.get("audio_url")
     return {"success": True, "job": job}
 
 
@@ -1867,6 +2091,84 @@ def _input_gorsel_kaydet(job_id: str, ham: bytes) -> Path:
     return hedef
 
 
+def _end_gorsel_kaydet(job_id: str, ham: bytes) -> Path:
+    """Doğrulanmış bitiş karesini (FLF2V) `MEDIA_DIR/<job_id>_end.png` olarak atomik yazar."""
+    if _gorsel_turu(ham) is None:
+        raise ValueError("Bitiş görseli PNG/JPEG değil.")
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    hedef = MEDIA_DIR / f"{job_id}_end.png"
+    gecici = MEDIA_DIR / f".{job_id}_end.part"
+    gecici.write_bytes(ham)
+    os.replace(gecici, hedef)
+    return hedef
+
+
+# -----------------------------------------------------------------------------
+# 4b. KARAKTER TUTARLILIK KASASI (Higgsfield Soul-ID Tarzı Kalıcı Karakterler)
+# -----------------------------------------------------------------------------
+@app.get("/api/studio/characters", dependencies=[Depends(require_section("video"))])
+async def api_list_characters():
+    from character_store import CharacterStore
+
+    items = CharacterStore(DATA_DIR, MEDIA_DIR).list_characters()
+    return {"success": True, "items": items, "count": len(items)}
+
+
+@app.post("/api/studio/characters")
+async def api_upsert_character(
+    req: Request,
+    session: Dict[str, Any] = Depends(require_section("video")),
+):
+    from character_store import CharacterStore
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    img_bytes: Optional[bytes] = None
+    try:
+        if body.get("image_base64"):
+            img_bytes = _decode_image_base64(str(body["image_base64"]))
+        elif body.get("input_image_url") or body.get("reference_image_url"):
+            img_bytes = _url_den_gorsel_ham(str(body.get("input_image_url") or body.get("reference_image_url")))
+            if img_bytes is None:
+                raise ValueError("Referans görsel URL'si MEDIA_DIR içinde doğrulanamadı.")
+        raw_tags = body.get("tags")
+        tags = (
+            [t.strip() for t in str(raw_tags).split(",") if t.strip()]
+            if isinstance(raw_tags, str)
+            else (list(raw_tags) if isinstance(raw_tags, list) else [])
+        )
+        char = CharacterStore(DATA_DIR, MEDIA_DIR).upsert_character(
+            name=str(body.get("name") or ""),
+            character_bible=str(body.get("character_bible") or body.get("character_lock") or ""),
+            char_id=str(body.get("id") or body.get("char_id") or "").strip() or None,
+            style_preset=str(body.get("style_preset") or "cinematic_realism"),
+            seed=body.get("seed"),
+            tags=tags,
+            image_bytes=img_bytes,
+            created_by=str(session.get("username") or "owner"),
+        )
+        return {"success": True, "character": char}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/studio/characters/{char_id}", dependencies=[Depends(require_section("video"))])
+async def api_delete_character(char_id: str):
+    from character_store import CharacterStore
+
+    try:
+        deleted = CharacterStore(DATA_DIR, MEDIA_DIR).delete_character(char_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Karakter profili bulunamadı.")
+    return {"success": True, "deleted": char_id}
+
+
 def _url_den_gorsel_ham(url: str) -> Optional[bytes]:
     """Onaylanmış önizleme/input URL'sinden görsel baytlarını çözer.
 
@@ -1904,6 +2206,46 @@ def _has_live_gpu_worker() -> bool:
     return bool(ACTIVE_GPU_WORKERS)
 
 
+def _call_preview_single_image(fn: Any, prompt: str, hedef: Path, **kwargs: Any) -> Dict[str, Any]:
+    """`preview_single_image` çağrısında eski imzalı test mock'larıyla geriye dönük uyumu korur."""
+    import inspect
+
+    try:
+        sig = inspect.signature(fn)
+        has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        if not has_var_kw:
+            kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    except (TypeError, ValueError):
+        pass
+    return fn(prompt, hedef, **kwargs)
+
+
+def _yerel_medya_gorseli_coz(url_veya_ad: Optional[str]) -> Optional[Path]:
+    """`/api/media/file?path=...` veya `/api/worker/input/<id>` yerel PNG/JPG yolunu güvenli çözer."""
+    raw = str(url_veya_ad or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = urllib.parse.urlparse(raw)
+        qs = urllib.parse.parse_qs(parsed.query or "")
+        aday_ad = (qs.get("path") or [None])[0]
+        if aday_ad:
+            temiz = Path(str(aday_ad)).name
+            yol = (MEDIA_DIR / temiz).resolve()
+            if yol.parent == MEDIA_DIR.resolve() and yol.is_file() and yol.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                return yol
+        if "/api/worker/input/" in parsed.path:
+            jid = parsed.path.rstrip("/").split("/")[-1]
+            if JOB_ID_RE.match(jid):
+                for ek in (f"{jid}_input.png", f"{jid}_input.jpg", f"{jid}_preview.png"):
+                    yol = MEDIA_DIR / ek
+                    if yol.is_file():
+                        return yol
+    except Exception:
+        return None
+    return None
+
+
 def _run_instant_cloud_render_sync(
     *,
     job_id: str,
@@ -1917,6 +2259,8 @@ def _run_instant_cloud_render_sync(
     duration_sec: float,
     source_url: Optional[str] = None,
     execution_mode: str = "instant_cloud",
+    character_lock: str = "",
+    seed: int = 42,
 ) -> Dict[str, Any]:
     """GPU işçisi yokken gerçek YZ görseli, LTX I2V canlandırma veya HyperFrames kurgu üretir.
 
@@ -1936,16 +2280,23 @@ def _run_instant_cloud_render_sync(
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     w, h = _cozunurluk(aspect_ratio)
     clean_prompts = [p for p in (image_prompts or []) if p and str(p).strip()] or [prompt]
+    hedef_sure = max(3.0, min(60.0, float(duration_sec or 5.0)))
+    input_ref = MEDIA_DIR / f"{job_id}_input.png"
+    ref_path = input_ref if input_ref.is_file() else None
 
     if method in ("flux2_resim", "image_first_preview"):
         hedef_png = MEDIA_DIR / f"{job_id}_preview.png"
-        prev = _avm.preview_single_image(
+        prev = _call_preview_single_image(
+            _avm.preview_single_image,
             clean_prompts[0],
             hedef_png,
             genislik=w,
             yukseklik=h,
             style_preset=style_preset,
             camera_motion=camera_motion,
+            seed=int(seed or 42),
+            character_lock=character_lock,
+            reference_image_path=ref_path,
         )
         if not prev.get("ok") or not hedef_png.is_file():
             return {
@@ -1977,13 +2328,16 @@ def _run_instant_cloud_render_sync(
         src_img = MEDIA_DIR / f"{job_id}_input.png"
         if not src_img.is_file():
             src_img = MEDIA_DIR / f"{job_id}_preview.png"
-            prev = _avm.preview_single_image(
+            prev = _call_preview_single_image(
+                _avm.preview_single_image,
                 clean_prompts[0],
                 src_img,
                 genislik=w,
                 yukseklik=h,
                 style_preset=style_preset,
                 camera_motion=camera_motion,
+                seed=int(seed or 42),
+                character_lock=character_lock,
             )
             if not prev.get("ok") or not src_img.is_file():
                 return {
@@ -2004,9 +2358,10 @@ def _run_instant_cloud_render_sync(
                 hedef_mp4,
                 prompt=motion_prompt or prompt,
                 aspect_ratio=aspect_ratio,
-                duration_sec=duration_sec,
+                duration_sec=hedef_sure,
                 audio_path=audio_path if audio_path.is_file() else None,
                 ass_path=ass_path if ass_path.is_file() else None,
+                seed=int(seed or 42),
             )
             if ltx_res.get("ok"):
                 res = ltx_res
@@ -2027,7 +2382,7 @@ def _run_instant_cloud_render_sync(
                 prompt=motion_prompt or prompt,
                 camera_motion=camera_motion,
                 aspect_ratio=aspect_ratio,
-                duration_sec=duration_sec,
+                duration_sec=hedef_sure,
                 audio_path=audio_path if audio_path.is_file() else None,
                 ass_path=ass_path if ass_path.is_file() else None,
             )
@@ -2038,7 +2393,7 @@ def _run_instant_cloud_render_sync(
             prompt[:70],
             motion_prompt[:140] or source_url or style_preset,
             [{"caption": prompt[:60], "motion": camera_motion}],
-            float(res.get("duration_sec") or duration_sec),
+            float(res.get("duration_sec") or hedef_sure),
             aspect_ratio,
             style_preset,
         )
@@ -2058,7 +2413,8 @@ def _run_instant_cloud_render_sync(
             "kaynak": str(res.get("kaynak") or "bulut_hareket_i2v"),
             "file_size_bytes": res.get("file_size_bytes", 0),
             "resolution": res.get("resolution", f"{w}x{h}"),
-            "duration_sec": res.get("duration_sec", duration_sec),
+            "duration_sec": res.get("duration_sec", hedef_sure),
+            "duration_warning": res.get("duration_warning"),
             "kalite_raporu": res.get("kalite"),
             "open_edit_metrics": verify_onscreen_metrics(prompt, source_url or prompt),
         }
@@ -2074,9 +2430,12 @@ def _run_instant_cloud_render_sync(
         aspect_ratio=aspect_ratio,
         style_preset=style_preset,
         camera_motion=camera_motion,
-        duration_sec=max(6.0, float(duration_sec)),
+        duration_sec=hedef_sure,
         audio_path=audio_path if audio_path.is_file() else None,
         source_url=source_url,
+        seed=int(seed or 42),
+        character_lock=character_lock,
+        reference_image_path=ref_path,
     )
     if not res.get("ok"):
         return res
@@ -2097,7 +2456,7 @@ def _run_instant_cloud_render_sync(
         "kaynak": f"hyperframes_{res.get('saglayici', 'cloud')}",
         "file_size_bytes": res.get("file_size_bytes", 0),
         "resolution": res.get("resolution", f"{w}x{h}"),
-        "duration_sec": max(6.0, float(duration_sec)),
+        "duration_sec": res.get("duration_sec", hedef_sure),
         "gecisler": res.get("gecisler"),
         "kalite_raporu": res.get("kalite"),
         "open_edit_metrics": res.get("open_edit_metrics"),
@@ -2124,6 +2483,10 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
     job["open_edit_metrics"] = res.get("open_edit_metrics")
     job["file_size_bytes"] = res.get("file_size_bytes", 0)
     job["resolution"] = res.get("resolution")
+    if res.get("duration_sec"):
+        job["duration_sec"] = round(float(res["duration_sec"]), 2)
+    if res.get("duration_warning"):
+        job["duration_warning"] = str(res["duration_warning"])
     job["kaynak"] = res.get("kaynak")
     art = dict(job.get("artifacts") or {})
     art.update({
@@ -2131,6 +2494,7 @@ def _finalize_instant_cloud_job(job: Dict[str, Any], res: Dict[str, Any]) -> Dic
         "video_difuzyonu": job["video_difuzyonu"],
         "file_size_bytes": res.get("file_size_bytes", 0),
         "resolution": res.get("resolution"),
+        "duration_sec": job.get("duration_sec") or job.get("sure_sn"),
         "gecisler": res.get("gecisler"),
     })
     job["artifacts"] = art
@@ -2194,6 +2558,23 @@ async def generate_lab_video(req: Request):
     style_preset = str(body.get("style_preset") or body.get("style") or "cinematic_realism").strip()
     camera_motion = str(body.get("camera_motion") or "otomatik").strip()
     neg_prompt_raw = str(body.get("negative_prompt") or "").strip()
+    character_id = str(body.get("character_id") or "").strip()
+    character_lock = str(body.get("character_lock") or body.get("character_bible") or "").strip()
+    try:
+        raw_seed = int(body["seed"]) if body.get("seed") not in (None, "") else None
+    except (TypeError, ValueError):
+        raw_seed = None
+    char_ref_bytes: Optional[bytes] = None
+    if character_id:
+        from character_store import CharacterStore
+        cstore = CharacterStore(DATA_DIR, MEDIA_DIR)
+        cprof = cstore.get_character(character_id)
+        if cprof:
+            if not character_lock:
+                character_lock = str(cprof.get("character_bible") or "")
+            if raw_seed is None and cprof.get("seed") is not None:
+                raw_seed = int(cprof["seed"])
+            char_ref_bytes = cstore.get_reference_image_bytes(character_id)
     execution_mode = str(body.get("execution_mode") or "").strip().lower()
     source_url = str(body.get("source_url") or "").strip()
     try:
@@ -2215,21 +2596,27 @@ async def generate_lab_video(req: Request):
         from channels_manager import compose_story_plan
         story_plan = await run_in_threadpool(
             lambda: compose_story_plan(
-                effective_prompt, style_preset, camera_motion, neg_prompt_raw, scene_count=scene_n, duration_sec=sure_sn
+                effective_prompt, style_preset, camera_motion, neg_prompt_raw,
+                scene_count=scene_n, duration_sec=sure_sn,
+                character_lock=character_lock, seed=raw_seed,
             )
         )
         img_prompt = story_plan["image_prompt"]
         mot_prompt = story_plan["motion_prompt"]
         neg_prompt = story_plan["negative_prompt"]
         narration_txt = story_plan["narration_text"]
+        char_bible = str(story_plan.get("character_bible") or character_lock or "").strip()
+        locked_seed = int(story_plan.get("seed") or raw_seed or 42)
         planner_source = story_plan.get("planner_source", "yerel")
         scene_prompts = [s.get("image_prompt", "") for s in (story_plan.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")] or [img_prompt]
     except Exception:
         img_prompt, mot_prompt, neg_prompt = effective_prompt, effective_prompt, neg_prompt_raw
         narration_txt, planner_source = prompt, "ham"
+        char_bible, locked_seed = character_lock, (raw_seed or 42)
         scene_prompts = [img_prompt]
 
     gorsel_ham: Optional[bytes] = None
+    end_gorsel_ham: Optional[bytes] = None
     try:
         if body.get("image_base64"):
             gorsel_ham = _decode_image_base64(str(body["image_base64"]))
@@ -2239,8 +2626,21 @@ async def generate_lab_video(req: Request):
                 raise ValueError(
                     "input_image_url MEDIA_DIR içinde geçerli bir PNG/JPEG görsele çözümlenemedi."
                 )
+        elif char_ref_bytes is not None:
+            gorsel_ham = char_ref_bytes
         if gorsel_ham is not None:
             _input_gorsel_kaydet(job_id, gorsel_ham)
+
+        if body.get("end_image_base64"):
+            end_gorsel_ham = _decode_image_base64(str(body["end_image_base64"]))
+        elif body.get("end_image_url"):
+            end_gorsel_ham = _url_den_gorsel_ham(str(body["end_image_url"]))
+            if end_gorsel_ham is None:
+                raise ValueError(
+                    "end_image_url MEDIA_DIR içinde geçerli bir PNG/JPEG görsele çözümlenemedi."
+                )
+        if end_gorsel_ham is not None:
+            _end_gorsel_kaydet(job_id, end_gorsel_ham)
     except ValueError as e:
         return JSONResponse(
             status_code=400,
@@ -2254,19 +2654,24 @@ async def generate_lab_video(req: Request):
         )
 
     input_url = f"/api/worker/input/{job_id}" if gorsel_ham is not None else None
+    end_url = f"/api/worker/end-image/{job_id}" if end_gorsel_ham is not None else None
 
-    if workflow in ("hyperframes_motion", "product_launch"):
+    if workflow in ("hyperframes_motion", "product_launch", "vace_r2v", "flf2v"):
         method = workflow
     elif workflow in ("image_first_preview", "flux2_resim"):
         method = "flux2_resim"
     elif workflow == "image_then_i2v":
         method = "wan_i2v" if gorsel_ham is not None else "image_then_i2v"
+    elif mode in ("vace_r2v", "flf2v") or method in ("vace_r2v", "flf2v"):
+        method = method if method in ("vace_r2v", "flf2v") else mode
     elif mode == "flux2_resim" or method == "flux2_resim":
         method = "flux2_resim"
     elif mode == "image_then_i2v":
         method = "wan_i2v" if gorsel_ham is not None else "image_then_i2v"
     elif not method:
-        if gorsel_ham is not None:
+        if gorsel_ham is not None and end_gorsel_ham is not None:
+            method = "flf2v"
+        elif gorsel_ham is not None:
             method = "wan_i2v"
         elif mode == "i2v":
             method = "wan_i2v"
@@ -2284,9 +2689,31 @@ async def generate_lab_video(req: Request):
                 "message": "wan_i2v için onaylanmış bir görsel gerekli (image_base64 veya input_image_url).",
             },
         )
+    if method == "vace_r2v":
+        if gorsel_ham is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "status": "basarisiz",
+                    "message": "vace_r2v (Tutarlı Karakter Referans→Video) için karakter portre görseli veya character_id gerekli.",
+                },
+            )
+        i2v_model = "wan2.1-vace-1.3b"
+    if method == "flf2v":
+        if gorsel_ham is None or end_gorsel_ham is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "status": "basarisiz",
+                    "message": "flf2v (İlk+Son Kare Geçişi) için hem başlangıç görseli hem bitiş görseli (end_image_base64) zorunludur.",
+                },
+            )
+        i2v_model = "wan2.1-vace-1.3b"
 
     gpu_hedef = render_target in GPU_HEDEFLERI or method in (
-        "wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
+        "wan_i2v", "vace_r2v", "flf2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
         "hyperframes_motion", "product_launch",
     )
     if gpu_hedef:
@@ -2332,6 +2759,10 @@ async def generate_lab_video(req: Request):
             "image_prompt": img_prompt,
             "motion_prompt": mot_prompt,
             "negative_prompt": neg_prompt,
+            "character_id": character_id or None,
+            "character_bible": char_bible,
+            "character_lock": char_bible,
+            "seed": locked_seed,
             "method": method,
             "mode": mode or method,
             "render_target": render_target,
@@ -2344,6 +2775,7 @@ async def generate_lab_video(req: Request):
             "gpu_durum": "bekliyor",
             "simulasyon": False,
             "input_image_url": input_url,
+            "end_image_url": end_url,
             "audio_url": audio_url,
             "subtitle_url": subtitle_url,
             "preview_image_url": None,
@@ -2358,9 +2790,12 @@ async def generate_lab_video(req: Request):
             },
         }
         aninda = (
-            method in ("hyperframes_motion", "product_launch")
-            or execution_mode == "instant_cloud"
-            or (execution_mode == "auto" and not _has_live_gpu_worker())
+            method not in ("vace_r2v", "flf2v")
+            and (
+                method in ("hyperframes_motion", "product_launch")
+                or execution_mode == "instant_cloud"
+                or (execution_mode == "auto" and not _has_live_gpu_worker())
+            )
         )
         if aninda:
             res = await run_in_threadpool(
@@ -2681,7 +3116,7 @@ async def youtube_oauth_callback(req: Request, code: Optional[str] = Query(None)
 
 @app.post("/api/studio/preview-image", dependencies=[Depends(require_section("video"))])
 async def studio_preview_image(req: Request):
-    """GPU worker beklemeden bulut FLUX.1-schnell (veya Pollinations) ile somut İngilizce sahne önizlemesi üretir."""
+    """GPU worker beklemeden bulut FLUX.2/1 ile karakter kilidi & referans görsel destekli sahne önizlemesi üretir."""
     from ai_video_montaj import preview_single_image
     from channels_manager import ChannelStore
 
@@ -2698,12 +3133,32 @@ async def studio_preview_image(req: Request):
     style_preset = str(body.get("style_preset") or ch_cfg.get("style_preset") or "cinematic_realism")
     camera_motion = str(body.get("camera_motion") or ch_cfg.get("camera_motion") or "otomatik")
     aspect_ratio = str(body.get("aspect_ratio") or ch_cfg.get("aspect_ratio") or "16:9")
-    w, h = (576, 1024) if aspect_ratio.replace(" ", "") == "9:16" else (1280, 720)
+    character_lock = str(body.get("character_lock") or body.get("character_bible") or "").strip()
+    use_planner = bool(body.get("use_planner", True))
+    try:
+        seed = int(body.get("seed") or 42)
+    except (TypeError, ValueError):
+        seed = 42
+    ref_path = _yerel_medya_gorseli_coz(body.get("reference_image_url"))
+    oran = aspect_ratio.replace(" ", "")
+    w, h = (576, 1024) if oran == "9:16" else (768, 768) if oran == "1:1" else (1280, 720)
     job_id = _new_job_id("IMG")
     hedef = MEDIA_DIR / f"{job_id}_preview.png"
 
     res = await run_in_threadpool(
-        lambda: preview_single_image(prompt, hedef, genislik=w, yukseklik=h, style_preset=style_preset, camera_motion=camera_motion)
+        lambda: _call_preview_single_image(
+            preview_single_image,
+            prompt,
+            hedef,
+            genislik=w,
+            yukseklik=h,
+            style_preset=style_preset,
+            camera_motion=camera_motion,
+            use_planner=use_planner,
+            seed=seed,
+            character_lock=character_lock,
+            reference_image_path=ref_path,
+        )
     )
     if not res.get("ok"):
         return JSONResponse(status_code=502, content={
@@ -2722,6 +3177,8 @@ async def studio_preview_image(req: Request):
         "narration_text": res.get("narration_text") or prompt,
         "image_prompt": res.get("image_prompt") or prompt,
         "motion_prompt": res.get("motion_prompt") or prompt,
+        "character_bible": character_lock,
+        "seed": int(res.get("seed") or seed),
         "planner_source": res.get("planner_source"),
         "style_preset": style_preset,
         "method": "cloud_preview_image",
@@ -2740,6 +3197,8 @@ async def studio_preview_image(req: Request):
         "job_id": job_id,
         "preview_image_url": onizleme_url,
         "provider": res.get("provider"),
+        "reference_used": bool(res.get("reference_used")),
+        "seed": job["seed"],
         "planner_source": res.get("planner_source"),
         "image_prompt": job["image_prompt"],
         "motion_prompt": job["motion_prompt"],
@@ -2750,7 +3209,7 @@ async def studio_preview_image(req: Request):
 
 @app.post("/api/studio/storyboard", dependencies=[Depends(require_section("video"))])
 async def studio_storyboard(req: Request):
-    """Konudan çok sahneli (3–5 sahneli) anlatım + İngilizce görsel/hareket senaryosu planlar."""
+    """Tek film fikrinden Karakter Kimliği (Character Bible) + çok sahneli AI Film Canvas planı çıkarır."""
     from channels_manager import compose_story_plan
 
     try:
@@ -2762,84 +3221,303 @@ async def studio_storyboard(req: Request):
         return JSONResponse(status_code=400, content={"success": False, "detail": "Storyboard için konu/prompt gerekli."})
     style_preset = str(body.get("style_preset") or "cinematic_realism")
     camera_motion = str(body.get("camera_motion") or "otomatik")
-    scene_count = max(2, min(6, int(body.get("scene_count") or 3)))
-    duration_sec = max(5.0, min(90.0, float(body.get("duration") or 15.0)))
+    aspect_ratio = str(body.get("aspect_ratio") or "16:9")
+    character_lock = str(body.get("character_lock") or body.get("character_bible") or "").strip()
+    scene_count = max(2, min(6, int(body.get("scene_count") or 4)))
+    duration_sec = max(4.0, min(90.0, float(body.get("duration") or 12.0)))
+    raw_seed = body.get("seed")
     plan = await run_in_threadpool(
-        lambda: compose_story_plan(prompt, style_preset, camera_motion, scene_count=scene_count, duration_sec=duration_sec)
+        lambda: compose_story_plan(
+            prompt,
+            style_preset,
+            camera_motion,
+            scene_count=scene_count,
+            duration_sec=duration_sec,
+            character_lock=character_lock,
+            seed=int(raw_seed) if raw_seed else None,
+        )
     )
-    return {"success": True, **plan}
+    return {"success": True, "aspect_ratio": aspect_ratio, **plan}
 
 
-@app.post("/api/studio/stitch-clips", dependencies=[Depends(require_section("video"))])
-async def studio_stitch_clips(req: Request):
-    """Birden fazla tamamlanmış I2V klip MP4'ünü birleştirip tam ses+altyazılı uzun video ve YouTube paketi üretir."""
-    import shutil
-    import subprocess
-    import tempfile
-    from channels_manager import ChannelStore
+@app.post("/api/studio/storyboard/revise-shot", dependencies=[Depends(require_section("video"))])
+async def studio_storyboard_revise_shot(req: Request):
+    """AI Film Canvas'ta tek bir sahneyi sohbet talimatıyla karakter kilidini koruyarak revize eder."""
+    from ai_video_montaj import preview_single_image
+    from prompt_director import revise_scene_prompt
 
     try:
         body = await req.json()
     except Exception:
         body = {}
+    instruction = str(body.get("instruction") or "").strip()
+    orig_img = str(body.get("image_prompt") or "").strip()
+    if not instruction and not orig_img:
+        return JSONResponse(status_code=400, content={"success": False, "detail": "Revize talimatı veya sahne promptu gerekli."})
+
+    orig_mot = str(body.get("motion_prompt") or "").strip()
+    character_bible = str(body.get("character_bible") or body.get("character_lock") or "").strip()
+    style_preset = str(body.get("style_preset") or "cinematic_realism")
+    camera_motion = str(body.get("camera_motion") or "otomatik")
+    aspect_ratio = str(body.get("aspect_ratio") or "16:9")
+    regenerate_preview = bool(body.get("regenerate_preview", True))
+    try:
+        seed = int(body.get("seed") or 42)
+    except (TypeError, ValueError):
+        seed = 42
+
+    rev = await run_in_threadpool(
+        lambda: revise_scene_prompt(
+            original_image_prompt=orig_img,
+            instruction=instruction,
+            original_motion_prompt=orig_mot,
+            character_bible=character_bible,
+            style_preset=style_preset,
+            camera_motion=camera_motion,
+            use_llm=True,
+        )
+    )
+
+    out_payload: Dict[str, Any] = {
+        "success": True,
+        "scene_index": int(body.get("scene_index") or 0),
+        "image_prompt": rev["image_prompt"],
+        "motion_prompt": rev["motion_prompt"],
+        "planner_source": rev.get("planner_source"),
+        "seed": seed,
+        "preview_image_url": None,
+        "provider": None,
+    }
+
+    if regenerate_preview:
+        oran = aspect_ratio.replace(" ", "")
+        w, h = (576, 1024) if oran == "9:16" else (768, 768) if oran == "1:1" else (1280, 720)
+        ref_path = _yerel_medya_gorseli_coz(body.get("reference_image_url"))
+        job_id = _new_job_id("SHOT")
+        hedef = MEDIA_DIR / f"{job_id}_preview.png"
+        prev = await run_in_threadpool(
+            lambda: _call_preview_single_image(
+                preview_single_image,
+                rev["image_prompt"],
+                hedef,
+                genislik=w,
+                yukseklik=h,
+                style_preset=style_preset,
+                camera_motion=camera_motion,
+                use_planner=False,
+                seed=seed,
+                character_lock=character_bible,
+                reference_image_path=ref_path,
+            )
+        )
+        if prev.get("ok") and hedef.is_file():
+            out_payload["job_id"] = job_id
+            out_payload["preview_image_url"] = f"/api/media/file?path={hedef.name}"
+            out_payload["provider"] = prev.get("provider")
+            out_payload["reference_used"] = bool(prev.get("reference_used"))
+        else:
+            out_payload["preview_error"] = prev.get("error") or "Yeni önizleme üretilemedi; revize prompt kaydedildi."
+    return out_payload
+
+
+@app.post("/api/studio/stitch-clips", dependencies=[Depends(require_section("video"))])
+async def studio_stitch_clips(req: Request):
+    """Birden fazla MP4 klibi VEYA AI Film Canvas sahne görsellerini tam sürede tek MP4 filmde birleştirir."""
+    import shutil
+    import subprocess
+    import tempfile
+    import ai_video_montaj as _avm
+    from channels_manager import ChannelStore
+    from hyperframes_motor import _cozunurluk
+
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+
+    raw_shots = body.get("shots") or []
     raw_ids = body.get("job_ids") or []
-    if not isinstance(raw_ids, list) or len(raw_ids) < 2:
-        return JSONResponse(status_code=400, content={"success": False, "detail": "Birleştirme için en az 2 job_id gerekli."})
+    aspect_ratio = str(body.get("aspect_ratio") or "16:9")
+    w, h = _cozunurluk(aspect_ratio)
+
+    use_shots = isinstance(raw_shots, list) and len(raw_shots) >= 1
+    if not use_shots and (not isinstance(raw_ids, list) or len(raw_ids) < 2):
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "detail": "Birleştirme için en az 2 job_id veya en az 1 Film Canvas sahnesi (shots) gerekli."},
+        )
 
     klipler: List[Path] = []
-    for raw_id in raw_ids[:10]:
-        jid = _validate_job_id(str(raw_id))
-        mp4 = MEDIA_DIR / f"{jid}.mp4"
-        if not mp4.is_file() or not _mp4_oynatilabilir(mp4):
-            return JSONResponse(status_code=400, content={"success": False, "detail": f"Geçerli MP4 bulunamadı: {jid}"})
-        klipler.append(mp4)
+    shot_items: List[Dict[str, Any]] = []
+    if use_shots:
+        for idx, sh in enumerate(raw_shots[:10]):
+            if not isinstance(sh, dict):
+                continue
+            src_mp4: Optional[Path] = None
+            src_png: Optional[Path] = None
+            if sh.get("job_id"):
+                try:
+                    jid_s = _validate_job_id(str(sh["job_id"]))
+                    cand_mp4 = MEDIA_DIR / f"{jid_s}.mp4"
+                    if cand_mp4.is_file() and _mp4_oynatilabilir(cand_mp4):
+                        src_mp4 = cand_mp4
+                except Exception:
+                    pass
+            if src_mp4 is None and sh.get("preview_image_url"):
+                src_png = _yerel_medya_gorseli_coz(str(sh["preview_image_url"]))
+            if src_mp4 is None and src_png is None:
+                continue
+            try:
+                dur = max(1.5, min(20.0, float(sh.get("duration_sec") or 3.5)))
+            except (TypeError, ValueError):
+                dur = 3.5
+            shot_items.append({
+                "mp4": src_mp4,
+                "png": src_png,
+                "duration_sec": dur,
+                "camera_motion": str(sh.get("camera_motion") or "otomatik"),
+                "idx": idx,
+            })
+        if not shot_items:
+            return JSONResponse(status_code=400, content={"success": False, "detail": "Birleştirilecek geçerli sahne görseli veya MP4 bulunamadı."})
+    else:
+        for raw_id in raw_ids[:10]:
+            jid = _validate_job_id(str(raw_id))
+            mp4 = MEDIA_DIR / f"{jid}.mp4"
+            if not mp4.is_file() or not _mp4_oynatilabilir(mp4):
+                return JSONResponse(status_code=400, content={"success": False, "detail": f"Geçerli MP4 bulunamadı: {jid}"})
+            klipler.append(mp4)
 
     out_id = _new_job_id("STITCH")
     out_mp4 = MEDIA_DIR / f"{out_id}.mp4"
-    ff = shutil.which("ffmpeg") or "ffmpeg"
+    ff = shutil.which("ffmpeg") or _avm._ffmpeg()
     tmp_dir = Path(tempfile.mkdtemp(prefix="stitch_"))
+    has_only_2d_shots = bool(use_shots and all(s["mp4"] is None for s in shot_items))
 
     def _birlesik_yap() -> Dict[str, Any]:
         norm_paths: List[Path] = []
-        for idx, src in enumerate(klipler):
-            norm = tmp_dir / f"c{idx}.mp4"
-            r = subprocess.run(
-                [ff, "-y", "-loglevel", "error", "-i", str(src), "-vf", "scale=720:-2:flags=lanczos,fps=24",
-                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an", "-pix_fmt", "yuv420p", str(norm)],
+        target_total_dur = 0.0
+        if use_shots:
+            gecis_sn = 0.4 if len(shot_items) > 1 else 0.0
+            for idx, item in enumerate(shot_items):
+                norm = tmp_dir / f"s{idx}.mp4"
+                dur = float(item["duration_sec"])
+                target_total_dur += dur
+                if item["mp4"] is not None:
+                    r = subprocess.run(
+                        [ff, "-y", "-loglevel", "error", "-i", str(item["mp4"]),
+                         "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps=24,setsar=1",
+                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an", "-pix_fmt", "yuv420p", str(norm)],
+                        capture_output=True, text=True, timeout=180,
+                    )
+                    if r.returncode != 0:
+                        raise RuntimeError(f"Klip normalize hatası: {(r.stderr or '')[-160:]}")
+                else:
+                    cam = item["camera_motion"].strip().lower()
+                    hareket = _avm.KAMERA_HAREKETLERI[idx % len(_avm.KAMERA_HAREKETLERI)] if (not cam or cam == "otomatik") else cam
+                    if not _avm._sahne_video(item["png"], norm, w, h, dur, hareket=hareket):
+                        raise RuntimeError(f"Sahne {idx + 1} hareket render hatası.")
+                norm_paths.append(norm)
+            raw_merged = tmp_dir / "merged.mp4"
+            if len(norm_paths) == 1:
+                shutil.copy2(norm_paths[0], raw_merged)
+            else:
+                # Farklı sahne sürelerini kesin korumak için concat kullan (süre kaybı = 0)
+                concat_txt = tmp_dir / "list.txt"
+                concat_txt.write_text("\n".join(f"file '{p.as_posix()}'" for p in norm_paths), encoding="utf-8")
+                r2 = subprocess.run(
+                    [ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat_txt),
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", str(raw_merged)],
+                    capture_output=True, text=True, timeout=240,
+                )
+                if r2.returncode != 0:
+                    raise RuntimeError(f"Film birleştirme hatası: {(r2.stderr or '')[-160:]}")
+        else:
+            for idx, src in enumerate(klipler):
+                norm = tmp_dir / f"c{idx}.mp4"
+                r = subprocess.run(
+                    [ff, "-y", "-loglevel", "error", "-i", str(src), "-vf", "scale=720:-2:flags=lanczos,fps=24",
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an", "-pix_fmt", "yuv420p", str(norm)],
+                    capture_output=True, text=True, timeout=180,
+                )
+                if r.returncode != 0:
+                    raise RuntimeError(f"Klip normalize hatası: {(r.stderr or '')[-160:]}")
+                norm_paths.append(norm)
+
+            concat_txt = tmp_dir / "list.txt"
+            concat_txt.write_text("\n".join(f"file '{p.as_posix()}'" for p in norm_paths), encoding="utf-8")
+            raw_merged = tmp_dir / "merged.mp4"
+            r2 = subprocess.run(
+                [ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat_txt),
+                 "-c", "copy", str(raw_merged)],
                 capture_output=True, text=True, timeout=180,
             )
-            if r.returncode != 0:
-                raise RuntimeError(f"Klip normalize hatası: {(r.stderr or '')[-160:]}")
-            norm_paths.append(norm)
+            if r2.returncode != 0:
+                raise RuntimeError(f"Concat hatası: {(r2.stderr or '')[-160:]}")
 
-        concat_txt = tmp_dir / "list.txt"
-        concat_txt.write_text("\n".join(f"file '{p.as_posix()}'" for p in norm_paths), encoding="utf-8")
-        raw_merged = tmp_dir / "merged.mp4"
-        r2 = subprocess.run(
-            [ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat_txt),
-             "-c", "copy", str(raw_merged)],
-            capture_output=True, text=True, timeout=180,
-        )
-        if r2.returncode != 0:
-            raise RuntimeError(f"Concat hatası: {(r2.stderr or '')[-160:]}")
+        try:
+            from video_render import video_kalite_denetle as _vkd
+            merged_dur = float((_vkd(raw_merged) or {}).get("sure_sn") or target_total_dur or 10.0)
+        except Exception:
+            merged_dur = target_total_dur or 10.0
 
         prompt_txt = str(body.get("narration_text") or body.get("prompt") or "Çok sahneli YouTube prodüksiyonu").strip()
         voice = str(body.get("voice") or "Aoede")
         wav_path = MEDIA_DIR / f"{out_id}.wav"
-        tts = _burc_tts_yaz(prompt_txt, voice, wav_path) if voice.lower() != "none" else {"ok": False}
+        tts = _burc_tts_yaz(prompt_txt, voice, wav_path) if voice.lower() not in ("none", "yok", "") else {"ok": False}
 
         bmod = _burc_modulu()
         if bmod is not None:
             try:
-                _burc_altyazi_yaz(bmod, prompt_txt, 15.0, MEDIA_DIR / f"{out_id}.srt", MEDIA_DIR / f"{out_id}.ass")
+                _burc_altyazi_yaz(bmod, prompt_txt, merged_dur, MEDIA_DIR / f"{out_id}.srt", MEDIA_DIR / f"{out_id}.ass")
             except Exception:
                 pass
 
-        if tts.get("ok") and wav_path.is_file():
+        music_ref_raw = str(body.get("music_job_id") or body.get("music_url") or "").strip()
+        music_path = _yerel_medya_ses_coz(music_ref_raw) if music_ref_raw else None
+        try:
+            music_vol = max(0.05, min(1.0, float(body.get("music_volume") or (0.28 if tts.get("ok") else 0.85))))
+        except (TypeError, ValueError):
+            music_vol = 0.28 if tts.get("ok") else 0.85
+
+        has_tts = bool(tts.get("ok") and wav_path.is_file())
+        has_music = bool(music_path is not None and music_path.is_file())
+        fade_st = max(0.0, merged_dur - 1.2)
+
+        if has_tts and has_music:
+            # Hem anlatım (TTS) hem AI arka plan müziği: 44.1kHz stereo normalizasyon + ducking + fade-out + -shortest
             r3 = subprocess.run(
-                [ff, "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", str(raw_merged), "-i", str(wav_path),
-                 "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(out_mp4)],
+                [ff, "-nostdin", "-y", "-loglevel", "error",
+                 "-i", str(raw_merged), "-i", str(wav_path), "-stream_loop", "-1", "-i", str(music_path),
+                 "-filter_complex",
+                 f"[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur={merged_dur:.3f},volume=1.0[v];"
+                 f"[2:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,atrim=0:{merged_dur:.3f},asetpts=PTS-STARTPTS,"
+                 f"volume={music_vol:.2f},afade=t=out:st={fade_st:.2f}:d=1.2[m];"
+                 f"[v][m]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]",
+                 "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy",
+                 "-c:a", "aac", "-b:a", "192k", "-t", f"{merged_dur:.3f}", "-shortest", "-movflags", "+faststart", str(out_mp4)],
+                capture_output=True, text=True, timeout=300,
+            )
+            if r3.returncode != 0:
+                shutil.copy2(raw_merged, out_mp4)
+        elif has_tts:
+            # KISA SES FİLMİ KESMEMELİ: apad ile film süresine tamamla, -t ile film süresini koru!
+            r3 = subprocess.run(
+                [ff, "-nostdin", "-y", "-loglevel", "error", "-i", str(raw_merged), "-i", str(wav_path),
+                 "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                 "-af", f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur={merged_dur:.3f}",
+                 "-c:a", "aac", "-b:a", "192k", "-t", f"{merged_dur:.3f}", "-shortest", "-movflags", "+faststart", str(out_mp4)],
+                capture_output=True, text=True, timeout=300,
+            )
+            if r3.returncode != 0:
+                shutil.copy2(raw_merged, out_mp4)
+        elif has_music:
+            r3 = subprocess.run(
+                [ff, "-nostdin", "-y", "-loglevel", "error",
+                 "-i", str(raw_merged), "-stream_loop", "-1", "-i", str(music_path),
+                 "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                 "-af", f"aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,atrim=0:{merged_dur:.3f},asetpts=PTS-STARTPTS,volume={music_vol:.2f},afade=t=out:st={fade_st:.2f}:d=1.2",
+                 "-c:a", "aac", "-b:a", "192k", "-t", f"{merged_dur:.3f}", "-shortest", "-movflags", "+faststart", str(out_mp4)],
                 capture_output=True, text=True, timeout=300,
             )
             if r3.returncode != 0:
@@ -2849,7 +3527,13 @@ async def studio_stitch_clips(req: Request):
                 [ff, "-y", "-loglevel", "error", "-i", str(raw_merged), "-c", "copy", "-movflags", "+faststart", str(out_mp4)],
                 check=True,
             )
-        return {"size_bytes": out_mp4.stat().st_size, "tts": tts}
+        return {
+            "size_bytes": out_mp4.stat().st_size,
+            "tts": tts,
+            "music_mixed": has_music,
+            "music_file": music_path.name if has_music and music_path else None,
+            "merged_dur": round(merged_dur, 2),
+        }
 
     try:
         res = await run_in_threadpool(_birlesik_yap)
@@ -2861,24 +3545,33 @@ async def studio_stitch_clips(req: Request):
     url = f"/api/media/file?path={out_mp4.name}"
     try:
         from video_render import video_kalite_denetle
-        kalite_raporu = video_kalite_denetle(out_mp4)
+        kalite_raporu = video_kalite_denetle(out_mp4, beklenen_oran=aspect_ratio if use_shots else None)
     except Exception:
         kalite_raporu = {}
+    actual_dur = round(float(kalite_raporu.get("sure_sn") or res.get("merged_dur") or 0.0), 2)
     job = {
         "id": out_id,
         "job_id": out_id,
         "channel": str(body.get("channel") or "Genel"),
-        "prompt": str(body.get("prompt") or "Çok sahneli birleştirme"),
+        "prompt": str(body.get("prompt") or "Çok sahneli film birleştirme"),
         "narration_text": str(body.get("narration_text") or body.get("prompt") or ""),
-        "method": "multi_clip_stitch",
-        "status": "tamamlandi (Çok Sahneli Birleştirme)",
+        "aspect_ratio": aspect_ratio,
+        "duration_sec": actual_dur,
+        "sure_sn": actual_dur,
+        "method": "film_canvas_stitch" if use_shots else "multi_clip_stitch",
+        "status": "tamamlandi (AI Film Kurgu)" if use_shots else "tamamlandi (Çok Sahneli Birleştirme)",
         "progress_pct": 100,
         "output_url": url,
         "download_url": f"{url}&download=1",
         "file_size_bytes": res["size_bytes"],
         "size_kb": max(1, round(res["size_bytes"] / 1024)),
         "kalite_raporu": kalite_raporu,
-        "simulasyon": False,
+        "simulasyon": has_only_2d_shots,
+        "video_difuzyonu": not has_only_2d_shots,
+        "kaynak": "film_canvas_2d_montaj" if has_only_2d_shots else "multi_clip_stitch",
+        "tts": res.get("tts"),
+        "music_mixed": bool(res.get("music_mixed")),
+        "music_file": res.get("music_file"),
         "created_at": time.time(),
     }
     job["youtube_bundle"] = ChannelStore(DATA_DIR).build_publish_bundle(job, MEDIA_DIR)
@@ -2921,7 +3614,24 @@ async def studio_video_generate(req: Request):
     i2v_model = str(body.get("i2v_model") or body.get("video_model") or ch_cfg.get("i2v_model") or "wan2.1-i2v-14b")
     style_preset = str(body.get("style_preset") or ch_cfg.get("style_preset") or "cinematic_realism")
     camera_motion = str(body.get("camera_motion") or ch_cfg.get("camera_motion") or "otomatik")
+    character_id = str(body.get("character_id") or "").strip()
+    character_lock = str(body.get("character_lock") or body.get("character_bible") or "").strip()
     neg_raw = str(body.get("negative_prompt") or "")
+    try:
+        raw_seed = int(body.get("seed")) if body.get("seed") not in (None, "") else None
+    except (TypeError, ValueError):
+        raw_seed = None
+    char_ref_bytes: Optional[bytes] = None
+    if character_id:
+        from character_store import CharacterStore
+        cstore = CharacterStore(DATA_DIR, MEDIA_DIR)
+        cprof = cstore.get_character(character_id)
+        if cprof:
+            if not character_lock:
+                character_lock = str(cprof.get("character_bible") or "")
+            if raw_seed is None and cprof.get("seed") is not None:
+                raw_seed = int(cprof["seed"])
+            char_ref_bytes = cstore.get_reference_image_bytes(character_id)
     try:
         sure_sn = max(3.0, min(60.0, float(body.get("duration") or body.get("sure_sn") or ch_cfg.get("duration") or 5.0)))
     except (TypeError, ValueError):
@@ -2937,6 +3647,7 @@ async def studio_video_generate(req: Request):
         effective_prompt = f"{prompt} — {url_res['brief']}"
 
     gorsel_ham: Optional[bytes] = None
+    end_gorsel_ham: Optional[bytes] = None
     try:
         if body.get("image_base64"):
             gorsel_ham = _decode_image_base64(str(body["image_base64"]))
@@ -2944,16 +3655,27 @@ async def studio_video_generate(req: Request):
             gorsel_ham = _url_den_gorsel_ham(str(body["input_image_url"]))
             if gorsel_ham is None:
                 raise ValueError("input_image_url geçerli bir PNG/JPEG görsele çözümlenemedi.")
+        elif char_ref_bytes is not None:
+            gorsel_ham = char_ref_bytes
         if gorsel_ham is not None:
             _input_gorsel_kaydet(job_id, gorsel_ham)
+
+        if body.get("end_image_base64"):
+            end_gorsel_ham = _decode_image_base64(str(body["end_image_base64"]))
+        elif body.get("end_image_url"):
+            end_gorsel_ham = _url_den_gorsel_ham(str(body["end_image_url"]))
+            if end_gorsel_ham is None:
+                raise ValueError("end_image_url geçerli bir PNG/JPEG görsele çözümlenemedi.")
+        if end_gorsel_ham is not None:
+            _end_gorsel_kaydet(job_id, end_gorsel_ham)
     except ValueError as e:
         return JSONResponse(status_code=400, content={"success": False, "detail": str(e)})
     except OSError as e:
         logger.error("[Studio] Giriş görseli kaydedilemedi: %s", e)
         return JSONResponse(status_code=500, content={"success": False, "detail": "Giriş görseli kaydedilemedi."})
 
-    # Yöntem çözümlemesi (yeni Image-First/I2V/HyperFrames iş akışları + eski Remotion/Canvas uyumu)
-    if workflow in ("hyperframes_motion", "product_launch"):
+    # Yöntem çözümlemesi (Image-First / VACE R2V / FLF2V / I2V / HyperFrames + eski Remotion/Canvas uyumu)
+    if workflow in ("hyperframes_motion", "product_launch", "vace_r2v", "flf2v"):
         method = workflow
     elif workflow in ("image_first_preview", "flux2_resim"):
         method = "flux2_resim"
@@ -2963,6 +3685,8 @@ async def studio_video_generate(req: Request):
         method = "wan_i2v"
     elif workflow == "t2v_direct":
         method = "t2v_direct"
+    elif mode in ("vace_r2v", "flf2v"):
+        method = mode
     elif mode == "flux2_resim":
         method = "flux2_resim"
     elif workflow in ("remotion_cinema", "opus_canvas", "viral_shorts"):
@@ -2975,9 +3699,23 @@ async def studio_video_generate(req: Request):
             status_code=400,
             content={"success": False, "detail": "wan_i2v için image_base64 veya input_image_url gerekli."},
         )
+    if method == "vace_r2v":
+        if gorsel_ham is None:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "detail": "vace_r2v (Tutarlı Karakter Referans→Video) için karakter portre görseli veya kayıtlı karakter (character_id) gerekli."},
+            )
+        i2v_model = "wan2.1-vace-1.3b"
+    if method == "flf2v":
+        if gorsel_ham is None or end_gorsel_ham is None:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "detail": "flf2v (İlk+Son Kare Geçişi) için hem başlangıç hem bitiş görseli (end_image_base64) zorunludur."},
+            )
+        i2v_model = "wan2.1-vace-1.3b"
 
     gpu_diffusion_methods = (
-        "wan_i2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
+        "wan_i2v", "vace_r2v", "flf2v", "flux2_resim", "image_first_preview", "image_then_i2v", "t2v_direct",
         "hyperframes_motion", "product_launch",
     )
     if method in gpu_diffusion_methods:
@@ -2988,13 +3726,22 @@ async def studio_video_generate(req: Request):
         ) else 1
         story = await run_in_threadpool(
             lambda: compose_story_plan(
-                effective_prompt, style_preset, camera_motion, neg_raw, scene_count=scene_n, duration_sec=sure_sn
+                effective_prompt,
+                style_preset,
+                camera_motion,
+                neg_raw,
+                scene_count=scene_n,
+                duration_sec=sure_sn,
+                character_lock=character_lock,
+                seed=raw_seed,
             )
         )
         img_prompt = story["image_prompt"]
         mot_prompt = story["motion_prompt"]
         neg_prompt = story["negative_prompt"]
         narration_txt = story["narration_text"]
+        char_bible = str(story.get("character_bible") or character_lock or "").strip()
+        locked_seed = int(story.get("seed") or raw_seed or 42)
         planner_source = story.get("planner_source", "yerel")
         scene_prompts = [s.get("image_prompt", "") for s in (story.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")] or [img_prompt]
         audio_url = None
@@ -3030,6 +3777,10 @@ async def studio_video_generate(req: Request):
             "image_prompt": img_prompt,
             "motion_prompt": mot_prompt,
             "negative_prompt": neg_prompt,
+            "character_id": character_id or None,
+            "character_bible": char_bible,
+            "character_lock": char_bible,
+            "seed": locked_seed,
             "image_model": image_model,
             "i2v_model": i2v_model,
             "video_model": i2v_model,
@@ -3041,12 +3792,13 @@ async def studio_video_generate(req: Request):
             "render_target": render_target,
             "aspect_ratio": aspect_ratio,
             "sure_sn": round(sure_sn, 1),
+            "duration": round(sure_sn, 1),
             "voice": voice,
             "status": "kuyrukta (GPU işçisi bekleniyor)",
             "progress_pct": 0,
             "stages": [
                 {"ad": "1. Stil & Prompt Kurgusu", "durum": "tamamlandi"},
-                {"ad": f"2. Görsel ({image_model}) / I2V ({i2v_model})", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
+                {"ad": f"2. Görsel ({image_model}) / Video ({i2v_model})", "durum": "kuyrukta (GPU işçisi bekleniyor)"},
                 {"ad": "3. Mux & YouTube Paketi", "durum": "beklemede"},
             ],
             "artifacts": {"kaynak": "gpu_kuyruk", "image_model": image_model, "i2v_model": i2v_model, "tts": tts_info},
@@ -3055,6 +3807,7 @@ async def studio_video_generate(req: Request):
             "download_url": None,
             "simulasyon": False,
             "input_image_url": f"/api/worker/input/{job_id}" if gorsel_ham is not None else None,
+            "end_image_url": f"/api/worker/end-image/{job_id}" if end_gorsel_ham is not None else None,
             "audio_url": audio_url,
             "subtitle_url": subtitle_url,
             "preview_image_url": None,
@@ -3064,13 +3817,24 @@ async def studio_video_generate(req: Request):
             "message": (
                 f"Önce {image_model} ile anahtar kare üretilecek; beğendiğinizde {i2v_model} ile videoya çevirebilirsiniz."
                 if method in ("flux2_resim", "image_first_preview")
-                else f"Tutarlı 2 aşamalı GPU üretimi ({image_model} → {i2v_model}) kuyruğa alındı."
+                else (
+                    "Tutarlı Karakter R2V (Wan2.1-VACE-1.3B) GPU kuyruğuna alındı."
+                    if method == "vace_r2v"
+                    else (
+                        "İlk+Son Kare Geçişi FLF2V (Wan2.1-VACE-1.3B) GPU kuyruğuna alındı."
+                        if method == "flf2v"
+                        else f"Tutarlı 2 aşamalı GPU üretimi ({image_model} → {i2v_model}) kuyruğa alındı."
+                    )
+                )
             ),
         }
         aninda = (
-            method in ("hyperframes_motion", "product_launch")
-            or execution_mode in ("instant_cloud", "camera_motion_only")
-            or (execution_mode in ("auto", "real_i2v") and not _has_live_gpu_worker())
+            method not in ("vace_r2v", "flf2v")
+            and (
+                method in ("hyperframes_motion", "product_launch")
+                or execution_mode in ("instant_cloud", "camera_motion_only")
+                or (execution_mode in ("auto", "real_i2v") and not _has_live_gpu_worker())
+            )
         )
         if aninda:
             res = await run_in_threadpool(
@@ -3086,6 +3850,8 @@ async def studio_video_generate(req: Request):
                     duration_sec=sure_sn,
                     source_url=source_url or None,
                     execution_mode=execution_mode or "instant_cloud",
+                    character_lock=char_bible,
+                    seed=locked_seed,
                 )
             )
             if res.get("needs_gpu_worker"):
@@ -3116,6 +3882,7 @@ async def studio_video_generate(req: Request):
                 render_target=render_target,
                 aspect_ratio=aspect_ratio,
                 voice=voice,
+                duration_sec=sure_sn,
             )
         )
         input_url = None
@@ -3660,6 +4427,21 @@ async def burc_video_generate(req: Request):
             content={"success": False, "detail": "Senaryo boş anlatım metni döndürdü."})
 
     job_id = _new_job_id("BURC")
+    character_id = str(body.get("character_id") or "").strip()
+    character_lock = str(body.get("character_lock") or body.get("character_bible") or "").strip()
+    locked_seed = _safe_opt_int(body.get("seed"), 0, 2147483647)
+    char_ref_bytes: Optional[bytes] = None
+    if character_id:
+        from character_store import CharacterStore
+        cstore = CharacterStore(DATA_DIR, MEDIA_DIR)
+        cprof = cstore.get_character(character_id)
+        if cprof:
+            if not character_lock:
+                character_lock = str(cprof.get("character_bible") or "")
+            if locked_seed is None and cprof.get("seed") is not None:
+                locked_seed = int(cprof["seed"])
+            char_ref_bytes = cstore.get_reference_image_bytes(character_id)
+
     gorsel_ham: Optional[bytes] = None
     try:
         if body.get("image_base64"):
@@ -3668,6 +4450,8 @@ async def burc_video_generate(req: Request):
             gorsel_ham = _url_den_gorsel_ham(str(body["input_image_url"]))
             if gorsel_ham is None:
                 raise ValueError("input_image_url geçerli bir PNG/JPEG görsele çözümlenemedi.")
+        elif char_ref_bytes is not None:
+            gorsel_ham = char_ref_bytes
         if gorsel_ham is not None:
             _input_gorsel_kaydet(job_id, gorsel_ham)
     except ValueError as e:
@@ -3746,6 +4530,10 @@ async def burc_video_generate(req: Request):
         "prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "image_prompt": str(senaryo.get("image_prompt") or metin)[:1200],
         "motion_prompt": str(senaryo.get("motion_prompt") or "")[:400],
+        "character_id": character_id or None,
+        "character_bible": character_lock,
+        "character_lock": character_lock,
+        "seed": locked_seed if locked_seed is not None else 42,
         "planner_source": str(senaryo.get("kaynak") or ""),
         "narration_text": metin,
         "raw_prompt": bool(senaryo.get("raw_prompt") or (raw_prompt and konu)),
@@ -4196,15 +4984,34 @@ async def worker_heartbeat(req: Request):
     return {"success": True, "registered": True, "server_time": time.time()}
 
 def _worker_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
-    """Claim yanıtına gerçek ek dosya URL'lerini ekler (dosya yoksa eklemez)."""
+    """Claim yanıtına gerçek ek dosya URL'lerini ve Suno/Higgsfield alanlarını ekler."""
     if job.get("sure_sn") is not None or job.get("duration") is not None:
-        job["duration"] = job.get("duration") or job.get("sure_sn") or 15.0
-    # motion_prompt varsa işçiye aynen taşınır: Wan2.1 I2V animasyonunu bu sürer.
+        hedef_sn = float(job.get("sure_sn") or job.get("duration") or 5.0)
+        job["duration"] = hedef_sn
+        job["sure_sn"] = hedef_sn
+    if job.get("seed") is not None:
+        try:
+            job["seed"] = int(job["seed"])
+        except (TypeError, ValueError):
+            pass
+    # motion_prompt varsa işçiye aynen taşınır: Wan2.1 I2V / VACE animasyonunu bu sürer.
     if job.get("motion_prompt"):
         job["motion_prompt"] = str(job["motion_prompt"])[:500]
-    for anahtar in ("image_model", "i2v_model", "video_model", "negative_prompt", "workflow", "style_preset", "audio_model", "music_model"):
+    for anahtar in (
+        "image_model", "i2v_model", "video_model", "model_id", "negative_prompt",
+        "workflow", "style_preset", "camera_motion", "audio_model", "music_model",
+        "character_id", "character_bible", "character_lock", "genre", "mood",
+        "vocal_language", "key_scale", "time_signature", "music_task", "raw_prompt",
+    ):
         if job.get(anahtar):
-            job[anahtar] = str(job[anahtar])[:400]
+            job[anahtar] = str(job[anahtar])[:600]
+    if job.get("lyrics"):
+        job["lyrics"] = str(job["lyrics"])[:4096]
+    if job.get("bpm") is not None:
+        try:
+            job["bpm"] = int(job["bpm"])
+        except (TypeError, ValueError):
+            pass
     if "instrumental" in job:
         job["instrumental"] = bool(job["instrumental"])
     jid = str(job.get("job_id") or job.get("id") or "")
@@ -4218,10 +5025,23 @@ def _worker_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
             break
     if not gorsel_bulundu:
         job.pop("input_image_url", None)
+    end_bulundu = False
+    for ad in (f"{jid}_end.png", f"{jid}_end.jpg"):
+        if (MEDIA_DIR / ad).is_file():
+            job["end_image_url"] = f"/api/worker/end-image/{jid}"
+            end_bulundu = True
+            break
+    if not end_bulundu:
+        job.pop("end_image_url", None)
     if (MEDIA_DIR / f"{jid}.wav").is_file():
         job["audio_url"] = f"/api/worker/audio/{jid}"
     if (MEDIA_DIR / f"{jid}.srt").is_file() or (MEDIA_DIR / f"{jid}.ass").is_file():
         job["subtitle_url"] = f"/api/worker/subtitle/{jid}"
+    if not job.get("ref_audio_url"):
+        for ext in ("wav", "mp3", "flac", "ogg"):
+            if (MEDIA_DIR / f"{jid}_ref.{ext}").is_file():
+                job["ref_audio_url"] = f"/api/worker/ref-audio/{jid}"
+                break
     return job
 
 @app.get("/api/worker/claim", dependencies=[Depends(verify_worker_key)])
@@ -4242,12 +5062,12 @@ async def worker_claim(
     }
 
     def _mod_uygun_mu(j: Dict[str, Any]) -> bool:
-        if not izinli_modlar:
+        if not izinli_modlar or "all" in izinli_modlar:
             return True
         jm = str(j.get("method") or j.get("mode") or "").strip().lower()
-        is_music = jm in ("musicgen", "gpu_muzik")
+        is_music = jm in ("musicgen", "gpu_muzik", "acestep", "gpu_acestep", "gpu-acestep-1.5")
         if is_music:
-            return bool(izinli_modlar & {"musicgen", "gpu_muzik", "music", "muzik", "audio"})
+            return bool(izinli_modlar & {"musicgen", "gpu_muzik", "acestep", "gpu_acestep", "music", "muzik", "audio"})
         if "video" in izinli_modlar:
             return True
         return jm in izinli_modlar
@@ -4263,7 +5083,7 @@ async def worker_claim(
                 j["gpu_durum"] = "isleniyor"
                 j["claimed_by"] = worker_id or "gpu_worker"
                 j["claimed_at"] = time.time()
-                is_mus = str(j.get("method") or "").lower() in ("musicgen", "gpu_muzik")
+                is_mus = str(j.get("method") or "").lower() in ("musicgen", "gpu_muzik", "acestep", "gpu_acestep", "gpu-acestep-1.5")
                 j["status"] = "isleniyor (GPU müzik)" if is_mus else "isleniyor (GPU render)"
                 secilen = j
                 claim_mod = "gpu_kuyruk"
@@ -4331,7 +5151,7 @@ async def worker_progress(req: Request):
     if failed and jid.startswith("mus_"):
         try:
             from music_studio import fail_music_job
-            fail_music_job(jid, str(body.get("error") or stage))
+            fail_music_job(jid, str(body.get("error") or stage), data_dir=DATA_DIR)
         except Exception:
             pass
     return {"success": True, "job_id": jid, "failed": failed}
@@ -4351,14 +5171,18 @@ def _mark_worker_failed(job_id: str, hata: str) -> None:
     if job_id.startswith("mus_"):
         try:
             from music_studio import fail_music_job
-            fail_music_job(job_id, hata)
+            fail_music_job(job_id, hata, data_dir=DATA_DIR)
         except Exception:
             pass
 
 def _audio_turu(ham: bytes) -> Optional[str]:
-    """WAV (RIFF..WAVE) veya MP3 (ID3 / MPEG frame sync) sihirli baytlarını doğrular."""
+    """WAV (RIFF..WAVE), MP3 (ID3 / MPEG sync), FLAC (fLaC) veya OGG (OggS) sihirli baytlarını doğrular."""
     if len(ham) >= 12 and ham[:4] == b"RIFF" and ham[8:12] == b"WAVE":
         return "wav"
+    if len(ham) >= 4 and ham[:4] == b"fLaC":
+        return "flac"
+    if len(ham) >= 4 and ham[:4] == b"OggS":
+        return "ogg"
     if len(ham) >= 3 and ham[:3] == b"ID3":
         return "mp3"
     if len(ham) >= 2 and ham[0] == 0xFF and (ham[1] & 0xE0) == 0xE0:
@@ -4384,14 +5208,9 @@ async def worker_upload(
     media_type: Optional[str] = Form(None),
     failed: bool = Form(False),
     error_message: Optional[str] = Form(None),
+    engine_label: Optional[str] = Form(None),
 ):
-    """GPU işçisinin MP4 videosunu veya FLUX.2 önizleme PNG/JPEG'ini yüklemesi.
-
-    * 250 MB üst sınır parça parça okunarak uygulanır (bellek şişmez).
-    * MP4 `_mp4_oynatilabilir` doğrulamasından geçmeden kaydedilmez/başarı sayılmaz.
-    * `media_type=image` için PNG/JPEG sihirli baytları zorunludur.
-    * `failed=true` işi dürüstçe "basarisiz" işaretler; sahte çıktı üretmez.
-    """
+    """GPU işçisinin MP4 videosunu, FLUX.2 PNG'sini veya ACE-Step/MusicGen WAV/MP3/FLAC sesini yüklemesi."""
     jid = _validate_job_id(job_id)
 
     if failed:
@@ -4410,7 +5229,7 @@ async def worker_upload(
     uzanti = Path(file.filename or "").suffix.lower()
     m_norm = (media_type or "").strip().lower()
     gorsel_mi = m_norm == "image" or uzanti in (".png", ".jpg", ".jpeg")
-    ses_mi = m_norm == "audio" or uzanti in (".wav", ".mp3")
+    ses_mi = m_norm == "audio" or uzanti in (".wav", ".mp3", ".flac", ".ogg")
     gecici = MEDIA_DIR / f".{jid}.upload.part"
     boyut = 0
 
@@ -4479,11 +5298,16 @@ async def worker_upload(
             if ses_tur is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="Ses dosyası geçerli WAV veya MP3 değil (sihirli baytlar doğrulanamadı).",
+                    detail="Ses dosyası geçerli WAV, MP3, FLAC veya OGG değil (sihirli baytlar doğrulanamadı).",
                 )
             hedef = MEDIA_DIR / f"{jid}.{ses_tur}"
             os.replace(gecici, hedef)
-            mime_ses = "audio/wav" if ses_tur == "wav" else "audio/mpeg"
+            mime_ses = {
+                "wav": "audio/wav",
+                "mp3": "audio/mpeg",
+                "flac": "audio/flac",
+                "ogg": "audio/ogg",
+            }.get(ses_tur, "audio/wav")
             try:
                 from cloud_storage import put_file
                 await run_in_threadpool(lambda: put_file(hedef, content_type=mime_ses))
@@ -4491,22 +5315,28 @@ async def worker_upload(
                 pass
             ses_url = f"/api/media/file?path={hedef.name}"
             indirme_url = f"{ses_url}&download=1"
+            kayit_meta: Dict[str, Any] = {}
+            temiz_motor = str(engine_label or "").strip()[:120]
 
             def _ses_kaydet(data: Dict[str, Any]) -> None:
                 for j in data.get("jobs", []):
                     if not _is_job(j, jid):
                         continue
+                    is_ace = str(j.get("method") or "").lower() in ("acestep", "gpu_acestep")
+                    eff_label = temiz_motor or ("Kaggle GPU ACE-Step 1.5" if is_ace else "Kaggle GPU MusicGen Stereo")
                     j["status"] = "tamamlandi (GPU müzik)"
                     j["progress_pct"] = 100
                     j["file_size_bytes"] = boyut
                     j["size_kb"] = max(1, round(boyut / 1024))
                     j["simulasyon"] = False
                     j["gpu_durum"] = "tamam"
-                    j["kaynak"] = "gpu_worker_musicgen"
+                    j["kaynak"] = "gpu_worker_acestep" if is_ace else "gpu_worker_musicgen"
+                    j["engine_label"] = eff_label
                     j["output_url"] = ses_url
                     j["audio_url"] = ses_url
                     j["download_url"] = indirme_url
                     j.pop("error", None)
+                    kayit_meta.update(j)
                     break
             try:
                 _update_jobs(_ses_kaydet)
@@ -4514,13 +5344,18 @@ async def worker_upload(
                 logger.error("[WorkerUpload] Müzik iş kaydı güncellenemedi (%s): %s", jid, e)
             try:
                 from music_studio import complete_music_job
-                complete_music_job(jid, ses_url, hedef.name, DATA_DIR, engine_label="Kaggle GPU MusicGen")
+                final_engine = temiz_motor or str(kayit_meta.get("engine_label") or "Kaggle GPU ACE-Step 1.5")
+                complete_music_job(
+                    jid, ses_url, hedef.name, DATA_DIR,
+                    engine_label=final_engine, fallback_meta=kayit_meta or None,
+                )
             except Exception as e:
                 logger.warning("[WorkerUpload] complete_music_job atlandı (%s): %s", jid, e)
             return {
                 "success": True,
                 "job_id": jid,
                 "media_type": "audio",
+                "engine_label": temiz_motor or str(kayit_meta.get("engine_label") or "Kaggle GPU Müzik"),
                 "file_size_bytes": boyut,
                 "audio_url": ses_url,
                 "output_url": ses_url,
@@ -4581,13 +5416,34 @@ async def worker_upload(
 
 @app.get("/api/worker/input/{job_id}", dependencies=[Depends(verify_worker_key)])
 async def worker_input(job_id: str):
-    """İşçinin I2V/FLUX girdi görselini indirdiği korumalı uç."""
+    """İşçinin I2V/FLUX/VACE girdi görselini indirdiği korumalı uç."""
     jid = _validate_job_id(job_id)
     for ad in (f"{jid}_input.png", f"{jid}_input.jpg"):
         yol = MEDIA_DIR / ad
         if yol.is_file():
             return FileResponse(yol, media_type=_gorsel_media_type(yol))
     raise HTTPException(status_code=404, detail="Girdi görseli bulunamadı.")
+
+@app.get("/api/worker/end-image/{job_id}", dependencies=[Depends(verify_worker_key)])
+async def worker_end_image(job_id: str):
+    """İşçinin FLF2V (İlk+Son Kare Geçişi) bitiş görselini indirdiği korumalı uç."""
+    jid = _validate_job_id(job_id)
+    for ad in (f"{jid}_end.png", f"{jid}_end.jpg"):
+        yol = MEDIA_DIR / ad
+        if yol.is_file():
+            return FileResponse(yol, media_type=_gorsel_media_type(yol))
+    raise HTTPException(status_code=404, detail="Bitiş görseli bulunamadı.")
+
+@app.get("/api/worker/ref-audio/{job_id}", dependencies=[Depends(verify_worker_key)])
+async def worker_ref_audio(job_id: str):
+    """İşçinin ACE-Step Cover/Repaint/Extend referans sesini indirdiği korumalı uç."""
+    jid = _validate_job_id(job_id)
+    for ext, mt in (("wav", "audio/wav"), ("mp3", "audio/mpeg"), ("flac", "audio/flac"), ("ogg", "audio/ogg")):
+        for ad in (f"{jid}_ref.{ext}", f"{jid}.{ext}"):
+            yol = MEDIA_DIR / ad
+            if yol.is_file():
+                return FileResponse(yol, media_type=mt)
+    raise HTTPException(status_code=404, detail="Referans ses dosyası bulunamadı.")
 
 @app.get("/api/worker/audio/{job_id}", dependencies=[Depends(verify_worker_key)])
 async def worker_audio(job_id: str):

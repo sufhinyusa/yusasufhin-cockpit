@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="tr" data-site-theme="cyber">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -12,22 +13,23 @@
   <link rel="apple-touch-icon" href="/fabrika_icon.svg">
   <link rel="icon" type="image/svg+xml" href="/fabrika_icon.svg">
 
-  <link rel="stylesheet" href="/site.css?v=30">
+  <link rel="stylesheet" href="/site.css?v=34">
   <script>
     if ('caches' in window) {
-      caches.keys().then(function(names) {
+      caches.keys().then(function (names) {
         for (var i = 0; i < names.length; i++) {
-          if (names[i] !== 'fabrika-pwa-v33-mobile') caches.delete(names[i]);
+          if (names[i] !== 'fabrika-pwa-v34-mobile') caches.delete(names[i]);
         }
       });
     }
     if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        for (var j = 0; j < regs.length; j++) { regs[j].update().catch(function(){}); }
-      }).catch(function(){});
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        for (var j = 0; j < regs.length; j++) { regs[j].update().catch(function () { }); }
+      }).catch(function () { });
     }
   </script>
 </head>
+
 <body class="site-body has-mobile-tabbar">
 
   <div class="site-ambient" aria-hidden="true"></div>
@@ -41,12 +43,12 @@
       <div class="site-field">
         <label for="labLoginUsername">Kullanıcı Adı (Kurucu girişinde boş bırakın)</label>
         <input type="text" id="labLoginUsername" name="username" autocomplete="username"
-               placeholder="Boş (Kurucu) veya kullanıcı adı">
+          placeholder="Boş (Kurucu) veya kullanıcı adı">
       </div>
       <div class="site-field">
         <label for="labLoginSecret">Parola veya 6 Haneli PIN</label>
         <input type="password" id="labLoginSecret" name="password" autocomplete="current-password"
-               placeholder="••••••••" required>
+          placeholder="••••••••" required>
       </div>
       <p class="site-gate-error" id="labLoginError" role="alert"></p>
       <button class="site-btn site-btn-primary site-btn-block" id="labLoginSubmit" type="submit">
@@ -69,16 +71,21 @@
         </a>
         <div style="display:flex; align-items:center; gap:6px; margin-left:auto; flex-wrap:wrap;">
           <span id="topUserRoleBadge" class="site-badge">Oturum</span>
-          <a class="site-btn site-btn-primary" id="topFabrikaUiLink" href="/fabrika" style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">🏭 Fabrika UI</a>
-          <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪ Mac</span>
-          <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU: 0</span>
+          <a class="site-btn site-btn-primary" id="topFabrikaUiLink" href="/fabrika"
+            style="padding:6px 12px; font-size:0.78rem; text-decoration:none;">🏭 Fabrika UI</a>
+          <span id="topMacBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('mac')">⚪
+            Mac</span>
+          <span id="topGpuBadge" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">⚡ GPU:
+            0</span>
           <a class="site-btn site-btn-ghost" href="/" style="padding:7px 12px; font-size:0.78rem;">← Vitrin</a>
-          <button type="button" class="site-btn site-btn-ghost" id="labLogoutBtn" style="padding:7px 12px; font-size:0.78rem;">Çıkış</button>
+          <button type="button" class="site-btn site-btn-ghost" id="labLogoutBtn"
+            style="padding:7px 12px; font-size:0.78rem;">Çıkış</button>
         </div>
       </div>
     </nav>
 
-    <header style="padding: 20px 0 12px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px;">
+    <header
+      style="padding: 20px 0 12px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:10px;">
       <div>
         <h1 style="margin:0 0 6px; font-size: clamp(1.45rem, 3.2vw, 2rem); letter-spacing:-0.025em;">
           Yönetim &amp; Üretim Kokpiti
@@ -119,64 +126,81 @@
     <!-- 0. YÖNETİCİ KARŞILAMA MERKEZİ: 3 BÜYÜK BUTON (FABRİKA / VİDEO / MÜZİK) -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <section id="viewAdminHub" class="site-studio-view">
-      <div class="site-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 18px; margin-top: 8px;">
+      <div class="site-grid"
+        style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 18px; margin-top: 8px;">
 
-        <article class="site-card" id="hubCardFabrika" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(45,212,191,0.34);">
+        <article class="site-card" id="hubCardFabrika"
+          style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(45,212,191,0.34);">
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <span style="font-size:2.2rem;">🏭</span>
             <span class="site-badge site-badge-free">Port-443 Canlı</span>
           </div>
           <h2 style="margin:0; font-size:1.45rem;">Fabrika</h2>
           <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
-            Mac bilgisayarınızdaki Fabrika masaüstü ikizi, 3D Reaktör, Ajan Meclisi, REA Kod Hastanesi, çoklu e-posta alıcıları ve Fabrika kullanıcı yönetimi.
+            Mac bilgisayarınızdaki Fabrika masaüstü ikizi, 3D Reaktör, Ajan Meclisi, REA Kod Hastanesi, çoklu e-posta
+            alıcıları ve Fabrika kullanıcı yönetimi.
           </p>
           <div style="display:flex; flex-direction:column; gap:8px;">
             <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('mac')">
               🏭 Fabrika Bölümünü Aç →
             </button>
             <div style="display:flex; gap:8px;">
-              <a class="site-btn site-btn-ghost" href="/fabrika" style="flex:1; font-size:0.8rem; padding:8px; text-decoration:none; text-align:center;">🖥️ 1:1 Masaüstü</a>
-              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('mac', 'fabrikaUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+              <a class="site-btn site-btn-ghost" href="/fabrika"
+                style="flex:1; font-size:0.8rem; padding:8px; text-decoration:none; text-align:center;">🖥️ 1:1
+                Masaüstü</a>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1"
+                onclick="openSectionUsers('mac', 'fabrikaUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤
+                + Kullanıcı</button>
             </div>
           </div>
         </article>
 
-        <article class="site-card" id="hubCardVideo" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(139,92,246,0.34);">
+        <article class="site-card" id="hubCardVideo"
+          style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(139,92,246,0.34);">
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <span style="font-size:2.2rem;">🎬</span>
             <span class="site-badge">FLUX.2 · Wan 2.1 · LTX</span>
           </div>
           <h2 style="margin:0; font-size:1.45rem;">Video</h2>
           <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
-            Çoklu görsel/I2V video modelleri, çok sahneli MP4 kurgu, Kaggle/Colab GPU işçisi, YouTube kanal otomasyonu ve Video kullanıcı yönetimi.
+            Çoklu görsel/I2V video modelleri, çok sahneli MP4 kurgu, Kaggle/Colab GPU işçisi, YouTube kanal otomasyonu
+            ve Video kullanıcı yönetimi.
           </p>
           <div style="display:flex; flex-direction:column; gap:8px;">
             <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('video')">
               🎬 Video Stüdyosunu Aç →
             </button>
             <div style="display:flex; gap:8px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('channels')" style="flex:1; font-size:0.8rem; padding:8px;">📺 Kanallar</button>
-              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('video', 'videoUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('channels')"
+                style="flex:1; font-size:0.8rem; padding:8px;">📺 Kanallar</button>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1"
+                onclick="openSectionUsers('video', 'videoUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤
+                + Kullanıcı</button>
             </div>
           </div>
         </article>
 
-        <article class="site-card" id="hubCardMuzik" style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(56,189,248,0.34);">
+        <article class="site-card" id="hubCardMuzik"
+          style="display:flex; flex-direction:column; gap:12px; padding:24px; border-color:rgba(56,189,248,0.34);">
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <span style="font-size:2.2rem;">🎵</span>
             <span class="site-badge">Lyria 3.5 · MusicGen</span>
           </div>
           <h2 style="margin:0; font-size:1.45rem;">Müzik</h2>
           <p style="margin:0; font-size:0.86rem; color:var(--site-text-dim); flex:1;">
-            Google Lyria 3.5, Lyria 3 Clip, ElevenLabs Music, Stable Audio 2, Meta MusicGen, Gemini TTS seslendirme ve Müzik kullanıcı yönetimi.
+            Google Lyria 3.5, Lyria 3 Clip, ElevenLabs Music, Stable Audio 2, Meta MusicGen, Gemini TTS seslendirme ve
+            Müzik kullanıcı yönetimi.
           </p>
           <div style="display:flex; flex-direction:column; gap:8px;">
             <button type="button" class="site-btn site-btn-primary site-btn-block" onclick="switchStudioView('music')">
               🎵 Müzik Stüdyosunu Aç →
             </button>
             <div style="display:flex; gap:8px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('audio')" style="flex:1; font-size:0.8rem; padding:8px;">🎙️ TTS Ses</button>
-              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1" onclick="openSectionUsers('music', 'muzikUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤 + Kullanıcı</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="switchStudioView('audio')"
+                style="flex:1; font-size:0.8rem; padding:8px;">🎙️ TTS Ses</button>
+              <button type="button" class="site-btn site-btn-ghost" data-admin-only="1"
+                onclick="openSectionUsers('music', 'muzikUsersSlot')" style="flex:1; font-size:0.8rem; padding:8px;">👤
+                + Kullanıcı</button>
             </div>
           </div>
         </article>
@@ -185,126 +209,82 @@
     </section>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 1. TEKLEŞTİRİLMİŞ VİDEO STÜDYOSU (Genel + Burç + I2V + Kuyruk)     -->
+    <!-- 1. SADELEŞTİRİLMİŞ VİDEO STÜDYOSU & AI FILM CANVAS (v34)           -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <section id="viewVideoStudio" class="site-studio-view" hidden>
+      <!-- Üst Mod Çubuğu (Tek Sahne vs AI Film Canvas) -->
+      <div class="vstudio-topbar">
+        <div class="vstudio-mode-switch" role="tablist" aria-label="Video çalışma modu">
+          <button type="button" class="vstudio-mode-btn active" id="vModeQuickBtn"
+            onclick="switchVideoStudioMode('quick')" aria-selected="true">
+            🎬 Hızlı Video
+          </button>
+          <button type="button" class="vstudio-mode-btn" id="vModeCanvasBtn" onclick="switchVideoStudioMode('canvas')"
+            aria-selected="false">
+            🎞️ AI Film Canvas
+          </button>
+        </div>
+        <span id="studioGpuWorkerWarn" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">GPU
+          kontrol ediliyor…</span>
+      </div>
+
       <div class="site-studio-grid">
 
-        <div class="site-card site-studio-form-card">
-          <div class="site-studio-header">
-            <div>
-              <h2 style="margin:0 0 4px; font-size:1.18rem;">Video Prodüksiyon Masası</h2>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Türkçe konunuz İngilizce görsel sahneye çevrilir. Önce anahtar kareyi onaylayıp I2V ile canlandırın veya çok sahneli MP4 üretin.
-              </p>
-            </div>
-            <span id="studioGpuWorkerWarn" class="site-badge" style="cursor:pointer;" onclick="switchStudioView('gpu')">GPU kontrol ediliyor…</span>
-          </div>
-
+        <!-- SOL: Sadeleştirilmiş Üretim Masası -->
+        <div class="site-card site-studio-form-card vstudio-composer">
           <form id="studioVideoForm" onsubmit="handleStudioVideoSubmit(event)">
-            <div class="site-studio-row-2">
-              <div class="site-field">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
-                  <label for="videoChannelSelect" style="margin:0;">1. Hedef Kanal</label>
-                  <button type="button" class="site-chip-btn" onclick="switchStudioView('channels')">+ Yönet</button>
+
+            <!-- 1. Prompt Alanı -->
+            <div class="site-field" style="margin-bottom:10px;">
+              <div class="vstudio-label-row">
+                <label for="videoPromptInput" id="videoPromptLabel" style="margin:0;">Sahne Fikri</label>
+                <div class="site-prompt-chips">
+                  <button type="button" class="site-chip-btn"
+                    onclick="setStudioPrompt('Ejderhaların, grifonların ve gümüş zırhlı şövalyelerin olduğu sisli ormanda epik fantastik film')">🐉
+                    Fantastik</button>
+                  <button type="button" class="site-chip-btn"
+                    onclick="setStudioPrompt('Büyülü antik kütüphanede parlayan minik 3D robot ve meraklı baykuş, sıcak sinematik ışık')">🧸
+                    3D</button>
+                  <button type="button" class="site-chip-btn"
+                    onclick="setStudioPrompt('Yağmurlu neon sokakta yürüyen anime karakter, parlayan yansımalar')">⛩️
+                    Anime</button>
+                  <button type="button" class="site-chip-btn"
+                    onclick="setStudioPrompt('Elinde kova olan göksel figür yıldızlı gökyüzünden yeryüzüne parlayan su boşaltıyor')">♒
+                    Kova</button>
                 </div>
-                <select id="videoChannelSelect" class="site-select">
-                  <option value="Tech_AI_Fabrika" selected>🤖 Fabrika AI &amp; Teknoloji</option>
-                  <option value="Astroloji_Kova">♒ Astroloji &amp; Burçlar</option>
-                  <option value="Animasyon_3D">🧸 3D Animasyon</option>
-                  <option value="Anime_Evreni">⛩️ Anime Evreni</option>
-                  <option value="Belgesel_Sinematik">🏛️ Sinematik Belgesel</option>
-                  <option value="Viral_Shorts">⚡ Viral Shorts</option>
-                </select>
               </div>
-
-              <div class="site-field">
-                <label for="videoMethodSelect">2. Üretim Akışı</label>
-                <select id="videoMethodSelect" class="site-select">
-                  <option value="image_first_preview" selected>🖼️ Önce Görsel Üret → Onayla → I2V (Önerilen)</option>
-                  <option value="image_then_i2v">🎬 2 Aşama: Görsel + I2V</option>
-                  <option value="wan_i2v">📸 Yüklenen Görselden Doğrudan I2V</option>
-                  <option value="hyperframes_motion">🎞️ Çok Sahneli Bulut Kurgu (MP4)</option>
-                  <option value="product_launch">🚀 Web Sitesi URL → Tanıtım Videosu</option>
-                  <option value="t2v_direct">📝 Doğrudan Metinden Video (GPU)</option>
-                </select>
-              </div>
+              <textarea id="videoPromptInput" class="site-textarea vstudio-prompt-box" rows="3"
+                placeholder="Tek cümleyle sahneni veya film fikrini yaz..."></textarea>
             </div>
 
-            <!-- Opsiyonel Burç Şablonu (Kanal Astroloji seçildiğinde veya istenirse açılır) -->
-            <div class="site-studio-row-2" id="burcPresetRow" style="margin-top:4px;">
-              <div class="site-field">
-                <label for="burcSignSelect">Burç Şablonu (İsteğe Bağlı)</label>
-                <select id="burcSignSelect" class="site-select">
-                  <option value="">— Genel (Burç şablonu yok) —</option>
-                  <option value="kova">♒ Kova (20 Ocak – 18 Şubat)</option>
-                </select>
+            <!-- 2. Karakter Kilidi & Referans Görsel (Tek Kompakt Satır) -->
+            <div class="vstudio-lock-row">
+              <div class="vstudio-lock-input-wrap">
+                <span class="vstudio-lock-ico" aria-hidden="true">🔒</span>
+                <input id="videoCharLockInput" type="text" class="site-input vstudio-lock-input"
+                  placeholder="Karakter kilidi (opsiyonel): ör. gümüş zırhlı, kızıl pelerinli genç şövalye" />
               </div>
-              <div class="site-field" style="display:flex; align-items:flex-end; padding-bottom:6px;">
-                <label style="display:flex; align-items:center; gap:8px; margin:0; text-transform:none; letter-spacing:0; font-size:0.8rem; color:var(--site-text-dim); cursor:pointer;">
-                  <input id="burcRawPromptCheck" type="checkbox" checked style="width:auto; accent-color:var(--site-accent);" />
-                  <span>Sadece kendi promptumu kullan (otomatik kalıp ekleme)</span>
-                </label>
-              </div>
+              <label for="studioVideoImageInput" class="site-btn site-btn-ghost vstudio-ref-btn"
+                title="Referans görsel yükle (I2V / karakter kilidi)">
+                📎 Referans
+              </label>
+              <input id="studioVideoImageInput" type="file" accept="image/png,image/jpeg,image/webp"
+                class="site-hidden" />
             </div>
 
-            <div class="site-studio-row-2" style="margin-top:4px;">
-              <div class="site-field">
-                <label for="videoStyleSelect">3. Görsel Tarz</label>
-                <select id="videoStyleSelect" class="site-select">
-                  <option value="cinematic_realism">🎬 Sinematik Realizm</option>
-                  <option value="pixar_3d_animation">🧸 3D Animasyon</option>
-                  <option value="anime_2d">⛩️ Anime / 2D</option>
-                  <option value="astrology_mystic">🔮 Astroloji &amp; Kozmik</option>
-                  <option value="tech_futuristic" selected>🤖 Teknoloji &amp; Fütürizm</option>
-                  <option value="history_documentary">🏛️ Tarih &amp; Belgesel</option>
-                  <option value="minimal_explainer">📊 Eğitim &amp; İnfografik</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="videoExecModeSelect">4. Çalıştırma Modu</label>
-                <select id="videoExecModeSelect" class="site-select">
-                  <option value="auto" selected>⚡ Otomatik (GPU varsa GPU, yoksa Bulut)</option>
-                  <option value="gpu_queue">📦 Yalnızca Kaggle/Colab GPU Kuyruğu</option>
-                </select>
-              </div>
+            <div id="studioVideoUploadedWrap" hidden class="vstudio-ref-preview">
+              <img id="studioVideoUploadedImg" alt="Yüklenen referans görsel" />
+              <span style="font-size:0.78rem; color:var(--site-text-dim); flex:1;">Referans görsel kilitli</span>
+              <button type="button" id="studioVideoClearImgBtn" class="site-chip-btn">✖ Kaldır</button>
             </div>
 
-            <div class="site-field" id="videoSourceUrlWrap" hidden>
-              <label for="videoSourceUrlInput">🌐 Hedef Web / Ürün URL'si</label>
-              <input id="videoSourceUrlInput" type="url" class="site-input" placeholder="https://yusasufhin.com" />
-            </div>
-
-            <div class="site-studio-row-2" style="margin-top:4px;">
-              <div class="site-field">
-                <label for="videoImageModelSelect">5. Anahtar Görsel Modeli</label>
-                <select id="videoImageModelSelect" class="site-select">
-                  <option value="flux2-klein" selected>FLUX.2 Klein 4B</option>
-                  <option value="z-image-turbo">Z-Image Turbo 6B</option>
-                  <option value="realvis-xl">RealVisXL V4.0</option>
-                  <option value="animagine-xl">Animagine XL 3.1</option>
-                  <option value="sdxl-turbo">SDXL Turbo</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="videoI2vModelSelect">6. Video (I2V) Modeli</label>
-                <select id="videoI2vModelSelect" class="site-select">
-                  <option value="wan2.1-i2v-14b" selected>Wan 2.1 I2V 14B (NF4)</option>
-                  <option value="wan2.2-ti2v-5b">Wan 2.2 TI2V 5B</option>
-                  <option value="ltx-video">LTX-Video (Hızlı I2V)</option>
-                  <option value="cogvideox-5b-i2v">CogVideoX 5B I2V</option>
-                  <option value="svd-xt">SVD-XT</option>
-                  <option value="wan2.1-t2v-1.3b">Wan 2.1 T2V 1.3B</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="site-studio-row-3" style="margin-top:4px;">
+            <!-- 3. Temel 4 Ayar (Oran · Süre · Stil · Ses) -->
+            <div class="vstudio-core-controls">
               <div class="site-field">
                 <label for="videoAspectSelect">Oran</label>
                 <select id="videoAspectSelect" class="site-select">
                   <option value="16:9" selected>16:9 Yatay</option>
-                  <option value="9:16">9:16 Dikey Shorts</option>
+                  <option value="9:16">9:16 Dikey</option>
                   <option value="1:1">1:1 Kare</option>
                 </select>
               </div>
@@ -315,136 +295,232 @@
                   <option value="5" selected>5 sn</option>
                   <option value="8">8 sn</option>
                   <option value="10">10 sn</option>
+                  <option value="15">15 sn</option>
+                  <option value="20">20 sn</option>
                 </select>
               </div>
               <div class="site-field">
-                <label for="videoVoiceSelect">Ses (Gemini TTS)</label>
+                <label for="videoStyleSelect">Stil</label>
+                <select id="videoStyleSelect" class="site-select">
+                  <option value="cinematic_realism" selected>🎬 Sinematik</option>
+                  <option value="pixar_3d_animation">🧸 3D Animasyon</option>
+                  <option value="anime_2d">⛩️ Anime</option>
+                  <option value="astrology_mystic">🔮 Kozmik</option>
+                  <option value="tech_futuristic">🤖 Fütüristik</option>
+                  <option value="history_documentary">🏛️ Belgesel</option>
+                  <option value="minimal_explainer">📊 Minimal</option>
+                </select>
+              </div>
+              <div class="site-field">
+                <label for="videoVoiceSelect">Ses</label>
                 <select id="videoVoiceSelect" class="site-select">
-                  <option value="Aoede" selected>Aoede</option>
-                  <option value="Puck">Puck</option>
-                  <option value="Charon">Charon</option>
-                  <option value="Kore">Kore</option>
-                  <option value="Fenrir">Fenrir</option>
+                  <option value="Aoede" selected>Aoede (TR)</option>
+                  <option value="Puck">Puck (TR)</option>
+                  <option value="Charon">Charon (TR)</option>
+                  <option value="Kore">Kore (TR)</option>
+                  <option value="Fenrir">Fenrir (TR)</option>
                   <option value="none">Sessiz</option>
                 </select>
               </div>
             </div>
 
-            <div class="site-studio-row-2" style="margin-top:4px;">
-              <div class="site-field">
-                <label for="videoCameraSelect">Kamera Hareketi</label>
-                <select id="videoCameraSelect" class="site-select">
-                  <option value="otomatik" selected>Otomatik</option>
-                  <option value="push_in">Yavaş Yakınlaşma</option>
-                  <option value="pull_out">Yavaş Uzaklaşma</option>
-                  <option value="orbital">Yörünge (Orbital)</option>
-                  <option value="pan_right">Yatay Kaydırma</option>
-                  <option value="wind_cloth_glow">Sabit Kadraj + Atmosfer</option>
-                </select>
-              </div>
-              <div class="site-field">
-                <label for="studioVideoImageInput">Referans Görsel (Opsiyonel I2V)</label>
-                <input id="studioVideoImageInput" type="file" accept="image/png,image/jpeg,image/webp" class="site-input" />
-              </div>
+            <!-- 4. Aksiyon Çubuğu (Hızlı Video Modu) -->
+            <div id="vstudioQuickActions" class="vstudio-actions-bar">
+              <button type="submit" class="site-btn site-btn-primary vstudio-cta-main" id="startProductionBtn">
+                🎬 Üretimi Başlat
+              </button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="handleInstantCloudPreview()">
+                ⚡ Önizleme
+              </button>
+              <button type="button" class="site-btn site-btn-ghost"
+                onclick="handleStudioVideoSubmit(event, 'image_then_i2v')" title="Tek tıkla görsel ve video üret">
+                🚀 2 Aşama
+              </button>
             </div>
 
-            <div id="studioVideoUploadedWrap" hidden style="margin-bottom:10px; display:flex; align-items:center; gap:10px;">
-              <img id="studioVideoUploadedImg" alt="Yüklenen görsel" style="max-height:64px; border-radius:8px; border:1px solid var(--site-border-strong);" />
-              <button type="button" id="studioVideoClearImgBtn" class="site-btn site-btn-ghost" style="padding:5px 10px; font-size:0.76rem;">Görseli Kaldır</button>
+            <!-- 4b. Aksiyon Çubuğu (AI Film Canvas Modu) -->
+            <div id="vstudioCanvasActions" class="vstudio-actions-bar" hidden>
+              <select id="canvasSceneCountSelect" class="site-select" style="width:auto; min-width:112px;"
+                aria-label="Sahne sayısı">
+                <option value="3">3 Sahne</option>
+                <option value="4" selected>4 Sahne</option>
+                <option value="5">5 Sahne</option>
+              </select>
+              <button type="button" class="site-btn site-btn-primary vstudio-cta-main" id="buildFilmCanvasBtn"
+                onclick="handlePlanStoryboard()">
+                ✨ Karakter &amp; Sahneleri Oluştur
+              </button>
             </div>
 
-            <div class="site-field">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                <label for="videoPromptInput" style="margin:0;">Sahne Konusu / Prompt</label>
-                <div class="site-prompt-chips">
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Büyülü kütüphanede parlayan minik 3D robot ve meraklı baykuş, sıcak sinematik ışık')">🧸 3D</button>
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Yağmurlu neon sokakta yürüyen anime karakter, parlayan yansımalar')">⛩️ Anime</button>
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('Elinde kova olan göksel figür yıldızlı gökyüzünden yeryüzüne parlayan su boşaltıyor')">♒ Kova</button>
-                  <button type="button" class="site-chip-btn" onclick="setStudioPrompt('İstanbul Yerebatan Sarnıcı mermer sütunlarında yanan meşale ışıkları')">🏛️ Belgesel</button>
+            <!-- 5. Katlanabilir Gelişmiş Ayarlar (Varsayılan Kapalı — Kalabalık Sıfır) -->
+            <details class="vstudio-advanced" id="studioAdvancedDrawer">
+              <summary>⚙️ Gelişmiş Ayarlar · Kanal, Model, Kamera</summary>
+              <div class="vstudio-advanced-body">
+                <div class="site-studio-row-2">
+                  <div class="site-field">
+                    <div class="vstudio-label-row">
+                      <label for="videoChannelSelect" style="margin:0;">Kanal</label>
+                      <button type="button" class="site-chip-btn" onclick="switchStudioView('channels')">+
+                        Yönet</button>
+                    </div>
+                    <select id="videoChannelSelect" class="site-select">
+                      <option value="Tech_AI_Fabrika" selected>🤖 Fabrika AI</option>
+                      <option value="Astroloji_Kova">♒ Kozmik Kanal</option>
+                      <option value="Animasyon_3D">🧸 3D Animasyon</option>
+                      <option value="Anime_Evreni">⛩️ Anime Evreni</option>
+                      <option value="Belgesel_Sinematik">🏛️ Belgesel</option>
+                      <option value="Viral_Shorts">⚡ Viral Shorts</option>
+                    </select>
+                  </div>
+                  <div class="site-field">
+                    <label for="videoMethodSelect">Üretim Akışı</label>
+                    <select id="videoMethodSelect" class="site-select">
+                      <option value="image_first_preview" selected>🖼️ Önce Görsel → Onayla → I2V</option>
+                      <option value="image_then_i2v">🎬 2 Aşama: Görsel + I2V</option>
+                      <option value="wan_i2v">📸 Referanstan Doğrudan I2V</option>
+                      <option value="hyperframes_motion">🎞️ Çok Sahneli Bulut Kurgu</option>
+                      <option value="product_launch">🚀 Web URL → Tanıtım Videosu</option>
+                      <option value="t2v_direct">📝 Metinden Video (GPU)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="site-field" id="videoSourceUrlWrap" hidden>
+                  <label for="videoSourceUrlInput">🌐 Hedef URL</label>
+                  <input id="videoSourceUrlInput" type="url" class="site-input" placeholder="https://yusasufhin.com" />
+                </div>
+
+                <div class="site-studio-row-2">
+                  <div class="site-field">
+                    <label for="videoExecModeSelect">Çalıştırma</label>
+                    <select id="videoExecModeSelect" class="site-select">
+                      <option value="auto" selected>⚡ Otomatik (GPU / Bulut)</option>
+                      <option value="gpu_queue">📦 Yalnız GPU Kuyruğu</option>
+                    </select>
+                  </div>
+                  <div class="site-field">
+                    <label for="videoCameraSelect">Kamera</label>
+                    <select id="videoCameraSelect" class="site-select">
+                      <option value="otomatik" selected>Otomatik</option>
+                      <option value="push_in">Yakınlaşma (Push-In)</option>
+                      <option value="pull_out">Uzaklaşma (Pull-Out)</option>
+                      <option value="orbital">Yörünge (360° Orbital)</option>
+                      <option value="pan_right">Yatay Sağa (Pan Right)</option>
+                      <option value="pan_left">Yatay Sola (Pan Left)</option>
+                      <option value="crane_up">Vinç Yükselişi (Crane Up)</option>
+                      <option value="dolly_zoom">Vertigo / Dolly Zoom</option>
+                      <option value="fpv_drone">FPV Drone Uçuşu</option>
+                      <option value="handheld_track">El Kamerası Takip</option>
+                      <option value="bullet_time">Bullet Time Ağır Çekim</option>
+                      <option value="wind_cloth_glow">Sabit Kadraj</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="site-studio-row-2">
+                  <div class="site-field">
+                    <label for="videoImageModelSelect">Görsel Modeli</label>
+                    <select id="videoImageModelSelect" class="site-select">
+                      <option value="flux2-klein" selected>FLUX.2 Klein 4B (Referans Kilitli)</option>
+                      <option value="z-image-turbo">Z-Image Turbo 6B</option>
+                      <option value="realvis-xl">RealVisXL V4.0</option>
+                      <option value="animagine-xl">Animagine XL 3.1</option>
+                      <option value="sdxl-turbo">SDXL Turbo</option>
+                    </select>
+                  </div>
+                  <div class="site-field">
+                    <label for="videoI2vModelSelect">Video (I2V / VACE) Modeli</label>
+                    <select id="videoI2vModelSelect" class="site-select">
+                      <option value="wan2.1-vace-1.3b">🎭 Wan 2.1 VACE 1.3B (Tutarlı Karakter + FLF2V)</option>
+                      <option value="wan2.1-i2v-14b" selected>Wan 2.1 I2V 14B (NF4)</option>
+                      <option value="wan2.2-ti2v-5b">Wan 2.2 TI2V 5B</option>
+                      <option value="ltx-video">LTX-Video</option>
+                      <option value="cogvideox-5b-i2v">CogVideoX 5B</option>
+                      <option value="svd-xt">SVD-XT</option>
+                      <option value="wan2.1-t2v-1.3b">Wan 2.1 T2V 1.3B</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="site-studio-row-2" id="burcPresetRow">
+                  <div class="site-field">
+                    <label for="burcSignSelect">Burç Şablonu</label>
+                    <select id="burcSignSelect" class="site-select">
+                      <option value="">— Yok —</option>
+                      <option value="kova">♒ Kova</option>
+                    </select>
+                  </div>
+                  <div class="site-field" style="display:flex; align-items:flex-end; padding-bottom:6px;">
+                    <label
+                      style="display:flex; align-items:center; gap:7px; margin:0; text-transform:none; letter-spacing:0; font-size:0.78rem; color:var(--site-text-dim); cursor:pointer;">
+                      <input id="burcRawPromptCheck" type="checkbox" checked
+                        style="width:auto; accent-color:var(--site-accent);" />
+                      <span>Yalnızca kendi promptumu kullan</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="site-field" style="margin-bottom:0;">
+                  <label for="videoNegPromptInput">Negatif Prompt</label>
+                  <input id="videoNegPromptInput" type="text" class="site-input"
+                    placeholder="İstenmeyen öğeler (opsiyonel)..." />
                 </div>
               </div>
-              <textarea id="videoPromptInput" class="site-textarea" rows="3" placeholder="Sahneyi, konuyu ve hareketi tarif edin..."></textarea>
-              <input id="videoNegPromptInput" type="text" class="site-input" style="margin-top:6px;" placeholder="Negatif prompt (isteğe bağlı)..." />
-            </div>
+            </details>
 
-            <div class="site-pipeline-steps" id="videoPipelineSteps">
-              <div class="site-pipeline-step done" id="step1"><strong>1. Plan</strong><span style="color:var(--site-text-dim);">Hazır</span></div>
-              <div class="site-pipeline-step active" id="step2"><strong>2. Görsel</strong><span style="color:var(--site-accent);">Anahtar Kare</span></div>
-              <div class="site-pipeline-step" id="step3"><strong>3. Video</strong><span style="color:var(--site-text-dim);">I2V / Kurgu</span></div>
-              <div class="site-pipeline-step" id="step4"><strong>4. Yayın</strong><span style="color:var(--site-text-dim);">İndir / YT</span></div>
+            <!-- İnce 4 Adım İlerleme Şeridi -->
+            <div class="site-pipeline-steps vstudio-steps-slim" id="videoPipelineSteps">
+              <div class="site-pipeline-step done" id="step1"><strong>1. Plan</strong></div>
+              <div class="site-pipeline-step active" id="step2"><strong>2. Görsel</strong></div>
+              <div class="site-pipeline-step" id="step3"><strong>3. Video</strong></div>
+              <div class="site-pipeline-step" id="step4"><strong>4. Yayın</strong></div>
             </div>
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-              <button type="button" class="site-btn site-btn-primary" onclick="handleInstantCloudPreview()" style="flex:1; padding:12px;">
-                ⚡ Hızlı Önizleme Görseli
-              </button>
-              <button type="submit" class="site-btn site-btn-primary" id="startProductionBtn" style="flex:1; padding:12px;">
-                🎬 Seçili Akışı Başlat
-              </button>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="handleStudioVideoSubmit(event, 'image_then_i2v')" style="flex:1; padding:10px; font-size:0.84rem;">
-                🚀 Tek Tık 2 Aşama (Görsel → I2V)
-              </button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="handlePlanStoryboard()" style="flex:1; padding:10px; font-size:0.84rem;">
-                🎞️ 3 Sahneli Storyboard
-              </button>
-            </div>
-            <div id="studioStoryboardBox" hidden style="margin-top:10px; border:1px solid var(--site-border-strong); border-radius:10px; padding:12px;"></div>
           </form>
         </div>
 
-        <!-- SAĞ: Canlı Çıktı & Log -->
+        <!-- SAĞ: Canlı Sahne -->
         <div class="site-card site-studio-player-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
-            <h3 style="margin:0; font-size:1.08rem;">🎞️ Canlı Çıktı</h3>
+          <div class="vstudio-stage-head">
+            <h3 style="margin:0; font-size:1rem;">🎞️ Canlı Sahne</h3>
             <span class="site-badge" id="studioTaskBadge">Hazır</span>
           </div>
 
           <div class="site-video-stage" id="studioStageArea">
-            <div style="text-align:center; padding:20px;">
-              <span style="font-size:2.2rem; display:block; margin-bottom:8px;">🎬</span>
-              <strong>Aktif üretim bekleniyor</strong>
-              <p style="margin:6px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
-                Soldan kanal ve konuyu girip önizleme görseli veya video başlatın.
-              </p>
+            <div style="text-align:center; padding:24px 16px;">
+              <span style="font-size:2rem; display:block; margin-bottom:6px;">🎬</span>
+              <strong style="font-size:0.94rem;">Üretime hazır</strong>
             </div>
           </div>
 
-          <div class="site-hud-box" id="studioHudLog" style="margin-top:12px;">
-            Stüdyo hazır. Üretim adımları burada canlı görünür.
+          <div class="site-hud-box vstudio-hud-compact" id="studioHudLog">
+            Hazır.
           </div>
         </div>
       </div>
 
+      <!-- TAM GENİŞLİK AI FILM CANVAS (Buzzy AI Tarzı: Karakterler + Sahneler + Sohbetle Düzenle + Birleştir) -->
+      <section id="studioStoryboardBox" class="site-card vstudio-canvas-panel" hidden></section>
+
       <!-- BEKLEYEN GPU KUYRUĞU -->
-      <section id="studioQueueSection" style="padding-top: 24px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-          <div>
-            <h2 style="margin:0; font-size:1.12rem;">⏳ Bekleyen GPU Kuyruğu</h2>
-            <p style="margin:3px 0 0; font-size:0.8rem; color:var(--site-text-dim);">
-              Kaggle/Colab işçisi bekleyen işler; dilerseniz anında bulut kurgusuna çevirebilir veya iptal edebilirsiniz.
-            </p>
-          </div>
-          <button type="button" class="site-btn site-btn-ghost" onclick="loadStudioQueue()" style="padding:7px 14px; font-size:0.8rem;">
+      <section id="studioQueueSection" style="padding-top: 20px;">
+        <div class="vstudio-sec-head">
+          <h2 style="margin:0; font-size:1.05rem;">⏳ GPU Kuyruğu</h2>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadStudioQueue()"
+            style="padding:6px 12px; font-size:0.78rem;">
             🔄 Yenile
           </button>
         </div>
         <div id="studioQueueList" class="site-cards-grid">
-          <div class="site-empty">Kuyruk kontrol ediliyor…</div>
+          <div class="site-empty">Bekleyen GPU işi yok.</div>
         </div>
       </section>
 
-      <!-- TEK TEMİZ ÜRETİLEN VİDEOLAR GALERİSİ -->
-      <section id="studioVideoHistorySection" style="padding-top: 26px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-          <div>
-            <h2 style="margin:0; font-size:1.18rem;">📥 Üretilen Videolar &amp; YouTube Yükleme</h2>
-            <p style="margin:3px 0 0; font-size:0.82rem; color:var(--site-text-dim);">
-              Yalnızca doğrulanmış MP4 çıktıları listelenir. İndirebilir, GPU'ya yükseltebilir veya YouTube kanalınıza yükleyebilirsiniz.
-            </p>
-          </div>
-          <button type="button" class="site-btn site-btn-ghost" onclick="loadVideoHistory()" style="padding:7px 14px; font-size:0.8rem;">
+      <!-- ÜRETİLEN VİDEOLAR GALERİSİ -->
+      <section id="studioVideoHistorySection" style="padding-top: 22px;">
+        <div class="vstudio-sec-head">
+          <h2 style="margin:0; font-size:1.08rem;">📥 Üretilen Videolar</h2>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadVideoHistory()"
+            style="padding:6px 12px; font-size:0.78rem;">
             🔄 Yenile
           </button>
         </div>
@@ -465,13 +541,15 @@
         <div class="site-card site-studio-form-card">
           <div class="site-studio-header">
             <div>
-              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Çoklu Model Müzik Stüdyosu</h2>
+              <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Suno Seviyesi Çoklu Model Müzik Stüdyosu</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Google Lyria 3.5, Lyria 3 Clip, ElevenLabs, Stable Audio, <strong>Ücretsiz Kaggle GPU MusicGen</strong> ve Mac yerel hattıyla gerçek müzik üretin.
+                <strong>Ücretsiz Kaggle GPU ACE-Step 1.5</strong> (Türkçe/çok dilli vokal + şarkı sözü + 4 dk +
+                Cover/Repaint, MIT), MusicGen Stereo, Google Lyria 3.5 ve ElevenLabs ile gerçek müzik üretin.
               </p>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <button type="button" class="site-chip-btn" onclick="switchStudioView('audio')" title="Konuşma Seslendirme (TTS)">🎙️ Seslendirme (TTS)</button>
+              <button type="button" class="site-chip-btn" onclick="switchStudioView('audio')"
+                title="Konuşma Seslendirme (TTS)">🎙️ Seslendirme (TTS)</button>
               <span class="site-badge" id="musicReadyCountBadge">Modeller yükleniyor…</span>
             </div>
           </div>
@@ -480,8 +558,12 @@
             <div class="site-field">
               <label for="musicModelSelect">1. Müzik Üretim Modeli</label>
               <select id="musicModelSelect" class="site-select">
-                <option value="auto_waterfall">⚡ Otomatik Şelale (Tüm Hesaplar &amp; Modeller)</option>
-                <option value="lyria-3.5">Google Lyria 3.5 (Tam Şarkı)</option>
+                <option value="gpu-acestep-1.5" selected>🚀 Kaggle GPU ACE-Step 1.5 (Suno Seviyesi · Vokal + Türkçe Söz
+                  + 4 dk · ÜCRETSİZ)</option>
+                <option value="auto_waterfall">⚡ Otomatik Şelale (Vokal Korumalı · Bulut → Kaggle ACE-Step 1.5)</option>
+                <option value="gpu-musicgen">🎹 Kaggle GPU MusicGen Stereo (Hızlı Enstrümantal · 30 sn · ÜCRETSİZ)
+                </option>
+                <option value="lyria-3.5">Google Lyria 3.5 (Ücretli Billing)</option>
               </select>
             </div>
 
@@ -490,19 +572,22 @@
                 <label for="musicGenreSelect">Tarz / Tür</label>
                 <select id="musicGenreSelect" class="site-select">
                   <option value="Cinematic Orchestral">🎻 Sinematik Orkestra</option>
+                  <option value="Turkish Pop Rock">🎸 Türkçe Pop / Rock</option>
+                  <option value="Turkish Anatolian Acoustic">🪕 Anadolu / Etnik</option>
+                  <option value="Turkish Rap Trap">🎤 Türkçe Rap / Trap</option>
                   <option value="Synthwave Electronic">⚡ Synthwave / Elektronik</option>
                   <option value="Lo-Fi Chillhop">☕ Lo-Fi / Chill</option>
-                  <option value="Turkish Anatolian Acoustic">🪕 Anadolu / Etnik</option>
                   <option value="Ambient Atmospheric">🌌 Ambient / Kozmik</option>
-                  <option value="Modern Pop">🎤 Modern Pop</option>
+                  <option value="Modern Pop">✨ Modern Pop</option>
                 </select>
               </div>
               <div class="site-field">
                 <label for="musicMoodSelect">Atmosfer</label>
                 <select id="musicMoodSelect" class="site-select">
                   <option value="Epic and inspiring">🔥 Epik &amp; İlham Verici</option>
+                  <option value="Emotional and melancholic">🌙 Duygusal &amp; Derin</option>
                   <option value="Calm and focused">🌊 Sakin &amp; Odaklı</option>
-                  <option value="Mysterious and deep">🔮 Gizemli &amp; Derin</option>
+                  <option value="Mysterious and deep">🔮 Gizemli &amp; Mistik</option>
                   <option value="Energetic and upbeat">🚀 Enerjik &amp; Dinamik</option>
                 </select>
               </div>
@@ -510,31 +595,94 @@
                 <label for="musicDurationSelect">Hedef Süre</label>
                 <select id="musicDurationSelect" class="site-select">
                   <option value="15">15 sn</option>
-                  <option value="30" selected>30 sn</option>
-                  <option value="60">60 sn</option>
-                  <option value="120">2 dk</option>
+                  <option value="30">30 sn</option>
+                  <option value="60" selected>60 sn (1 dk)</option>
+                  <option value="120">120 sn (2 dk)</option>
+                  <option value="180">180 sn (3 dk)</option>
+                  <option value="240">240 sn (4 dk · Tam Şarkı)</option>
                 </select>
               </div>
             </div>
 
-            <div class="site-field">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                <label for="musicPromptInput" style="margin:0;">Müzik Tarifi (Prompt)</label>
-                <div class="site-prompt-chips">
-                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Solo piyano ile başlayıp yaylılarla yükselen epik sinematik teknoloji tanıtım müziği')">🎻 Tanıtım</button>
-                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Gece kod yazarken dinlenecek sıcak analog synth ve hafif yağmur eşlikli lo-fi ritim')">☕ Lo-Fi</button>
-                  <button type="button" class="site-chip-btn" onclick="setMusicPrompt('Ney ve modern elektronik bas sentezini birleştiren mistik gece atmosferi')">🪕 Etnik</button>
-                </div>
+            <!-- Suno Seviyesi Teknik Kontroller: Dil · BPM · Ton/Gam · Görev -->
+            <div class="site-studio-row-3" style="margin-bottom:8px;">
+              <div class="site-field">
+                <label for="musicVocalLangSelect">Vokal Dili</label>
+                <select id="musicVocalLangSelect" class="site-select">
+                  <option value="tr" selected>🇹🇷 Türkçe (tr)</option>
+                  <option value="en">🇬🇧 İngilizce (en)</option>
+                  <option value="de">🇩🇪 Almanca (de)</option>
+                  <option value="fr">🇫🇷 Fransızca (fr)</option>
+                  <option value="es">🇪🇸 İspanyolca (es)</option>
+                  <option value="ja">🇯🇵 Japonca (ja)</option>
+                  <option value="unknown">🌍 Otomatik</option>
+                </select>
               </div>
-              <textarea id="musicPromptInput" class="site-textarea" rows="3" placeholder="Enstrümanları, tempoyu ve duyguyu tarif edin..."></textarea>
+              <div class="site-field">
+                <label for="musicBpmInput">Tempo (BPM)</label>
+                <input id="musicBpmInput" type="number" min="40" max="240" class="site-input" placeholder="ör. 118" />
+              </div>
+              <div class="site-field">
+                <label for="musicKeyScaleInput">Ton / Gam</label>
+                <input id="musicKeyScaleInput" type="text" class="site-input" placeholder="ör. A minor" />
+              </div>
+            </div>
+
+            <div class="site-studio-row-2" style="margin-bottom:8px;">
+              <div class="site-field">
+                <label for="musicTaskSelect">Üretim Modu (ACE-Step 1.5)</label>
+                <select id="musicTaskSelect" class="site-select" onchange="toggleMusicRefAudioRow()">
+                  <option value="text2music" selected>🎼 Sıfırdan Şarkı (Text → Music)</option>
+                  <option value="cover">🎙️ Cover / Stil Dönüşümü (Referans Ses)</option>
+                  <option value="extend">⏩ Şarkıyı Uzat (Extend)</option>
+                  <option value="repaint">🎨 Bölüm Yeniden Üret (Repaint)</option>
+                </select>
+              </div>
+              <div class="site-field" id="musicRefAudioWrap" hidden>
+                <label for="musicRefAudioInput">Referans Ses (WAV/MP3/FLAC)</label>
+                <input id="musicRefAudioInput" type="file" accept="audio/wav,audio/mpeg,audio/flac,audio/ogg"
+                  class="site-input" />
+              </div>
             </div>
 
             <div class="site-field">
-              <label style="display:inline-flex; align-items:center; gap:8px; margin:0 0 8px; text-transform:none; letter-spacing:0; cursor:pointer; font-size:0.84rem;">
-                <input id="musicVocalsCheck" type="checkbox" style="width:auto; accent-color:var(--site-accent);">
-                <span>Vokal / Şarkı Sözü Ekle (Lyria 3.5 &amp; ElevenLabs destekler)</span>
-              </label>
-              <textarea id="musicLyricsInput" class="site-textarea" rows="2" placeholder="Opsiyonel şarkı sözleri (boş bırakırsanız model enstrümantal veya özgün söz üretir)..."></textarea>
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                <label for="musicPromptInput" style="margin:0;">Müzik Tarifi (Enstrüman, Tarz, Vokal Rengi)</label>
+                <div class="site-prompt-chips">
+                  <button type="button" class="site-chip-btn"
+                    onclick="setMusicPrompt('Warm Turkish indie rock with acoustic guitar, emotional male vocals, crisp live drums, atmospheric synth pads, 112 bpm')">🎸
+                    TR Rock</button>
+                  <button type="button" class="site-chip-btn"
+                    onclick="setMusicPrompt('Solo piyano ile başlayıp yaylılarla yükselen epik sinematik teknoloji tanıtım müziği')">🎻
+                    Tanıtım</button>
+                  <button type="button" class="site-chip-btn"
+                    onclick="setMusicPrompt('Ney, bağlama ve modern deep bass sentezini birleştiren mistik Anadolu elektronik atmosferi')">🪕
+                    Anadolu</button>
+                </div>
+              </div>
+              <textarea id="musicPromptInput" class="site-textarea" rows="3"
+                placeholder="Enstrümanları, vokal tarzını (kadın/erkek, güçlü/yumuşak), tempoyu ve duyguyu tarif edin..."></textarea>
+            </div>
+
+            <div class="site-field">
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                <label
+                  style="display:inline-flex; align-items:center; gap:8px; margin:0; text-transform:none; letter-spacing:0; cursor:pointer; font-size:0.84rem;">
+                  <input id="musicVocalsCheck" type="checkbox" checked
+                    style="width:auto; accent-color:var(--site-accent);">
+                  <span>Vokal / Şarkı Sözü Ekle (ACE-Step 1.5 Türkçe &amp; Çok Dilli)</span>
+                </label>
+                <div class="site-prompt-chips">
+                  <button type="button" class="site-chip-btn" onclick="insertLyricsTag('[Verse]\n')">+Verse</button>
+                  <button type="button" class="site-chip-btn" onclick="insertLyricsTag('[Chorus]\n')">+Chorus</button>
+                  <button type="button" class="site-chip-btn" onclick="insertLyricsTag('[Bridge]\n')">+Bridge</button>
+                  <button type="button" class="site-chip-btn" onclick="handleGenerateSongLyrics()">✨ AI Söz Yaz</button>
+                </div>
+              </div>
+              <textarea id="musicLyricsInput" class="site-textarea" rows="4"
+                placeholder="[Verse 1]&#10;Gece yarısı yıldızlar parlar...&#10;&#10;[Chorus]&#10;Rüzgarla uçar hayallerimiz..."></textarea>
             </div>
 
             <button type="submit" class="site-btn site-btn-primary site-btn-block" id="startMusicBtn">
@@ -551,36 +699,52 @@
           <div class="site-video-stage" id="musicStageArea" style="min-height:130px; margin-bottom:12px;">
             <div style="text-align:center; padding:16px;">
               <span style="font-size:2rem; display:block; margin-bottom:6px;">🎼</span>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen müzik dosyası ve indirme bağlantısı burada açılır.</p>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen müzik dosyası ve indirme
+                bağlantısı burada açılır.</p>
             </div>
           </div>
           <div class="site-hud-box" id="musicOutputHud" style="margin-bottom:14px; white-space:pre-wrap;">
-            Sahte ses üretilmez: Ücretsiz Kaggle/Colab GPU MusicGen (yerel AI), API anahtarlı bulut modelleri veya canlı Mac bağlantılı modeller çalışır.
+            Sahte ses üretilmez: Ücretsiz Kaggle/Colab GPU MusicGen (yerel AI), API anahtarlı bulut modelleri veya canlı
+            Mac bağlantılı modeller çalışır.
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+          <div
+            style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
             <h4 style="margin:0; font-size:0.9rem;">🌊 Çoklu Hesap API Şelalesi &amp; Modeller</h4>
-            <button type="button" class="site-chip-btn" data-admin-only="1" hidden onclick="resetMusicWaterfall()">🔄 Şelaleyi Sıfırla</button>
+            <button type="button" class="site-chip-btn" data-admin-only="1" hidden onclick="resetMusicWaterfall()">🔄
+              Şelaleyi Sıfırla</button>
           </div>
-          <div id="musicWaterfallSummary" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; font-size:0.75rem;"></div>
+          <div id="musicWaterfallSummary"
+            style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; font-size:0.75rem;"></div>
           <div id="musicModelsStatusGrid" style="display:grid; grid-template-columns:1fr; gap:8px;">
             <div class="site-empty">Modeller kontrol ediliyor…</div>
           </div>
 
-          <details data-admin-only="1" hidden style="margin-top:14px; border:1px solid var(--site-border-strong); border-radius:10px; padding:10px 12px;">
-            <summary style="cursor:pointer; font-weight:600; font-size:0.84rem;">🔑 Yönetici: Çoklu Hesap API Şelalesi Anahtarlarını Ekle (0600)</summary>
+          <details data-admin-only="1" hidden
+            style="margin-top:14px; border:1px solid var(--site-border-strong); border-radius:10px; padding:10px 12px;">
+            <summary style="cursor:pointer; font-weight:600; font-size:0.84rem;">🔑 Yönetici: Çoklu Hesap API Şelalesi
+              Anahtarlarını Ekle (0600)</summary>
             <p style="margin:8px 0 6px; font-size:0.76rem; color:var(--site-text-dim);">
-              Her kutuya <strong>birden fazla hesabın API anahtarını alt alta veya virgülle</strong> yapıştırabilirsiniz. Render ortamındaki <code>GEMINI_API_KEY</code> … <code>GEMINI_API_KEY_8</code> anahtarları da şelaleye otomatik katılır; sızdırılmış/kota dolu anahtar otomatik atlanır.
+              Her kutuya <strong>birden fazla hesabın API anahtarını alt alta veya virgülle</strong>
+              yapıştırabilirsiniz. Render ortamındaki <code>GEMINI_API_KEY</code> … <code>GEMINI_API_KEY_8</code>
+              anahtarları da şelaleye otomatik katılır; sızdırılmış/kota dolu anahtar otomatik atlanır.
             </p>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; margin-top:8px;">
-              <textarea id="musicKeyGemini" rows="2" class="site-textarea" placeholder="GEMINI_API_KEY (alt alta birden fazla hesap anahtarı)" autocomplete="off"></textarea>
-              <textarea id="musicKeyElevenlabs" rows="2" class="site-textarea" placeholder="ELEVENLABS_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
-              <textarea id="musicKeyStability" rows="2" class="site-textarea" placeholder="STABILITY_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
-              <textarea id="musicKeyReplicate" rows="2" class="site-textarea" placeholder="REPLICATE_API_TOKEN (çoklu anahtar)" autocomplete="off"></textarea>
+            <div
+              style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px; margin-top:8px;">
+              <textarea id="musicKeyGemini" rows="2" class="site-textarea"
+                placeholder="GEMINI_API_KEY (alt alta birden fazla hesap anahtarı)" autocomplete="off"></textarea>
+              <textarea id="musicKeyElevenlabs" rows="2" class="site-textarea"
+                placeholder="ELEVENLABS_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
+              <textarea id="musicKeyStability" rows="2" class="site-textarea"
+                placeholder="STABILITY_API_KEY (çoklu anahtar)" autocomplete="off"></textarea>
+              <textarea id="musicKeyReplicate" rows="2" class="site-textarea"
+                placeholder="REPLICATE_API_TOKEN (çoklu anahtar)" autocomplete="off"></textarea>
             </div>
             <div style="display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap;">
-              <button type="button" class="site-btn site-btn-primary" onclick="saveMusicApiKeys(true)" style="padding:7px 14px; font-size:0.8rem;">➕ Şelaleye Ekle</button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="saveMusicApiKeys(false)" style="padding:7px 14px; font-size:0.8rem;">💾 Üzerine Yaz</button>
+              <button type="button" class="site-btn site-btn-primary" onclick="saveMusicApiKeys(true)"
+                style="padding:7px 14px; font-size:0.8rem;">➕ Şelaleye Ekle</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="saveMusicApiKeys(false)"
+                style="padding:7px 14px; font-size:0.8rem;">💾 Üzerine Yaz</button>
               <span id="musicKeySaveStatus" style="font-size:0.78rem; color:var(--site-text-dim);"></span>
             </div>
           </details>
@@ -590,7 +754,8 @@
       <section style="padding-top:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <h2 style="margin:0; font-size:1.15rem;">📥 Üretilen Müzik Parçaları</h2>
-          <button type="button" class="site-btn site-btn-ghost" onclick="loadMusicHistory()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadMusicHistory()"
+            style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
         </div>
         <div id="studioMusicHistoryGrid" class="site-model-grid">
           <div class="site-empty">Müzik arşivi yükleniyor…</div>
@@ -611,7 +776,8 @@
             <div>
               <h2 style="margin:0 0 4px; font-size:1.18rem;">🎵 Nöral Seslendirme (Gemini 3.8 + Edge TTS)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Metninizi Google Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) ve ücretsiz Türkçe Edge Neural TTS yedeğiyle indirilebilir WAV ses dosyasına dönüştürür.
+                Metninizi Google Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) ve ücretsiz Türkçe Edge Neural TTS
+                yedeğiyle indirilebilir WAV ses dosyasına dönüştürür.
               </p>
             </div>
             <span class="site-badge site-badge-free">Gerçek TTS</span>
@@ -630,7 +796,8 @@
             </div>
             <div class="site-field">
               <label for="audioPromptInput">Seslendirilecek Metin</label>
-              <textarea id="audioPromptInput" class="site-textarea" rows="5" placeholder="Seslendirmek istediğiniz metni buraya yazın..."></textarea>
+              <textarea id="audioPromptInput" class="site-textarea" rows="5"
+                placeholder="Seslendirmek istediğiniz metni buraya yazın..."></textarea>
             </div>
             <button type="submit" class="site-btn site-btn-primary site-btn-block" id="startAudioBtn">
               🎙️ Seslendir ve WAV Üret
@@ -646,11 +813,13 @@
           <div class="site-video-stage" id="audioStageArea" style="min-height:150px; margin-bottom:12px;">
             <div style="text-align:center; padding:16px;">
               <span style="font-size:2rem; display:block; margin-bottom:6px;">🎧</span>
-              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen ses oynatıcısı burada görünür.</p>
+              <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">Üretilen ses oynatıcısı burada
+                görünür.</p>
             </div>
           </div>
           <div class="site-hud-box" id="audioOutputHud">
-            Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) + ücretsiz Türkçe Edge Neural TTS hazır. Sahte bip/sinyal üretilmez.
+            Gemini 3.8 Flash Neural TTS (çoklu hesap şelalesi) + ücretsiz Türkçe Edge Neural TTS hazır. Sahte bip/sinyal
+            üretilmez.
           </div>
         </div>
       </div>
@@ -658,7 +827,8 @@
       <section style="padding-top:24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <h2 style="margin:0; font-size:1.15rem;">📥 Üretilen Sesler</h2>
-          <button type="button" class="site-btn site-btn-ghost" onclick="loadAudioHistory()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+          <button type="button" class="site-btn site-btn-ghost" onclick="loadAudioHistory()"
+            style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
         </div>
         <div id="studioAudioHistoryGrid" class="site-model-grid">
           <div class="site-empty">Ses kayıtları yükleniyor…</div>
@@ -763,7 +933,8 @@
             </div>
             <div class="site-field">
               <label for="chDefaultPromptInput">Varsayılan Prompt Şablonu</label>
-              <input id="chDefaultPromptInput" type="text" class="site-input" placeholder="Kanal seçildiğinde hazır gelecek konu..." />
+              <input id="chDefaultPromptInput" type="text" class="site-input"
+                placeholder="Kanal seçildiğinde hazır gelecek konu..." />
             </div>
             <div style="display:flex; gap:8px;">
               <button type="submit" class="site-btn site-btn-primary" style="flex:1;">💾 Kaydet</button>
@@ -774,7 +945,8 @@
         </div>
 
         <div class="site-card site-studio-player-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
+          <div
+            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
             <h3 style="margin:0; font-size:1.08rem;">🔑 YouTube Data API v3 Bağlantısı</h3>
             <span class="site-badge" id="ytAuthBadge">Kontrol ediliyor</span>
           </div>
@@ -782,11 +954,15 @@
             YouTube OAuth durumu sorgulanıyor…
           </div>
           <div class="site-field" data-admin-only="1" hidden>
-            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code> (Yalnızca Yönetici)</label>
-            <textarea id="ytSecretJsonInput" class="site-textarea" rows="3" placeholder='{"web":{"client_id":"...","client_secret":"..."}}'></textarea>
+            <label for="ytSecretJsonInput">Google Cloud OAuth <code>client_secret.json</code> (Yalnızca
+              Yönetici)</label>
+            <textarea id="ytSecretJsonInput" class="site-textarea" rows="3"
+              placeholder='{"web":{"client_id":"...","client_secret":"..."}}'></textarea>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-              <button type="button" class="site-btn site-btn-ghost" onclick="handleSaveYtSecret()">🔐 Anahtarı Kaydet</button>
-              <button type="button" class="site-btn site-btn-primary" onclick="handleStartYoutubeOAuth()">🔗 Google ile YouTube Bağla</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="handleSaveYtSecret()">🔐 Anahtarı
+                Kaydet</button>
+              <button type="button" class="site-btn site-btn-primary" onclick="handleStartYoutubeOAuth()">🔗 Google ile
+                YouTube Bağla</button>
             </div>
           </div>
           <div style="margin-top:16px;">
@@ -812,7 +988,8 @@
             <div>
               <h2 style="margin:0 0 4px; font-size:1.18rem;">⚡ İsteğe Bağlı GPU İşçisi (Kaggle / Colab)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                FLUX.2 ve Wan2.1/LTX gerçek video difüzyon işleri için Kaggle Dual-T4 veya Colab işçisini yalnızca iş varken bağlayın.
+                FLUX.2 ve Wan2.1/LTX gerçek video difüzyon işleri için Kaggle Dual-T4 veya Colab işçisini yalnızca iş
+                varken bağlayın.
               </p>
             </div>
           </div>
@@ -826,28 +1003,36 @@
             </select>
           </div>
 
-          <div data-admin-only="1" hidden style="background:color-mix(in srgb, var(--site-accent) 6%, transparent); border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-top:10px;">
-            <strong style="font-size:0.86rem; display:block; margin-bottom:6px;">🔑 Korumalı GPU İşçi Komutu (X-Worker-Key · Video + Ücretsiz AI Müzik MusicGen)</strong>
-            <code id="gpuWorkerCmdCode" style="display:block; background:#090d16; padding:9px 10px; border-radius:8px; color:#38bdf8; font-size:0.78rem; user-select:all;">
+          <div data-admin-only="1" hidden
+            style="background:color-mix(in srgb, var(--site-accent) 6%, transparent); border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-top:10px;">
+            <strong style="font-size:0.86rem; display:block; margin-bottom:6px;">🔑 Korumalı GPU İşçi Komutu
+              (X-Worker-Key · Video + Ücretsiz AI Müzik MusicGen)</strong>
+            <code id="gpuWorkerCmdCode"
+              style="display:block; background:#090d16; padding:9px 10px; border-radius:8px; color:#38bdf8; font-size:0.78rem; user-select:all;">
               Anahtarlı komutu almak için aşağıdaki düğmeye basın.
             </code>
             <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-              <button type="button" class="site-btn site-btn-primary" onclick="loadGpuWorkerSetup()" style="padding:7px 14px; font-size:0.8rem;">
+              <button type="button" class="site-btn site-btn-primary" onclick="loadGpuWorkerSetup()"
+                style="padding:7px 14px; font-size:0.8rem;">
                 🔑 Komutu Getir &amp; Kopyala
               </button>
-              <a href="/Fabrika_GPU_Renderer.ipynb" download="Fabrika_GPU_Renderer.ipynb" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+              <a href="/Fabrika_GPU_Renderer.ipynb" download="Fabrika_GPU_Renderer.ipynb"
+                class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
                 📥 Notebook İndir
               </a>
-              <a href="https://www.kaggle.com/code" target="_blank" rel="noopener" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+              <a href="https://www.kaggle.com/code" target="_blank" rel="noopener" class="site-btn site-btn-ghost"
+                style="padding:7px 13px; font-size:0.8rem;">
                 🚀 Kaggle
               </a>
-              <a href="https://colab.research.google.com" target="_blank" rel="noopener" class="site-btn site-btn-ghost" style="padding:7px 13px; font-size:0.8rem;">
+              <a href="https://colab.research.google.com" target="_blank" rel="noopener" class="site-btn site-btn-ghost"
+                style="padding:7px 13px; font-size:0.8rem;">
                 ☁️ Colab
               </a>
             </div>
           </div>
 
-          <button type="button" class="site-btn site-btn-ghost site-btn-block" onclick="refreshGpuStatus()" style="margin-top:12px;">
+          <button type="button" class="site-btn site-btn-ghost site-btn-block" onclick="refreshGpuStatus()"
+            style="margin-top:12px;">
             🔄 GPU Telemetrisini Yenile
           </button>
         </div>
@@ -874,27 +1059,32 @@
             <div>
               <h2 style="margin:0 0 4px; font-size:1.18rem;">💻 Mac Fabrika Uzaktan Kontrol (Port 443)</h2>
               <p style="margin:0; font-size:0.82rem; color:var(--site-text-dim);">
-                Bilgisayarınızda Fabrika açık olduğunda komutlarınız doğrudan Mac üzerinde çalışır ve gerçek yanıt döner.
+                Bilgisayarınızda Fabrika açık olduğunda komutlarınız doğrudan Mac üzerinde çalışır ve gerçek yanıt
+                döner.
               </p>
             </div>
             <span class="site-badge" id="macPanelBadge">Kontrol ediliyor</span>
           </div>
 
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:rgba(0,255,204,0.06); border:1px solid rgba(0,255,204,0.22);">
+          <div
+            style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px; padding:10px 12px; border-radius:10px; background:rgba(0,255,204,0.06); border:1px solid rgba(0,255,204,0.22);">
             <div style="font-size:0.8rem; color:var(--site-text-dim);">
               <strong style="color:#00ffcc; display:block;">🖥️ Tam Ekran Fabrika Masaüstü Arayüzü</strong>
               Üst panel (3D Reaktör / Log / XAI), Alt sohbet konsolu ve kaymalı Sağ Panel ile birebir masaüstü deneyimi.
             </div>
-            <a class="site-btn site-btn-primary" href="/fabrika" style="padding:8px 14px; font-size:0.8rem; text-decoration:none;">
+            <a class="site-btn site-btn-primary" href="/fabrika"
+              style="padding:8px 14px; font-size:0.8rem; text-decoration:none;">
               🏭 Masaüstü Arayüzünü Aç →
             </a>
           </div>
 
-          <div id="macStatsBar" style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; font-size:0.8rem; color:var(--site-text-dim);">
+          <div id="macStatsBar"
+            style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; font-size:0.8rem; color:var(--site-text-dim);">
             <span>CPU: <strong id="macCpuVal">—</strong></span>
             <span>RAM: <strong id="macRamVal">—</strong></span>
             <span>Son kalp atışı: <strong id="macSeenVal">—</strong></span>
-            <button type="button" class="site-chip-btn" onclick="refreshMacBridgeStatus()" style="margin-left:auto;">🔄 Yenile</button>
+            <button type="button" class="site-chip-btn" onclick="refreshMacBridgeStatus()" style="margin-left:auto;">🔄
+              Yenile</button>
           </div>
 
           <div class="site-mac-chat" id="macChatLog">
@@ -905,14 +1095,18 @@
           </div>
 
           <div class="site-prompt-chips" style="margin-bottom:8px;">
-            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('açık uygulamalar ve pencereler neler')">💻 Açık Pencereler</button>
-            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('ekran görüntüsü al')">📸 Ekran Görüntüsü</button>
-            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('link havuzu raporu hazırla')">📊 Link Raporu</button>
+            <button type="button" class="site-chip-btn"
+              onclick="sendQuickMacCmd('açık uygulamalar ve pencereler neler')">💻 Açık Pencereler</button>
+            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('ekran görüntüsü al')">📸 Ekran
+              Görüntüsü</button>
+            <button type="button" class="site-chip-btn" onclick="sendQuickMacCmd('link havuzu raporu hazırla')">📊 Link
+              Raporu</button>
           </div>
 
           <form id="macCmdForm" onsubmit="handleMacCommandSubmit(event)" style="display:flex; gap:8px;">
             <label for="macCmdInput" class="site-hidden">Mac komutu</label>
-            <input id="macCmdInput" type="text" class="site-input" placeholder="Mac Fabrika'ya komut gönderin..." autocomplete="off" />
+            <input id="macCmdInput" type="text" class="site-input" placeholder="Mac Fabrika'ya komut gönderin..."
+              autocomplete="off" />
             <button type="submit" class="site-btn site-btn-primary" id="macCmdSendBtn">Gönder</button>
           </form>
         </div>
@@ -922,7 +1116,8 @@
             <div>
               <h3 style="margin:0 0 4px; font-size:1.08rem;">🛡️ Gerçek Python AST Güvenlik Tarayıcı (REA)</h3>
               <p style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">
-                Yapıştırdığınız Python kodunu gerçek <code>ast.parse</code> ağacında tarar (<code>eval</code>, <code>shell=True</code>, <code>pickle</code>, sabit parola vb.).
+                Yapıştırdığınız Python kodunu gerçek <code>ast.parse</code> ağacında tarar (<code>eval</code>,
+                <code>shell=True</code>, <code>pickle</code>, sabit parola vb.).
               </p>
             </div>
             <span class="site-badge" id="reaHistBadge">Tarama: —</span>
@@ -947,41 +1142,61 @@
       <!-- GELEN İLETİŞİM MESAJLARI, ÇOKLU ALICI ADRESLERİ & E-POSTA BİLDİRİM DURUMU (Yalnızca Yönetici) -->
       <section style="padding-top:24px;" data-admin-only="1" hidden>
         <div class="site-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <div
+            style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
             <div>
-              <h3 style="margin:0 0 4px; font-size:1.08rem;">📩 Siteden Gelen İletişim Mesajları &amp; Alıcı Adresleri</h3>
-              <p id="contactNotifierHint" style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">Bildirim kanalı kontrol ediliyor…</p>
+              <h3 style="margin:0 0 4px; font-size:1.08rem;">📩 Siteden Gelen İletişim Mesajları &amp; Alıcı Adresleri
+              </h3>
+              <p id="contactNotifierHint" style="margin:0; font-size:0.8rem; color:var(--site-text-dim);">Bildirim
+                kanalı kontrol ediliyor…</p>
             </div>
-            <button type="button" class="site-btn site-btn-ghost" onclick="loadContactInbox()" style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
+            <button type="button" class="site-btn site-btn-ghost" onclick="loadContactInbox()"
+              style="padding:7px 14px; font-size:0.8rem;">🔄 Yenile</button>
           </div>
 
           <!-- ÇOKLU E-POSTA ALICI YÖNETİMİ -->
-          <div style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:12px; background:color-mix(in srgb, var(--site-accent-3) 5%, transparent);">
-            <strong style="font-size:0.88rem; display:block; margin-bottom:6px;">📬 Mesajların Gönderileceği Alıcı E-posta Adresleri (en fazla 10)</strong>
+          <div
+            style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:12px; background:color-mix(in srgb, var(--site-accent-3) 5%, transparent);">
+            <strong style="font-size:0.88rem; display:block; margin-bottom:6px;">📬 Mesajların Gönderileceği Alıcı
+              E-posta Adresleri (en fazla 10)</strong>
             <div id="contactRecipientsChips" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;"></div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <input id="newRecipientEmailInput" type="email" class="site-input" placeholder="Yeni alıcı e-posta (ör. ekip@yusasufhin.com)" style="flex:1; min-width:220px;">
-              <button type="button" class="site-btn site-btn-primary" onclick="handleAddContactRecipient()" style="padding:8px 14px; font-size:0.8rem;">➕ Alıcı Ekle</button>
+              <input id="newRecipientEmailInput" type="email" class="site-input"
+                placeholder="Yeni alıcı e-posta (ör. ekip@yusasufhin.com)" style="flex:1; min-width:220px;">
+              <button type="button" class="site-btn site-btn-primary" onclick="handleAddContactRecipient()"
+                style="padding:8px 14px; font-size:0.8rem;">➕ Alıcı Ekle</button>
             </div>
-            <p id="recipientStatusMsg" style="margin:6px 0 0; font-size:0.78rem; color:var(--site-text-dim);" aria-live="polite"></p>
+            <p id="recipientStatusMsg" style="margin:6px 0 0; font-size:0.78rem; color:var(--site-text-dim);"
+              aria-live="polite"></p>
           </div>
 
           <!-- ys@yusasufhin.com Doğrudan E-posta Kurulum & Test Kartı -->
-          <div style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:14px; background:color-mix(in srgb, var(--site-accent) 5%, transparent);">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-              <strong style="font-size:0.88rem;">✉️ Doğrudan E-posta Gönderim Bağlantısı (Gmail TLS 587 / Resend)</strong>
-              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="font-size:0.78rem; color:var(--site-accent);">🔑 Google Uygulama Şifresi Al →</a>
+          <div
+            style="border:1px solid var(--site-border-strong); border-radius:10px; padding:12px; margin-bottom:14px; background:color-mix(in srgb, var(--site-accent) 5%, transparent);">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <strong style="font-size:0.88rem;">✉️ Doğrudan E-posta Gönderim Bağlantısı (Gmail TLS 587 /
+                Resend)</strong>
+              <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener"
+                style="font-size:0.78rem; color:var(--site-accent);">🔑 Google Uygulama Şifresi Al →</a>
             </div>
             <p style="margin:0 0 10px; font-size:0.79rem; color:var(--site-text-dim);">
-              Google hesabınızdan (<code>ys@yusasufhin.com</code>) 16 haneli Uygulama Şifresini girin (Mac köprüsü üzerinden tüm alıcılara doğrudan Gmail TLS 587 ile yollar) <strong>veya</strong> Mac kapalıyken de 7/24 gitmesi için ücretsiz <code>RESEND_API_KEY</code> girin.
+              Google hesabınızdan (<code>ys@yusasufhin.com</code>) 16 haneli Uygulama Şifresini girin (Mac köprüsü
+              üzerinden tüm alıcılara doğrudan Gmail TLS 587 ile yollar) <strong>veya</strong> Mac kapalıyken de 7/24
+              gitmesi için ücretsiz <code>RESEND_API_KEY</code> girin.
             </p>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom:10px;">
-              <input id="mailCfgAppPass" type="password" class="site-input" placeholder="ys@yusasufhin.com 16 haneli Uygulama Şifresi" autocomplete="off">
-              <input id="mailCfgResendKey" type="password" class="site-input" placeholder="Opsiyonel: RESEND_API_KEY (re_...)" autocomplete="off">
+            <div
+              style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom:10px;">
+              <input id="mailCfgAppPass" type="password" class="site-input"
+                placeholder="ys@yusasufhin.com 16 haneli Uygulama Şifresi" autocomplete="off">
+              <input id="mailCfgResendKey" type="password" class="site-input"
+                placeholder="Opsiyonel: RESEND_API_KEY (re_...)" autocomplete="off">
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <button type="button" class="site-btn site-btn-primary" onclick="saveContactMailConfig()" style="padding:7px 14px; font-size:0.8rem;">💾 Kaydet ve Bağla</button>
-              <button type="button" class="site-btn site-btn-ghost" onclick="sendTestContactMail()" style="padding:7px 14px; font-size:0.8rem;">📨 Tüm Alıcılara Test Maili Gönder</button>
+              <button type="button" class="site-btn site-btn-primary" onclick="saveContactMailConfig()"
+                style="padding:7px 14px; font-size:0.8rem;">💾 Kaydet ve Bağla</button>
+              <button type="button" class="site-btn site-btn-ghost" onclick="sendTestContactMail()"
+                style="padding:7px 14px; font-size:0.8rem;">📨 Tüm Alıcılara Test Maili Gönder</button>
               <span id="mailCfgStatusText" style="font-size:0.79rem; color:var(--site-text-dim);"></span>
             </div>
           </div>
@@ -997,11 +1212,16 @@
 
   <!-- MOBİL SABİT ALT SEKME ÇUBUĞU (Aşağı kaydırınca da tek dokunuşla sekme geçişi) -->
   <nav class="site-mobile-tabbar" id="labMobileTabbar" aria-label="Mobil stüdyo sekmeleri" hidden>
-    <button type="button" id="mobTabHub" class="active" onclick="switchStudioView('hub')"><span class="tab-ico">🏠</span>Panel</button>
-    <button type="button" id="mobTabMac" onclick="switchStudioView('mac')"><span class="tab-ico">🏭</span>Fabrika</button>
-    <button type="button" id="mobTabVideo" onclick="switchStudioView('video')"><span class="tab-ico">🎬</span>Video</button>
-    <button type="button" id="mobTabMusic" onclick="switchStudioView('music')"><span class="tab-ico">🎵</span>Müzik</button>
-    <button type="button" id="mobTabChannels" onclick="switchStudioView('channels')"><span class="tab-ico">📺</span>YT</button>
+    <button type="button" id="mobTabHub" class="active" onclick="switchStudioView('hub')"><span
+        class="tab-ico">🏠</span>Panel</button>
+    <button type="button" id="mobTabMac" onclick="switchStudioView('mac')"><span
+        class="tab-ico">🏭</span>Fabrika</button>
+    <button type="button" id="mobTabVideo" onclick="switchStudioView('video')"><span
+        class="tab-ico">🎬</span>Video</button>
+    <button type="button" id="mobTabMusic" onclick="switchStudioView('music')"><span
+        class="tab-ico">🎵</span>Müzik</button>
+    <button type="button" id="mobTabChannels" onclick="switchStudioView('channels')"><span
+        class="tab-ico">📺</span>YT</button>
   </nav>
 
   <!-- Tema (Açık / Koyu) -->
@@ -1012,6 +1232,7 @@
 
   <script src="/site.js?v=33"></script>
   <script src="/admin_portal.js?v=33"></script>
-  <script src="/lab.js?v=33"></script>
+  <script src="/lab.js?v=34"></script>
 </body>
+
 </html>

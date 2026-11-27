@@ -11,6 +11,7 @@
   var _studioCatalogCache = null;
   var _studioVideoUploadedB64 = null;
   var _burcCatalogLoaded = false;
+  var _filmCanvasState = null;
 
   function token() {
     try { return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('cockpit_token') || ''; } catch (e) { return ''; }
@@ -184,6 +185,8 @@
       if (window.refreshAllUserLists) window.refreshAllUserLists();
     } else if (viewKey === 'video') {
       window.loadChannelsCatalog(false);
+      window.loadCharacterVault();
+      window.loadCanvasMusicOptions();
       window.loadStudioQueue();
       window.loadVideoHistory();
     } else if (viewKey === 'music') {
@@ -209,6 +212,120 @@
   window.setStudioPrompt = function (txt) {
     var el = document.getElementById('videoPromptInput');
     if (el) { el.value = txt; el.focus(); }
+  };
+
+  window.switchVideoStudioMode = function (mode) {
+    var isCanvas = mode === 'canvas';
+    var qBtn = document.getElementById('vModeQuickBtn');
+    var cBtn = document.getElementById('vModeCanvasBtn');
+    var qAct = document.getElementById('vstudioQuickActions');
+    var cAct = document.getElementById('vstudioCanvasActions');
+    var pLbl = document.getElementById('videoPromptLabel');
+    var pInp = document.getElementById('videoPromptInput');
+    if (qBtn) { qBtn.classList.toggle('active', !isCanvas); qBtn.setAttribute('aria-selected', String(!isCanvas)); }
+    if (cBtn) { cBtn.classList.toggle('active', isCanvas); cBtn.setAttribute('aria-selected', String(isCanvas)); }
+    if (qAct) qAct.hidden = isCanvas;
+    if (cAct) cAct.hidden = !isCanvas;
+    if (pLbl) pLbl.textContent = isCanvas ? 'Film Fikri (Tek Cümle)' : 'Sahne Fikri';
+    if (pInp) {
+      pInp.placeholder = isCanvas
+        ? 'Tek cümleyle filmini tarif et (karakterler ve sahneler otomatik kurulur)...'
+        : 'Tek cümleyle sahneni veya film fikrini yaz...';
+    }
+    var durSel = document.getElementById('videoDurationSelect');
+    if (isCanvas && durSel && Number(durSel.value) < 8) {
+      durSel.value = '10';
+    }
+  };
+
+  var _studioEndImageB64 = null;
+  var _characterVaultItems = [];
+  var _canvasMusicHistoryItems = [];
+
+  window.loadCanvasMusicOptions = function () {
+    window.authFetch('/api/music/history?limit=20')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (d && Array.isArray(d.items)) _canvasMusicHistoryItems = d.items;
+      })
+      .catch(function () { });
+  };
+
+  window.handleDeleteCharacterProfile = function () {
+    var sel = document.getElementById('videoCharacterSelect');
+    var cid = sel ? sel.value : '';
+    if (!cid) { alert('Silmek için önce kasadan bir karakter seçin.'); return; }
+    if (!confirm('Seçili karakter profili silinsin mi?')) return;
+    window.authFetch('/api/studio/characters/' + encodeURIComponent(cid), { method: 'DELETE' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.success) {
+          alert('Silinemedi: ' + ((res.d && res.d.detail) || 'Hata'));
+          return;
+        }
+        window.loadCharacterVault();
+      })
+      .catch(function (err) { alert('Hata: ' + err.message); });
+  };
+
+  window.loadCharacterVault = function () {
+    var sel = document.getElementById('videoCharacterSelect');
+    if (!sel) return;
+    window.authFetch('/api/studio/characters')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.items)) return;
+        _characterVaultItems = d.items;
+        var prev = sel.value;
+        sel.innerHTML = '<option value="">🎭 Kayıtlı Karakter Kasası (' + d.items.length + ' karakter)…</option>' +
+          d.items.map(function (c) {
+            return '<option value="' + esc(c.id) + '">🔒 ' + esc(c.name) + (c.has_reference_image ? ' [Portreli]' : '') + '</option>';
+          }).join('');
+        if (prev) sel.value = prev;
+      })
+      .catch(function () { });
+  };
+
+  window.applySelectedCharacter = function () {
+    var sel = document.getElementById('videoCharacterSelect');
+    var cid = sel ? sel.value : '';
+    var found = _characterVaultItems.find(function (c) { return c.id === cid; });
+    if (!found) return;
+    var lockEl = document.getElementById('videoCharLockInput');
+    if (lockEl && found.character_bible) lockEl.value = found.character_bible;
+    var stEl = document.getElementById('videoStyleSelect');
+    if (stEl && found.style_preset) stEl.value = found.style_preset;
+  };
+
+  window.handleSaveCharacterProfile = function () {
+    var bible = ((document.getElementById('videoCharLockInput') || {}).value || '').trim();
+    if (!bible || bible.length < 6) {
+      alert('Önce karakter kilidi kutusuna karakterin yüz, saç ve kıyafet tanımını yazın.');
+      return;
+    }
+    var name = prompt('Karakter adı (ör. Kaptan Demir):', '');
+    if (!name || name.trim().length < 2) return;
+    window.authFetch('/api/studio/characters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        character_bible: bible,
+        style_preset: (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism',
+        image_base64: _studioVideoUploadedB64 || null
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.success) {
+          alert('Karakter kaydedilemedi: ' + ((res.d && res.d.detail) || 'Hata'));
+          return;
+        }
+        window.loadCharacterVault();
+        var hud = document.getElementById('studioHudLog');
+        if (hud) hud.textContent = '✅ Karakter kasaya kaydedildi: ' + res.d.character.name + ' (seed #' + res.d.character.seed + ')';
+      })
+      .catch(function (err) { alert('Hata: ' + err.message); });
   };
 
   function _bindUploadAndExtras() {
@@ -240,13 +357,45 @@
         if (w) w.hidden = true;
       });
     }
+    var endInp = document.getElementById('studioEndImageInput');
+    if (endInp && !endInp.getAttribute('data-bound')) {
+      endInp.setAttribute('data-bound', '1');
+      endInp.addEventListener('change', function () {
+        var f = endInp.files && endInp.files[0];
+        if (!f) return;
+        var r = new FileReader();
+        r.onload = function (ev) {
+          _studioEndImageB64 = ev.target.result;
+          var w = document.getElementById('studioEndUploadedWrap');
+          var img = document.getElementById('studioEndUploadedImg');
+          if (img) img.src = _studioEndImageB64;
+          if (w) w.hidden = false;
+        };
+        r.readAsDataURL(f);
+      });
+    }
+    var endClr = document.getElementById('studioEndClearImgBtn');
+    if (endClr && !endClr.getAttribute('data-bound')) {
+      endClr.setAttribute('data-bound', '1');
+      endClr.addEventListener('click', function () {
+        _studioEndImageB64 = null;
+        var inp = document.getElementById('studioEndImageInput');
+        if (inp) inp.value = '';
+        var w = document.getElementById('studioEndUploadedWrap');
+        if (w) w.hidden = true;
+      });
+    }
     var wfSel = document.getElementById('videoMethodSelect');
     var urlWrap = document.getElementById('videoSourceUrlWrap');
-    if (wfSel && urlWrap && !wfSel.getAttribute('data-bound')) {
+    var endRow = document.getElementById('studioEndFrameRow');
+    if (wfSel && !wfSel.getAttribute('data-bound')) {
       wfSel.setAttribute('data-bound', '1');
-      var syncUrl = function () { urlWrap.hidden = !(wfSel.value === 'product_launch' || wfSel.value === 'hyperframes_motion'); };
-      wfSel.addEventListener('change', syncUrl);
-      syncUrl();
+      var syncWf = function () {
+        if (urlWrap) urlWrap.hidden = !(wfSel.value === 'product_launch' || wfSel.value === 'hyperframes_motion');
+        if (endRow) endRow.hidden = (wfSel.value !== 'flf2v');
+      };
+      wfSel.addEventListener('change', syncWf);
+      syncWf();
     }
   }
 
@@ -314,23 +463,22 @@
 
     var label = task.video_difuzyonu
       ? '✅ Gerçek I2V Video'
-      : (task.simulasyon ? '🎞️ 2D Önizleme (AI Video Değil)' : '✅ Video Hazır');
+      : (task.simulasyon ? '🎞️ 2D Önizleme' : '✅ Video Hazır');
+    var realDur = Number(task.duration_sec || (task.kalite_raporu && task.kalite_raporu.sure_sn) || task.sure_sn || 0);
+    var durText = realDur > 0 ? (' · ' + realDur.toFixed(1) + ' sn') : '';
     if (badge) {
-      badge.textContent = label;
+      badge.textContent = label + durText;
       badge.className = task.simulasyon ? 'site-badge site-badge-auto' : 'site-badge site-badge-free';
     }
     if (hud) {
       var ttsNote = '';
       var ttsObj = task.tts || (task.artifacts && task.artifacts.tts);
       if (ttsObj && ttsObj.ok) {
-        ttsNote = '<br>• 🎙️ Seslendirme: <strong>' + esc(ttsObj.engine || 'Nöral TTS') + '</strong> (' + esc(ttsObj.duration_sec || '?') + ' sn)';
-      } else if (ttsObj && ttsObj.neden && task.voice && String(task.voice).toLowerCase() !== 'none') {
-        ttsNote = '<br>• ⚠️ Seslendirme üretilemedi: ' + esc(ttsObj.neden);
+        ttsNote = ' · 🎙️ ' + esc(ttsObj.engine || 'TTS') + ' (' + esc(ttsObj.duration_sec || '?') + ' sn)';
       }
-      var simWarn = task.simulasyon
-        ? '<br>• ℹ️ <em>Not: Bu çıktı 2D FFmpeg kamera önizlemesidir (AI video difüzyonu değildir). Gerçek AI video için GPU sekmesinden Kaggle işçisini bağlayın.</em>'
-        : '';
-      hud.innerHTML += '<br>• ✅ <code>' + esc(task.job_id) + '</code> hazır (' + esc(task.kaynak || task.method || '-') + ' ' + esc(kb) + ')' + ttsNote + simWarn;
+      var warnTxt = task.duration_warning ? ('<br>⚠️ ' + esc(task.duration_warning)) : '';
+      var simNote = task.simulasyon ? ' · 2D önizleme (gerçek AI hareket için GPU bağlayın)' : '';
+      hud.innerHTML = '✅ <code>' + esc(task.job_id) + '</code>' + esc(durText) + (kb ? ' · ' + esc(kb) : '') + ttsNote + simNote + warnTxt;
     }
     if (stage) {
       stage.innerHTML =
@@ -393,6 +541,8 @@
     var cameraMotion = (document.getElementById('videoCameraSelect') || {}).value || 'otomatik';
     var voiceVal = (document.getElementById('videoVoiceSelect') || {}).value || 'Aoede';
     var promptVal = ((document.getElementById('videoPromptInput') || {}).value || '').trim();
+    var charLockVal = ((document.getElementById('videoCharLockInput') || {}).value || '').trim();
+    var characterIdVal = ((document.getElementById('videoCharacterSelect') || {}).value || '').trim();
     var negVal = ((document.getElementById('videoNegPromptInput') || {}).value || '').trim();
     var sourceUrlVal = ((document.getElementById('videoSourceUrlInput') || {}).value || '').trim();
     var execMode = forcedExecMode || (document.getElementById('videoExecModeSelect') || {}).value || 'auto';
@@ -400,8 +550,8 @@
       execMode = 'real_i2v';
     }
 
-    if (!promptVal && !burcSlug && !approvedImageUrl && !_studioVideoUploadedB64 && !sourceUrlVal) {
-      alert('Lütfen sahne promptu yazın, bir burç şablonu seçin veya görsel yükleyin.');
+    if (!promptVal && !burcSlug && !approvedImageUrl && !_studioVideoUploadedB64 && !sourceUrlVal && !characterIdVal) {
+      alert('Lütfen sahne promptu yazın, kayıtlı karakter veya burç şablonu seçin ya da görsel yükleyin.');
       return;
     }
 
@@ -410,11 +560,11 @@
     var stage = document.getElementById('studioStageArea');
     if (badge) { badge.textContent = '⏳ İşleniyor…'; badge.className = 'site-badge site-badge-auto'; }
     if (hud) {
-      hud.innerHTML = '• Kanal: <strong>' + esc(channel) + '</strong> · Akış: <code>' + esc(workflow) + '</code> · Mod: <code>' + esc(execMode) + '</code>';
+      hud.innerHTML = '⏳ ' + esc(aspect) + ' · ' + esc(duration) + ' sn · ' + esc(workflow);
     }
     _setSteps(1, 2);
 
-    var useBurcEndpoint = Boolean(burcSlug) && workflow !== 'product_launch' && workflow !== 'hyperframes_motion';
+    var useBurcEndpoint = Boolean(burcSlug) && workflow !== 'product_launch' && workflow !== 'hyperframes_motion' && workflow !== 'vace_r2v' && workflow !== 'flf2v';
     var endpoint = useBurcEndpoint ? '/api/burc/video/generate' : '/api/studio/video/generate';
     var payload = useBurcEndpoint
       ? {
@@ -429,6 +579,7 @@
           execution_mode: execMode,
           camera_motion: cameraMotion,
           voice: voiceVal,
+          character_lock: charLockVal,
           image_base64: approvedImageUrl ? null : _studioVideoUploadedB64,
           input_image_url: approvedImageUrl || null
         }
@@ -445,11 +596,14 @@
           duration: duration,
           camera_motion: cameraMotion,
           prompt: promptVal || 'organic coherent scene motion from reference image',
+          character_id: characterIdVal || null,
+          character_lock: charLockVal,
           negative_prompt: negVal,
           source_url: sourceUrlVal || null,
           voice: voiceVal,
           image_base64: approvedImageUrl ? null : _studioVideoUploadedB64,
-          input_image_url: approvedImageUrl || null
+          input_image_url: approvedImageUrl || null,
+          end_image_base64: (workflow === 'flf2v' && _studioEndImageB64) ? _studioEndImageB64 : null
         };
 
     window.authFetch(endpoint, {
@@ -511,8 +665,9 @@
     var badge = document.getElementById('studioTaskBadge');
     var hud = document.getElementById('studioHudLog');
     var i2vModel = (document.getElementById('videoI2vModelSelect') || {}).value || 'wan2.1-i2v-14b';
+    var charLock = ((document.getElementById('videoCharLockInput') || {}).value || '').trim();
     if (badge) badge.textContent = '⚡ Görsel Üretiliyor…';
-    if (hud) hud.innerHTML = '• Bulut anahtar kare üretiliyor: "' + esc(promptVal) + '"';
+    if (hud) hud.innerHTML = '⏳ Anahtar kare çiziliyor…';
 
     window.authFetch('/api/studio/preview-image', {
       method: 'POST',
@@ -520,6 +675,7 @@
       body: JSON.stringify({
         channel: (document.getElementById('videoChannelSelect') || {}).value || 'Tech_AI_Fabrika',
         prompt: promptVal,
+        character_lock: charLock,
         style_preset: (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism',
         camera_motion: (document.getElementById('videoCameraSelect') || {}).value || 'otomatik',
         aspect_ratio: (document.getElementById('videoAspectSelect') || {}).value || '16:9'
@@ -528,54 +684,400 @@
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
         if (!res.ok || !res.d || !res.d.success) {
-          if (badge) badge.textContent = '❌ Önizleme Hatası';
-          if (hud) hud.innerHTML += '<br><span style="color:var(--site-danger);">❌ ' + esc((res.d && res.d.detail) || 'Üretilemedi') + '</span>';
+          if (badge) badge.textContent = '❌ Hata';
+          if (hud) hud.innerHTML = '<span style="color:var(--site-danger);">❌ ' + esc((res.d && res.d.detail) || 'Üretilemedi') + '</span>';
           return;
         }
-        if (hud) hud.innerHTML += '<br>• ✅ Sağlayıcı: <strong>' + esc(res.d.provider || 'cloud') + '</strong><br>• 🎨 <code>' + esc(res.d.image_prompt || '') + '</code>';
+        if (hud) hud.innerHTML = '✅ Görsel hazır (' + esc(res.d.provider || 'cloud') + ')';
         _renderPreviewApprove({ status: 'onizleme_hazir', preview_image_url: res.d.preview_image_url }, i2vModel, token());
       })
       .catch(function (err) {
         if (badge) badge.textContent = '❌ Hata';
-        if (hud) hud.innerHTML += '<br>❌ ' + esc(err.message);
+        if (hud) hud.innerHTML = '❌ ' + esc(err.message);
+      });
+  };
+
+  /* ── AI FILM CANVAS (Buzzy AI Tarzı Karakter + Sahne Tuvali) ────────── */
+  function _canvasTotalDuration() {
+    if (!_filmCanvasState || !Array.isArray(_filmCanvasState.scenes)) return 0;
+    return _filmCanvasState.scenes.reduce(function (acc, s) { return acc + (Number(s.duration_sec) || 3); }, 0);
+  }
+
+  function _canvasAnchorRefUrl(excludeIdx) {
+    if (!_filmCanvasState || !Array.isArray(_filmCanvasState.scenes)) return null;
+    for (var i = 0; i < _filmCanvasState.scenes.length; i++) {
+      if (i !== excludeIdx && _filmCanvasState.scenes[i].preview_image_url) {
+        return _filmCanvasState.scenes[i].preview_image_url;
+      }
+    }
+    return null;
+  }
+
+  function _renderFilmCanvas() {
+    var box = document.getElementById('studioStoryboardBox');
+    if (!box || !_filmCanvasState) return;
+    var st = _filmCanvasState;
+    var tk = token();
+    var ratio = st.aspect_ratio || '16:9';
+    var thumbCls = ratio === '9:16' ? ' portrait' : (ratio === '1:1' ? ' square' : '');
+    var totalDur = _canvasTotalDuration().toFixed(1);
+    var drawnCount = st.scenes.filter(function (s) { return Boolean(s.preview_image_url); }).length;
+
+    var charChipsHtml = (st.characters && st.characters.length)
+      ? '<div class="vstudio-char-strip">' + st.characters.map(function (c) {
+          return '<div class="vstudio-char-chip">' +
+            '<strong>🎭 ' + esc(c.name || 'Karakter') + (c.role ? ' · ' + esc(c.role) : '') + '</strong>' +
+            '<span>' + esc(c.visual_anchor || '') + '</span></div>';
+        }).join('') + '</div>'
+      : '';
+
+    var shotsHtml = st.scenes.map(function (sc, idx) {
+      var imgTag = sc.preview_image_url
+        ? '<img src="' + esc(sc.preview_image_url + (sc.preview_image_url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk)) + '" alt="Sahne ' + (idx + 1) + '">'
+        : '<div style="text-align:center; padding:14px; color:var(--site-text-faint); font-size:0.78rem;">' +
+            (sc.busy ? '⏳ Çiziliyor…' : '🖼️ Henüz çizilmedi') + '</div>';
+
+      var chatBlock = sc.chatOpen
+        ? '<div class="vstudio-shot-chat">' +
+            '<input type="text" class="site-input" id="canvasShotChatInp_' + idx + '" style="font-size:0.78rem; padding:7px 10px;" ' +
+              'placeholder="Nasıl değiştirelim? (ör. daha yakın, gece ışığı)" value="' + esc(sc.lastInstruction || '') + '" />' +
+            '<div style="display:flex; gap:6px;">' +
+              '<button type="button" class="site-btn site-btn-primary" style="flex:1; padding:6px 10px; font-size:0.76rem;" onclick="reviseCanvasShot(' + idx + ')"' + (sc.busy ? ' disabled' : '') + '>✨ Uygula</button>' +
+              '<button type="button" class="site-btn site-btn-ghost" style="padding:6px 10px; font-size:0.76rem;" onclick="toggleCanvasShotChat(' + idx + ')">Kapat</button>' +
+            '</div>' +
+          '</div>'
+        : '';
+
+      return '<article class="vstudio-shot-card">' +
+        '<div class="vstudio-shot-thumb' + thumbCls + '">' + imgTag + '</div>' +
+        '<div class="vstudio-shot-meta">' +
+          '<strong>' + esc((idx + 1) + '. ' + (sc.title || ('Sahne ' + (idx + 1)))) + '</strong>' +
+          '<label style="display:flex; align-items:center; gap:4px; color:var(--site-text-dim);">' +
+            '<input type="number" min="1.5" max="15" step="0.5" class="site-input vstudio-shot-dur" value="' + esc(sc.duration_sec || 3) + '" onchange="updateCanvasShotDuration(' + idx + ', this.value)" />sn' +
+          '</label>' +
+        '</div>' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          '<button type="button" class="site-chip-btn" onclick="renderCanvasShot(' + idx + ')"' + (sc.busy ? ' disabled' : '') + '>' + (sc.preview_image_url ? '🔄 Yeniden' : '⚡ Çiz') + '</button>' +
+          '<button type="button" class="site-chip-btn" onclick="toggleCanvasShotChat(' + idx + ')">✏️ Düzenle</button>' +
+          (sc.preview_image_url ? '<button type="button" class="site-chip-btn" onclick="animateCanvasShot(' + idx + ')">🎬 I2V</button>' : '') +
+        '</div>' +
+        (sc.error ? '<div style="font-size:0.72rem; color:var(--site-danger);">' + esc(sc.error) + '</div>' : '') +
+        chatBlock +
+        '</article>';
+    }).join('');
+
+    box.hidden = false;
+    box.innerHTML =
+      '<div class="vstudio-canvas-header">' +
+        '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+          '<h3 style="margin:0; font-size:1.05rem;">🎞️ AI Film Canvas</h3>' +
+          '<span class="site-badge">' + st.scenes.length + ' Sahne · ' + esc(totalDur) + ' sn</span>' +
+          '<span class="site-badge">🔒 Tohum #' + esc(st.seed) + '</span>' +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+          '<div class="vstudio-ratio-pills" role="group" aria-label="Film en-boy oranı">' +
+            ['16:9', '9:16', '1:1'].map(function (r) {
+              return '<button type="button" class="vstudio-ratio-pill' + (ratio === r ? ' active' : '') + '" onclick="setFilmCanvasAspect(\'' + r + '\')">' + r + '</button>';
+            }).join('') +
+          '</div>' +
+          '<button type="button" class="site-btn site-btn-ghost" style="padding:7px 12px; font-size:0.8rem;" onclick="renderAllCanvasShots()">⚡ Tüm Sahneleri Çiz (' + drawnCount + '/' + st.scenes.length + ')</button>' +
+          '<button type="button" class="site-btn site-btn-primary" style="padding:7px 14px; font-size:0.8rem;" onclick="stitchFilmCanvas()">🎬 Filmi Birleştir (MP4)</button>' +
+        '</div>' +
+      '</div>' +
+      charChipsHtml +
+      '<div class="site-studio-row-2" style="gap:10px; margin-bottom:4px;">' +
+        '<div class="site-field" style="margin:0;">' +
+          '<label for="canvasCharBibleInput">🔒 Karakter Kimlik Kilidi (Tüm Sahnelerde Sabit)</label>' +
+          '<input id="canvasCharBibleInput" type="text" class="site-input" style="font-size:0.8rem; padding:8px 10px;" value="' + esc(st.character_bible || '') + '" oninput="updateCanvasCharBible(this.value)" />' +
+        '</div>' +
+        '<div class="site-field" style="margin:0;">' +
+          '<label for="canvasNarrationInput">🎙️ Film Seslendirme Metni</label>' +
+          '<input id="canvasNarrationInput" type="text" class="site-input" style="font-size:0.8rem; padding:8px 10px;" value="' + esc(st.narration_text || '') + '" oninput="updateCanvasNarration(this.value)" />' +
+        '</div>' +
+      '</div>' +
+      '<div class="site-field" style="margin:6px 0 8px;">' +
+        '<label for="canvasBgMusicSelect">🎵 AI Arka Plan Müziği (Opsiyonel · Müzik Stüdyosu Arşivi)</label>' +
+        '<select id="canvasBgMusicSelect" class="site-select" style="font-size:0.8rem; padding:7px 10px;" onchange="updateCanvasMusicJob(this.value)">' +
+          '<option value="">— Arka Plan Müziği Yok —</option>' +
+          _canvasMusicHistoryItems.map(function (m) {
+            var selAttr = (st.music_job_id && st.music_job_id === m.job_id) ? ' selected' : '';
+            return '<option value="' + esc(m.job_id) + '"' + selAttr + '>🎵 ' + esc((m.prompt || m.job_id).slice(0, 60)) + ' (' + esc(m.duration_sec || 30) + ' sn)</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+      '<div class="vstudio-shots-grid">' + shotsHtml + '</div>';
+  }
+
+  window.updateCanvasMusicJob = function (val) {
+    if (_filmCanvasState) _filmCanvasState.music_job_id = String(val || '').trim() || null;
+  };
+
+  window.updateCanvasCharBible = function (val) {
+    if (_filmCanvasState) _filmCanvasState.character_bible = String(val || '').trim();
+  };
+  window.updateCanvasNarration = function (val) {
+    if (_filmCanvasState) _filmCanvasState.narration_text = String(val || '').trim();
+  };
+  window.updateCanvasShotDuration = function (idx, val) {
+    if (!_filmCanvasState || !_filmCanvasState.scenes[idx]) return;
+    var n = Math.max(1.5, Math.min(20, Number(val) || 3));
+    _filmCanvasState.scenes[idx].duration_sec = n;
+    _renderFilmCanvas();
+  };
+  window.setFilmCanvasAspect = function (ratio) {
+    if (!_filmCanvasState) return;
+    _filmCanvasState.aspect_ratio = ratio;
+    var sel = document.getElementById('videoAspectSelect');
+    if (sel) sel.value = ratio;
+    _renderFilmCanvas();
+  };
+  window.toggleCanvasShotChat = function (idx) {
+    if (!_filmCanvasState || !_filmCanvasState.scenes[idx]) return;
+    _filmCanvasState.scenes[idx].chatOpen = !_filmCanvasState.scenes[idx].chatOpen;
+    _renderFilmCanvas();
+    if (_filmCanvasState.scenes[idx].chatOpen) {
+      var inp = document.getElementById('canvasShotChatInp_' + idx);
+      if (inp) inp.focus();
+    }
+  };
+
+  window.renderCanvasShot = function (idx) {
+    if (!_filmCanvasState || !_filmCanvasState.scenes[idx]) return Promise.resolve(false);
+    var st = _filmCanvasState;
+    var sc = st.scenes[idx];
+    sc.busy = true;
+    sc.error = '';
+    _renderFilmCanvas();
+
+    var refUrl = _canvasAnchorRefUrl(idx);
+    return window.authFetch('/api/studio/preview-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: (document.getElementById('videoChannelSelect') || {}).value || 'Tech_AI_Fabrika',
+        prompt: sc.image_prompt,
+        use_planner: false,
+        character_lock: st.character_bible || '',
+        seed: st.seed,
+        reference_image_url: refUrl,
+        style_preset: st.style_preset,
+        camera_motion: st.camera_motion,
+        aspect_ratio: st.aspect_ratio
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        sc.busy = false;
+        if (!res.ok || !res.d || !res.d.success) {
+          sc.error = (res.d && res.d.detail) || 'Görsel üretilemedi.';
+          _renderFilmCanvas();
+          return false;
+        }
+        sc.preview_image_url = res.d.preview_image_url;
+        sc.preview_job_id = res.d.job_id;
+        _renderFilmCanvas();
+        return true;
+      })
+      .catch(function (err) {
+        sc.busy = false;
+        sc.error = err.message;
+        _renderFilmCanvas();
+        return false;
+      });
+  };
+
+  window.renderAllCanvasShots = function () {
+    if (!_filmCanvasState || !_filmCanvasState.scenes.length) return Promise.resolve();
+    var chain = Promise.resolve();
+    _filmCanvasState.scenes.forEach(function (_sc, idx) {
+      chain = chain.then(function () { return window.renderCanvasShot(idx); });
+    });
+    return chain;
+  };
+
+  window.reviseCanvasShot = function (idx) {
+    if (!_filmCanvasState || !_filmCanvasState.scenes[idx]) return;
+    var st = _filmCanvasState;
+    var sc = st.scenes[idx];
+    var inp = document.getElementById('canvasShotChatInp_' + idx);
+    var inst = ((inp && inp.value) || '').trim();
+    if (!inst) { alert('Değişiklik talimatı yazın (ör. daha yakın, gece olsun).'); return; }
+    sc.lastInstruction = inst;
+    sc.busy = true;
+    sc.error = '';
+    _renderFilmCanvas();
+
+    window.authFetch('/api/studio/storyboard/revise-shot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scene_index: idx,
+        image_prompt: sc.image_prompt,
+        motion_prompt: sc.motion_prompt,
+        instruction: inst,
+        character_bible: st.character_bible || '',
+        style_preset: st.style_preset,
+        camera_motion: st.camera_motion,
+        aspect_ratio: st.aspect_ratio,
+        seed: st.seed,
+        reference_image_url: _canvasAnchorRefUrl(idx),
+        regenerate_preview: true
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        sc.busy = false;
+        if (!res.ok || !res.d || !res.d.success) {
+          sc.error = (res.d && res.d.detail) || 'Revize başarısız.';
+          _renderFilmCanvas();
+          return;
+        }
+        sc.image_prompt = res.d.image_prompt || sc.image_prompt;
+        sc.motion_prompt = res.d.motion_prompt || sc.motion_prompt;
+        if (res.d.preview_image_url) {
+          sc.preview_image_url = res.d.preview_image_url;
+          sc.chatOpen = false;
+        } else if (res.d.preview_error) {
+          sc.error = res.d.preview_error;
+        }
+        _renderFilmCanvas();
+      })
+      .catch(function (err) {
+        sc.busy = false;
+        sc.error = err.message;
+        _renderFilmCanvas();
+      });
+  };
+
+  window.animateCanvasShot = function (idx) {
+    if (!_filmCanvasState || !_filmCanvasState.scenes[idx]) return;
+    var sc = _filmCanvasState.scenes[idx];
+    if (!sc.preview_image_url) { alert('Önce bu sahneyi çizin.'); return; }
+    var durSel = document.getElementById('videoDurationSelect');
+    if (durSel && sc.duration_sec) {
+      var rounded = Math.max(4, Math.min(10, Math.round(Number(sc.duration_sec))));
+      if (Array.prototype.some.call(durSel.options, function (o) { return Number(o.value) === rounded; })) {
+        durSel.value = String(rounded);
+      }
+    }
+    var mod = (_liveGpuWorkersCount > 0) ? 'gpu_queue' : 'real_i2v';
+    window.handleStudioVideoSubmit(null, 'wan_i2v', sc.preview_image_url, mod);
+  };
+
+  window.stitchFilmCanvas = function () {
+    if (!_filmCanvasState || !_filmCanvasState.scenes.length) return;
+    var st = _filmCanvasState;
+    var readyShots = st.scenes.filter(function (s) { return Boolean(s.preview_image_url); });
+    if (!readyShots.length) {
+      alert('Önce "Tüm Sahneleri Çiz" ile sahne görsellerini oluşturun.');
+      return;
+    }
+    var badge = document.getElementById('studioTaskBadge');
+    var hud = document.getElementById('studioHudLog');
+    if (badge) { badge.textContent = '🎬 Film Birleştiriliyor…'; badge.className = 'site-badge site-badge-auto'; }
+    if (hud) hud.innerHTML = '⏳ ' + readyShots.length + ' sahne (' + _canvasTotalDuration().toFixed(1) + ' sn) tek MP4 filmde birleştiriliyor…';
+
+    window.authFetch('/api/studio/stitch-clips', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel: (document.getElementById('videoChannelSelect') || {}).value || 'Tech_AI_Fabrika',
+        prompt: st.prompt,
+        narration_text: st.narration_text,
+        character_bible: st.character_bible,
+        aspect_ratio: st.aspect_ratio,
+        voice: (document.getElementById('videoVoiceSelect') || {}).value || 'Aoede',
+        music_job_id: st.music_job_id || ((document.getElementById('canvasBgMusicSelect') || {}).value || '') || null,
+        shots: readyShots.map(function (s) {
+          return {
+            preview_image_url: s.preview_image_url,
+            duration_sec: Number(s.duration_sec) || 3.5,
+            camera_motion: st.camera_motion || 'otomatik',
+            motion_prompt: s.motion_prompt || ''
+          };
+        })
+      })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.success || !res.d.job) {
+          if (badge) badge.textContent = '❌ Birleştirme Hatası';
+          if (hud) hud.innerHTML = '<span style="color:var(--site-danger);">❌ ' + esc((res.d && res.d.detail) || 'Film birleştirilemedi.') + '</span>';
+          return;
+        }
+        _renderVideoPlayer(res.d.job, token());
+        var stage = document.getElementById('studioStageArea');
+        if (stage && stage.scrollIntoView) stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      })
+      .catch(function (err) {
+        if (badge) badge.textContent = '❌ Hata';
+        if (hud) hud.innerHTML = '❌ ' + esc(err.message);
       });
   };
 
   window.handlePlanStoryboard = function () {
     var promptVal = ((document.getElementById('videoPromptInput') || {}).value || '').trim();
     var box = document.getElementById('studioStoryboardBox');
-    if (!promptVal || !box) { alert('Storyboard için konu/prompt girin.'); return; }
+    if (!promptVal || !box) { alert('Film fikri / konu yazın.'); return; }
+    var stylePreset = (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism';
+    var camMotion = (document.getElementById('videoCameraSelect') || {}).value || 'otomatik';
+    var aspect = (document.getElementById('videoAspectSelect') || {}).value || '16:9';
+    var duration = Number((document.getElementById('videoDurationSelect') || {}).value || 12);
+    var sceneCount = Number((document.getElementById('canvasSceneCountSelect') || {}).value || 4);
+    var charLock = ((document.getElementById('videoCharLockInput') || {}).value || '').trim();
+
     box.hidden = false;
-    box.innerHTML = '<span style="font-size:0.82rem; color:var(--site-accent);">⏳ 3 sahneli storyboard hazırlanıyor…</span>';
+    box.innerHTML = '<div style="font-size:0.86rem; color:var(--site-accent); padding:10px;">⏳ Karakterler ve ' + sceneCount + ' sahneli film planı oluşturuluyor…</div>';
+
     window.authFetch('/api/studio/storyboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: promptVal,
-        style_preset: (document.getElementById('videoStyleSelect') || {}).value || 'cinematic_realism',
-        camera_motion: (document.getElementById('videoCameraSelect') || {}).value || 'otomatik',
-        scene_count: 3,
-        duration: Number((document.getElementById('videoDurationSelect') || {}).value || 15)
+        character_lock: charLock,
+        style_preset: stylePreset,
+        camera_motion: camMotion,
+        aspect_ratio: aspect,
+        scene_count: sceneCount,
+        duration: duration
       })
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d || !d.success || !Array.isArray(d.scenes)) {
-          box.innerHTML = '<span style="color:var(--site-danger);">' + esc((d && d.detail) || 'Storyboard oluşturulamadı.') + '</span>';
+          box.innerHTML = '<span style="color:var(--site-danger);">' + esc((d && d.detail) || 'Film planı oluşturulamadı.') + '</span>';
           return;
         }
-        box.innerHTML = '<div style="font-size:0.8rem; margin-bottom:8px;"><strong>🎙️ Anlatım:</strong> <em>' + esc(d.narration_text || '') + '</em></div>' +
-          d.scenes.map(function (s, i) {
-            return '<div style="border-top:1px solid var(--site-border); padding-top:6px; margin-top:6px; font-size:0.76rem;">' +
-              '<strong>Sahne ' + (i + 1) + ':</strong> <code>' + esc(s.image_prompt) + '</code> ' +
-              '<button type="button" class="site-chip-btn" style="margin-left:6px;" data-sb-idx="' + i + '">⚡ Önizle</button></div>';
-          }).join('');
-        box.querySelectorAll('[data-sb-idx]').forEach(function (b) {
-          b.addEventListener('click', function () {
-            var sc = d.scenes[Number(b.getAttribute('data-sb-idx'))];
-            if (sc) window.handleInstantCloudPreview(sc.image_prompt);
-          });
-        });
+        _filmCanvasState = {
+          prompt: promptVal,
+          narration_text: d.narration_text || promptVal,
+          character_bible: d.character_bible || charLock || '',
+          characters: Array.isArray(d.characters) ? d.characters : [],
+          style_anchor: d.style_anchor || '',
+          seed: d.seed || 42,
+          aspect_ratio: d.aspect_ratio || aspect,
+          style_preset: stylePreset,
+          camera_motion: camMotion,
+          scenes: d.scenes.map(function (s, idx) {
+            return {
+              index: idx + 1,
+              title: s.title || ('Sahne ' + (idx + 1)),
+              shot_type: s.shot_type || 'wide',
+              duration_sec: Number(s.duration_sec) || Number((duration / d.scenes.length).toFixed(1)),
+              image_prompt: s.image_prompt || '',
+              motion_prompt: s.motion_prompt || '',
+              preview_image_url: null,
+              chatOpen: false,
+              busy: false,
+              error: ''
+            };
+          })
+        };
+        var lockInp = document.getElementById('videoCharLockInput');
+        if (lockInp && !lockInp.value.trim() && _filmCanvasState.character_bible) {
+          lockInp.value = _filmCanvasState.character_bible;
+        }
+        _renderFilmCanvas();
       })
       .catch(function (err) { box.innerHTML = '<span style="color:var(--site-danger);">' + esc(err.message) + '</span>'; });
   };
@@ -655,10 +1157,12 @@
           var u = it.output_url || '';
           var tam = u ? (u + (u.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk)) : '';
           var kb = it.size_kb || (it.file_size_bytes ? Math.round(Number(it.file_size_bytes) / 1024) : 0);
+          var durS = Number(it.duration_sec || (it.kalite_raporu && it.kalite_raporu.sure_sn) || it.sure_sn || 0);
+          var metaTxt = [it.resolution || '', durS > 0 ? (durS.toFixed(1) + ' sn') : '', kb ? (kb + ' KB') : ''].filter(Boolean).join(' · ');
           return '<article class="site-card">' +
             '<div style="display:flex; justify-content:space-between; gap:6px; margin-bottom:8px; flex-wrap:wrap;">' +
             '<span class="site-badge ' + (it.simulasyon ? 'site-badge-auto' : 'site-badge-free') + '">' + esc(it.status || 'hazır') + '</span>' +
-            '<span style="font-size:0.74rem; color:var(--site-text-faint);">' + esc(it.resolution || '') + (kb ? ' · ' + kb + ' KB' : '') + '</span></div>' +
+            '<span style="font-size:0.74rem; color:var(--site-text-faint);">' + esc(metaTxt) + '</span></div>' +
             '<video controls playsinline preload="metadata" src="' + esc(tam) + '" style="width:100%; max-height:220px; border-radius:8px; background:#000; margin-bottom:8px;"></video>' +
             '<p style="font-size:0.8rem; margin:0 0 10px;">' + esc(it.prompt || it.job_id) + '</p>' +
             '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
@@ -1083,7 +1587,7 @@
         if (stEl) {
           stEl.textContent = d && d.success
             ? ('✅ Kaydedildi' + (d.pushed_to_mac ? ' ve Mac köprüsüne aktarıldı!' : '! Şimdi Test Maili Gönder düğmesine basabilirsiniz.'))
-            : '❌ Kaydedilemedi.';
+            : ('❌ ' + ((d && d.detail) || 'Kaydedilemedi.'));
         }
         window.loadContactInbox();
       })
@@ -1116,9 +1620,13 @@
         if (!d) return;
         var nf = d.notifier || {};
         if (hintEl) {
-          hintEl.textContent = nf.any_live_channel
-            ? ('🟢 Bildirim aktif — E-posta: ' + (nf.email_configured ? nf.email_method : 'kapalı') + ' · Telegram: ' + (nf.telegram_configured ? 'açık' : 'kapalı'))
-            : ('⚠️ ' + (nf.hint || 'Otomatik e-posta/Telegram bağlı değil.'));
+          if (nf.smtp_warning && !nf.email_configured) {
+            hintEl.textContent = '⚠️ ' + nf.smtp_warning;
+          } else {
+            hintEl.textContent = nf.any_live_channel
+              ? ('🟢 Bildirim aktif — E-posta: ' + (nf.email_configured ? nf.email_method : 'kapalı') + ' · Telegram: ' + (nf.telegram_configured ? 'açık' : 'kapalı'))
+              : ('⚠️ ' + (nf.hint || 'Otomatik e-posta/Telegram bağlı değil.'));
+          }
         }
         var items = Array.isArray(d.items) ? d.items : [];
         if (!items.length) {

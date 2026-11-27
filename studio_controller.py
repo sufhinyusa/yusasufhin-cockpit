@@ -467,6 +467,7 @@ class VideoStudioController:
         render_target: str = "kaggle_32gb",
         aspect_ratio: str = "16:9",
         voice: Optional[str] = None,
+        duration_sec: float = 5.0,
     ) -> VideoJobSpec:
         """Yeni bir video görevi başlatır, dosyalarını üretir ve kuyruğa yazar."""
         job_id = f"JOB-{int(time.time()*1000)}-{os.urandom(3).hex()}"
@@ -540,7 +541,8 @@ class VideoStudioController:
             logger.debug("[VideoStudioController] Gemini TTS atlandı: %s", e_tts)
             spoken_dur = None
 
-        final_dur = spoken_dur or 5.0
+        requested_dur = max(3.0, min(60.0, float(duration_sec or 5.0)))
+        final_dur = max(requested_dur, spoken_dur or 0.0)
 
         # GERÇEK YZ VİDEO HATTI (2026-11-10 ikinci onarım)
         # ÖNCEKİ DURUM: video, prompt metnini kareye basan TEK statik karttı
@@ -566,6 +568,7 @@ class VideoStudioController:
                 yukseklik=h_val,
                 sahne_sayisi=3,
                 sahne_sure_sn=3.0,
+                hedef_sure_sn=requested_dur,
                 ses_yolu=speech_wav if spoken_dur else None,
                 log=lambda m: logger.info("[AIVideo] %s", m),
             )

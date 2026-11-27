@@ -65,7 +65,7 @@ def _ag_bagimliligi_kapat(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolate_test_environment(tmp_path, monkeypatch):
-    """Testlerin üretim veri dosyalarını (video_jobs, rea_scans) kirletmesini önler."""
+    """Testlerin üretim veri dosyalarını kirletmesini ve gerçek Telegram/SMTP bildirimi atmasını önler."""
     test_data = tmp_path / "data"
     test_data.mkdir()
     monkeypatch.setattr(main, "DATA_DIR", test_data)
@@ -73,6 +73,35 @@ def isolate_test_environment(tmp_path, monkeypatch):
     main.REVOKED_TOKENS.clear()
     main._TOKEN_MIN_CREATED_AT = 0.0
     FAILED_ATTEMPTS.clear()
+
+    # Gerçek Persona/.env'deki Telegram/SMTP/Resend anahtarları pytest koşularında ASLA sızıp bildirim atmamalı!
+    _blocked_notify_keys = {
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "SMTP_PASS",
+        "SMTP_HOST",
+        "SMTP_USER",
+        "SMTP_PORT",
+        "RESEND_API_KEY",
+    }
+    orig_get_secret = main.get_secret_from_env
+
+    def _safe_get_secret(key_name: str):
+        if str(key_name or "").upper() in _blocked_notify_keys:
+            val = os.environ.get(key_name)
+            return val.strip().strip('"').strip("'") if val else None
+        return orig_get_secret(key_name)
+
+    monkeypatch.setattr(main, "get_secret_from_env", _safe_get_secret)
+    try:
+        import contact_notifier as cn
+        monkeypatch.setattr(
+            cn,
+            "_send_via_telegram",
+            lambda *a, **kw: {"ok": False, "error": "blocked_in_pytest"},
+        )
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -1564,13 +1593,13 @@ def test_auto_execution_mode_and_cache_version_consistency(client, auth_headers,
         fab_txt = (Path(__file__).resolve().parent.parent / "static" / "fabrika.html").read_text(encoding="utf-8")
         site_css = (Path(__file__).resolve().parent.parent / "static" / "site.css").read_text(encoding="utf-8")
         styles_css = (Path(__file__).resolve().parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
-        assert "/lab.js?v=33" in sw_txt
-        assert "/lab.js?v=33" in lab_txt
-        assert "/site.css?v=30" in idx_txt and "/site.css?v=30" in lab_txt
+        assert "/lab.js?v=34" in sw_txt
+        assert "/lab.js?v=34" in lab_txt
+        assert "/site.css?v=34" in idx_txt and "/site.css?v=34" in lab_txt
         assert "/styles.css?v=9" in fab_txt
-        assert "fabrika-pwa-v33-mobile" in sw_txt
-        assert "fabrika-pwa-v33-mobile" in lab_txt
-        assert "fabrika-pwa-v33-mobile" in fab_txt
+        assert "fabrika-pwa-v34-mobile" in sw_txt
+        assert "fabrika-pwa-v34-mobile" in lab_txt
+        assert "fabrika-pwa-v34-mobile" in fab_txt
         fab_js = (Path(__file__).resolve().parent.parent / "static" / "fabrika_desktop.js").read_text(encoding="utf-8")
         assert "window.sendUiAction(willWake ? 'wake' : 'sleep')" in fab_js
         assert "sendUiAction('music_mode')" not in fab_js
@@ -2685,3 +2714,196 @@ def test_v33_locked_camera_real_tts_kaggle_music_and_button_audit(client, auth_h
     ):
         ra = client.get(api_path, headers=auth_headers)
         assert ra.status_code == 200, f"{api_path} failed: {ra.status_code}"
+
+
+def test_v34_duration_consistency_character_bible_and_film_canvas(client, auth_headers, monkeypatch, tmp_path):
+    """v34: 10s seçildiğinde kısa ses videoyu kesmez, GPU son-kare I2V zinciri çalışır, AI Film Canvas & karakter kilidi."""
+    import struct
+    import wave
+    import ai_video_montaj as avm
+    import gpu_worker as gw
+    import hyperframes_motor as hf
+    import main as main_mod
+    import prompt_director as pd
+    from video_render import video_kalite_denetle
+
+    # 1. Kısa TTS sesi (3 sn) 10 sn'lik videoyu `-shortest` ile 3 sn'ye KESMEMELİ!
+    short_wav = tmp_path / "short_tts.wav"
+    with wave.open(str(short_wav), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(24000)
+        wf.writeframes(struct.pack("<h", 0) * (24000 * 3))
+
+    frame_png = tmp_path / "hero.png"
+    hf._kinetic_card_png(frame_png, "Hero", "10s duration check", 640, 360)
+
+    out_10s = tmp_path / "instant_10s.mp4"
+    res_i2v = hf.instant_i2v_motion(
+        frame_png, out_10s, duration_sec=10.0, audio_path=short_wav, camera_motion="push_in"
+    )
+    assert res_i2v["ok"] is True
+    kal_10s = video_kalite_denetle(out_10s)
+    assert kal_10s["gecerli"] is True
+    assert float(kal_10s["sure_sn"]) >= 9.4, f"10s istendi ama {kal_10s['sure_sn']}s üretildi!"
+
+    # 2. Çok sahneli HyperFrames 10s istendiğinde (kısa 3s ses ile!) xfade telafisiyle ~10s üretmeli!
+    def fast_prev(prompt, hedef_yol, genislik=1280, yukseklik=720, **kw):
+        hf._kinetic_card_png(hedef_yol, "Scene", prompt[:40], 640, 360)
+        return {"ok": True, "provider": "test_mock"}
+
+    monkeypatch.setattr(avm, "preview_single_image", fast_prev)
+    hf_10s = tmp_path / "hf_10s.mp4"
+    res_hf = hf.hyperframes_studio_render(
+        hf_10s, tmp_path / "hf_10s.html",
+        prompt="Ejderha ve şövalye",
+        image_prompts=["scene 1 dragon", "scene 2 knight", "scene 3 forest"],
+        duration_sec=10.0,
+        audio_path=short_wav,
+    )
+    assert res_hf["ok"] is True
+    assert float(res_hf["duration_sec"]) >= 9.4, f"HyperFrames 10s istendi ama {res_hf['duration_sec']}s üretildi!"
+
+    # 3. GPU worker uzun video (10s > 5s) için son-kare zincirleme planı + gerçek 2 segment birleştirme
+    segs_10 = gw._i2v_segment_planla(10.0, 5.0)
+    assert len(segs_10) == 2 and sum(segs_10) >= 9.9
+    segs_12_ltx = gw._i2v_segment_planla(12.0, 4.0)
+    assert len(segs_12_ltx) == 3 and sum(segs_12_ltx) >= 11.9
+
+    # Mock tek geçiş I2V ile 10s zincirleme uçtan uca doğrulama
+    call_log = []
+
+    def fake_single_pass(gorsel_yolu, prompt, repo, w, h, neg_prompt="", sure_sn=5.0, adim=20, tohum=42, log=print):
+        call_log.append({"img": str(gorsel_yolu), "sure_sn": sure_sn, "tohum": tohum})
+        part_mp4 = tmp_path / f"gpu_part_{len(call_log)}.mp4"
+        hf.instant_i2v_motion(Path(gorsel_yolu), part_mp4, duration_sec=sure_sn, camera_motion="push_in")
+        return part_mp4
+
+    monkeypatch.setattr(gw, "_tek_gecis_i2v_uret", fake_single_pass)
+    chained_mp4 = gw.secimli_i2v_uret(frame_png, "knight rides dragon", "wan2.1-i2v-14b", 480, 320, sure_sn=10.0, tohum=77)
+    try:
+        assert len(call_log) == 2
+        assert call_log[1]["img"] != str(frame_png)  # 2. segment 1. segmentin son karesinden beslenmeli!
+        kal_chain = video_kalite_denetle(chained_mp4)
+        assert float(kal_chain["sure_sn"]) >= 9.5
+    finally:
+        chained_mp4.unlink(missing_ok=True)
+
+    # 4. Karakter Kimlik Kilidi (Character Bible) + AI Film Canvas (/api/studio/storyboard + /revise-shot + /stitch-clips)
+    for k in list(os.environ):
+        if "GEMINI_API_KEY" in k.upper():
+            monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    monkeypatch.delenv("CF_API_TOKEN", raising=False)
+
+    created_ids = []
+    try:
+        r_sb = client.post("/api/studio/storyboard", headers=auth_headers, json={
+            "prompt": "Ejderhaların, grifonların ve zırhlı şövalyelerin olduğu ormanda epik fantastik film",
+            "character_lock": "silver engraved plate armor knight with crimson cloak and braided dark hair",
+            "scene_count": 3,
+            "duration": 10,
+            "aspect_ratio": "16:9",
+        })
+        assert r_sb.status_code == 200
+        sb = r_sb.json()
+        assert sb["success"] is True
+        assert "silver engraved plate armor knight" in sb["character_bible"].lower()
+        assert len(sb["scenes"]) == 3
+        assert abs(sum(s["duration_sec"] for s in sb["scenes"]) - 10.0) <= 0.2
+        for sc in sb["scenes"]:
+            assert "silver engraved plate armor knight" in sc["image_prompt"].lower()
+
+        # Tek sahneyi sohbet talimatıyla revize et — karakter kilidi korunmalı + yeni önizleme dönmeli!
+        r_rev = client.post("/api/studio/storyboard/revise-shot", headers=auth_headers, json={
+            "scene_index": 1,
+            "image_prompt": sb["scenes"][1]["image_prompt"],
+            "motion_prompt": sb["scenes"][1]["motion_prompt"],
+            "instruction": "daha yakın çekim ve gece yağmurlu olsun",
+            "character_bible": sb["character_bible"],
+            "seed": sb["seed"],
+            "aspect_ratio": "16:9",
+            "regenerate_preview": True,
+        })
+        assert r_rev.status_code == 200
+        rev = r_rev.json()
+        assert rev["success"] is True
+        if rev.get("job_id"):
+            created_ids.append(rev["job_id"])
+        assert "silver engraved plate armor knight" in rev["image_prompt"].lower()
+        assert "night" in rev["image_prompt"].lower() or "rain" in rev["image_prompt"].lower()
+        assert rev["preview_image_url"].startswith("/api/media/file?path=")
+
+        # AI Film Canvas sahnelerini tek tam-süreli (10 sn) MP4 filmde birleştir
+        r_stitch = client.post("/api/studio/stitch-clips", headers=auth_headers, json={
+            "prompt": "Epik fantastik film",
+            "aspect_ratio": "16:9",
+            "voice": "none",
+            "shots": [
+                {"preview_image_url": rev["preview_image_url"], "duration_sec": 5.0, "camera_motion": "push_in"},
+                {"preview_image_url": rev["preview_image_url"], "duration_sec": 5.0, "camera_motion": "pull_out"},
+            ],
+        })
+        assert r_stitch.status_code == 200
+        st_job = r_stitch.json()["job"]
+        created_ids.append(st_job["job_id"])
+        assert st_job["method"] == "film_canvas_stitch"
+        assert float(st_job["duration_sec"]) >= 9.4
+
+        # 5. Sadeleştirilmiş Video Stüdyosu UI denetimi (Gelişmiş Ayarlar katlı + AI Film Canvas sekmesi + Karakter Kilidi)
+        root_dir = Path(__file__).resolve().parent.parent / "static"
+        lab_html = (root_dir / "lab.html").read_text(encoding="utf-8")
+        assert 'id="studioAdvancedDrawer"' in lab_html
+        assert 'id="videoCharLockInput"' in lab_html
+        assert 'id="vModeCanvasBtn"' in lab_html
+        assert '<option value="10">10 sn</option>' in lab_html
+        assert '<option value="15">15 sn</option>' in lab_html
+        lab_js = (root_dir / "lab.js").read_text(encoding="utf-8")
+        assert "reviseCanvasShot" in lab_js and "stitchFilmCanvas" in lab_js
+        assert "/api/studio/storyboard/revise-shot" in lab_js
+    finally:
+        for jid in created_ids:
+            for p in main_mod.MEDIA_DIR.glob(f"{jid}*"):
+                p.unlink(missing_ok=True)
+
+
+def test_v35_email_app_password_validation_and_no_telegram_spam_on_email_test(client, auth_headers, monkeypatch):
+    """v35: Gmail normal şifresi dürüstçe reddedilir, /api/contact/test Telegram spamlamaz, pytest .env sızdırmaz."""
+    import contact_notifier as cn
+    from mac_bridge import bridge_hub
+
+    # 1. Geçersiz Gmail parola biçimi (normal şifre) notifier_status'te sahte aktif görünmemeli
+    st_bad = cn.notifier_status(
+        lambda k: {"SMTP_HOST": "smtp.gmail.com", "SMTP_USER": "ys@yusasufhin.com", "SMTP_PASS": "NormalParola12345678"}.get(k)
+    )
+    assert st_bad["email_configured"] is False
+    assert st_bad["smtp_configured"] is False
+    assert st_bad["smtp_warning"] and "apppasswords" in st_bad["smtp_warning"]
+
+    # 2. /api/contact/config geçersiz Gmail parolasını 400 ile açık gerekçeyle reddetmeli
+    r_bad_cfg = client.post(
+        "/api/contact/config",
+        headers=auth_headers,
+        json={"smtp_pass": "NormalParola12345678", "to_email": "ys@yusasufhin.com"},
+    )
+    assert r_bad_cfg.status_code == 400
+    assert "apppasswords" in r_bad_cfg.json()["detail"]
+
+    # 3. /api/contact/test ASLA Telegram göndermemeli (send_telegram=False)
+    tg_calls = []
+    relay_payloads = []
+    monkeypatch.setattr(cn, "_send_via_telegram", lambda *a, **kw: (tg_calls.append(a) or {"ok": True, "error": None}))
+    monkeypatch.setattr(
+        bridge_hub,
+        "relay_contact_email",
+        lambda payload, **kw: (relay_payloads.append(payload) or {"email_sent": False, "telegram_sent": False, "error": "535 BadCredentials"}),
+    )
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake_tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
+    r_test = client.post("/api/contact/test", headers=auth_headers)
+    assert r_test.status_code == 200
+    assert r_test.json()["email_sent"] is False
+    assert r_test.json()["telegram_sent"] is False
+    assert tg_calls == []
+    assert relay_payloads and relay_payloads[-1]["send_telegram"] is False
+

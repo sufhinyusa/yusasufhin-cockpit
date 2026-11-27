@@ -15,6 +15,7 @@ Bu modül her kullanıcı istemini 3 ayrı parçaya böler:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -127,6 +128,26 @@ _VISUAL_STEM_MAP: Tuple[Tuple[str, str], ...] = (
     ("animasyon", "vibrant 3D animated scene with stylized charming character geometry"),
     ("anime", "crisp 2D anime keyframe illustration with expressive cel-shaded lighting"),
     ("kitap", "glowing open antique book with golden illuminated pages"),
+    # Fantastik, Epik Film & Karakter Öğeleri (Buzzy AI tarzı film senaryoları)
+    ("ejderha", "colossal fire-breathing dragon with iridescent obsidian scales, wide leathery wings, and glowing amber eyes"),
+    ("grifon", "majestic winged griffin with golden eagle head, feathered wings, and muscular lion body"),
+    ("sovalye", "armored medieval knight in weathered engraved steel plate armor and crimson cloak"),
+    ("şövalye", "armored medieval knight in weathered engraved steel plate armor and crimson cloak"),
+    ("zirh", "intricate engraved silver-steel medieval plate armor"),
+    ("zırh", "intricate engraved silver-steel medieval plate armor"),
+    ("kale", "towering ancient stone fortress castle overlooking misty emerald cliffs"),
+    ("sato", "gothic stone mountain castle rising through golden clouds"),
+    ("şato", "gothic stone mountain castle rising through golden clouds"),
+    ("buyucu", "robed fantasy mage holding a glowing crystal wooden staff"),
+    ("büyücü", "robed fantasy mage holding a glowing crystal wooden staff"),
+    ("savasci", "heroic fantasy warrior with distinct scarred face and engraved steel armor"),
+    ("savaşçı", "heroic fantasy warrior with distinct scarred face and engraved steel armor"),
+    ("astronot", "detailed white-and-gold spacesuit astronaut with reflective visor"),
+    ("uzay gemisi", "sleek futuristic starship gliding past luminous planetary rings"),
+    ("gece", "dramatic moonlit night atmosphere with cool blue rim lighting"),
+    ("gunduz", "bright natural golden-hour daylight streaming across the scene"),
+    ("gündüz", "bright natural golden-hour daylight streaming across the scene"),
+    ("sis", "atmospheric drifting volumetric mist weaving through the background"),
 )
 
 
@@ -137,6 +158,8 @@ def _gemini_keys() -> List[str]:
             val = v.strip().strip("\"'")
             if val not in keys:
                 keys.append(val)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return keys
     for p in (
         Path(__file__).resolve().parent / ".env",
         Path.home() / "Desktop" / "PYTHON PROJECTS" / "Fabrika" / "Persona" / ".env",
@@ -293,6 +316,87 @@ def _cf_credentials() -> Tuple[Optional[str], Optional[str]]:
     return token, hesap
 
 
+def _stable_seed(text: str, explicit_seed: Optional[int] = None) -> int:
+    if explicit_seed is not None:
+        try:
+            v = int(explicit_seed)
+            if v > 0:
+                return v % 2_147_483_647
+        except (TypeError, ValueError):
+            pass
+    digest = hashlib.sha256((text or "yusasufhin").encode("utf-8")).hexdigest()[:8]
+    return (int(digest, 16) % 900_000) + 1000
+
+
+def _distribute_scene_durations(count: int, total_duration_sec: float) -> List[float]:
+    n = max(1, int(count))
+    total = max(3.0, min(120.0, float(total_duration_sec or 5.0)))
+    base = round(total / n, 2)
+    durs = [base] * n
+    fark = round(total - sum(durs), 2)
+    durs[-1] = round(max(1.5, durs[-1] + fark), 2)
+    return durs
+
+
+def _inject_character_lock(image_prompt: str, character_bible: str) -> str:
+    ip = str(image_prompt or "").strip()
+    bible = str(character_bible or "").strip()
+    if not bible:
+        return ip
+    ip_low = ip.lower()
+    if bible.lower() in ip_low:
+        return ip
+    stop = {"with", "from", "that", "this", "same", "consistent", "wearing", "holding", "and", "the"}
+    tokens = [w for w in re.findall(r"[a-z]{4,}", bible.lower()) if w not in stop]
+    if tokens and all(t in ip_low for t in tokens):
+        return ip
+    return f"Consistent character identity: {bible}; {ip}"
+
+
+def _build_offline_characters(prompt: str, character_lock: str, core_en: str, style_preset: str) -> Tuple[str, List[Dict[str, str]]]:
+    """Çevrimdışı senaryo için sabit karakter kimlik kartı (Character Bible) üretir."""
+    lock_clean = str(character_lock or "").strip()
+    if lock_clean:
+        if _is_turkish_text(lock_clean):
+            lock_en, _ = _offline_visual_grounding(lock_clean, style_preset)
+        else:
+            lock_en = lock_clean
+        return lock_en[:320], [{"name": "Kilitli Karakter", "role": "Ana Karakter", "visual_anchor": lock_en[:240]}]
+
+    folded = _tr_ascii_fold(prompt or "")
+    chars: List[Dict[str, str]] = []
+    anchors: List[str] = []
+    catalog = (
+        ("ejderha", "Ejderha", "Yaratık", "colossal fire-breathing dragon with iridescent obsidian scales and glowing amber eyes"),
+        ("grifon", "Grifon", "Yaratık", "majestic winged griffin with golden eagle head and lion body"),
+        ("sovalye", "Zırhlı Şövalye", "Kahraman", "armored medieval knight in weathered engraved silver-steel plate armor and crimson cloak"),
+        ("savasci", "Savaşçı", "Kahraman", "heroic warrior in weathered engraved armor with distinct determined expression"),
+        ("buyucu", "Büyücü", "Bilge", "robed fantasy mage carrying a luminous crystal wooden staff"),
+        ("robot", "Minik Robot", "Başrol", "expressive compact stylized companion robot with warm glowing cyan eyes and brushed metallic shell"),
+        ("baykus", "Baykuş", "Yoldaş", "fluffy expressive horned owl with bright amber eyes"),
+        ("astronot", "Astronot", "Kaşif", "astronaut in detailed white-and-gold spacesuit with reflective golden visor"),
+        ("adam", "Ana Figür", "Başrol", "heroic robed man with consistent facial features and flowing dark-blue garments"),
+        ("kadin", "Ana Figür", "Başrol", "graceful luminous woman with consistent facial features and flowing garments"),
+        ("kedi", "Kedi", "Başrol", "distinctive fluffy ginger-and-white cat with bright green eyes"),
+        ("kopek", "Köpek", "Başrol", "loyal golden retriever dog with warm expressive eyes"),
+    )
+    for stem, ad, rol, anc in catalog:
+        if stem in folded:
+            chars.append({"name": ad, "role": rol, "visual_anchor": anc})
+            anchors.append(anc)
+            if len(chars) >= 3:
+                break
+
+    if not chars:
+        first_chunk = (core_en or "").split(",")[0].strip()
+        if first_chunk and not _looks_like_untranslated_turkish(first_chunk):
+            chars.append({"name": "Ana Özne", "role": "Odak", "visual_anchor": first_chunk[:200]})
+            anchors.append(first_chunk[:200])
+
+    bible = "; ".join(anchors)[:360]
+    return bible, chars
+
+
 def _normalize_plan_dict(parsed: Dict[str, Any], scene_count: int, cam_hint: str, source_tag: str) -> Optional[Dict[str, Any]]:
     raw_scenes = [s for s in (parsed.get("scenes") or []) if isinstance(s, dict) and s.get("image_prompt")]
     scenes = [
@@ -300,8 +404,29 @@ def _normalize_plan_dict(parsed: Dict[str, Any], scene_count: int, cam_hint: str
         if not _looks_like_untranslated_turkish(str(s.get("image_prompt") or ""))
     ]
     if scenes and parsed.get("narration_text"):
+        raw_bible = str(parsed.get("character_bible") or "").strip()
+        if raw_bible and _looks_like_untranslated_turkish(raw_bible):
+            raw_bible = ""
+        raw_chars: List[Dict[str, str]] = []
+        for c in (parsed.get("characters") or []):
+            if isinstance(c, dict) and (c.get("name") or c.get("visual_anchor")):
+                anc = str(c.get("visual_anchor") or "").strip()
+                if anc and not _looks_like_untranslated_turkish(anc):
+                    raw_chars.append({
+                        "name": str(c.get("name") or "Karakter").strip()[:48],
+                        "role": str(c.get("role") or "Başrol").strip()[:48],
+                        "visual_anchor": anc[:260],
+                    })
+        if not raw_bible and raw_chars:
+            raw_bible = "; ".join(c["visual_anchor"] for c in raw_chars[:3])[:360]
+        style_anchor = str(parsed.get("style_anchor") or "").strip()
+        if style_anchor and _looks_like_untranslated_turkish(style_anchor):
+            style_anchor = ""
         return {
             "narration_text": str(parsed["narration_text"]).strip(),
+            "character_bible": raw_bible[:360],
+            "characters": raw_chars[:4],
+            "style_anchor": style_anchor[:240],
             "scenes": scenes[:scene_count],
             "motion_prompt": str(parsed.get("motion_prompt") or scenes[0].get("motion_prompt") or cam_hint).strip(),
             "planner_source": source_tag,
@@ -366,27 +491,33 @@ def _gemini_plan(
     camera_motion: str,
     scene_count: int,
     duration_sec: float,
+    character_lock: str = "",
 ) -> Optional[Dict[str, Any]]:
     from channels_manager import CAMERA_MAP, STYLE_MAP
 
     stil_ad = STYLE_MAP.get(style_preset, {}).get("ad", style_preset)
     cam_hint = CAMERA_MAP.get(camera_motion, {}).get("prompt", "") or "smooth cinematic camera drift"
     target_words = max(10, min(90, int(round(duration_sec * 2.2))))
+    lock_line = f"Locked character description (MUST preserve verbatim in EVERY scene): {character_lock}\n" if character_lock else ""
 
     director_prompt = (
-        "You are an expert Film & AI Video Director. Convert the user's topic into a cohesive visual video plan.\n"
+        "You are an expert Film & AI Video Director. Convert the user's topic into a cohesive multi-shot film plan with strict character consistency.\n"
         f"User topic: {prompt}\n"
+        f"{lock_line}"
         f"Visual style preset: {stil_ad}\n"
         f"Preferred camera motion: {cam_hint}\n"
         f"Number of scenes: {scene_count}, Total duration: {duration_sec:.0f}s (~{target_words} Turkish words for narration).\n\n"
         "STRICT RULES:\n"
         "1. `narration_text` MUST be natural, engaging Turkish matching the duration.\n"
-        "2. Each scene's `image_prompt` MUST be in ENGLISH ONLY, faithfully translating EVERY concrete physical figure, "
-        "prop/object/container, action, environment, lighting, colors, and composition from the user's topic "
-        "(never drop requested objects or replace them with unrelated cities/objects, never use abstract concepts like 'analysis', and never request text/watermarks).\n"
-        "3. `motion_prompt` MUST be 1 concise ENGLISH sentence describing smooth camera + physical motion.\n"
-        "4. Return ONLY valid JSON: "
-        '{"narration_text": "...", "motion_prompt": "...", "scenes": [{"image_prompt": "...", "motion_prompt": "..."}]}'
+        "2. Define `character_bible` (concise ENGLISH physical appearance lock: face, hair, clothing/armor colors, key props) and `characters` array so the EXACT same characters appear identically across every shot.\n"
+        "3. Each scene's `image_prompt` MUST be in ENGLISH ONLY, embedding the locked `character_bible` appearance consistently while varying shot framing (`wide`, `medium`, `close-up`) and action cleanly.\n"
+        "4. Never drop requested objects or replace them with unrelated cities/objects, never use abstract words like 'analysis', never request text/watermarks.\n"
+        "5. `motion_prompt` MUST be 1 concise ENGLISH sentence describing smooth camera + physical motion.\n"
+        "6. Return ONLY valid JSON: "
+        '{"narration_text": "...", "character_bible": "...", "style_anchor": "...", '
+        '"characters": [{"name": "...", "role": "...", "visual_anchor": "..."}], '
+        '"motion_prompt": "...", '
+        '"scenes": [{"title": "...", "shot_type": "wide|medium|close-up", "image_prompt": "...", "motion_prompt": "..."}]}'
     )
 
     import time
@@ -510,29 +641,54 @@ def plan_visual_scenes(
     scene_count: int = 3,
     duration_sec: float = 5.0,
     negative_prompt: str = "",
+    character_lock: str = "",
+    seed: Optional[int] = None,
     use_llm: bool = True,
 ) -> Dict[str, Any]:
-    """Konudan uyumlu Türkçe anlatım + somut İngilizce sahne/hareket planı üretir."""
+    """Konudan uyumlu Türkçe anlatım + karakter kilidi (Character Bible) + somut İngilizce sahne/hareket planı üretir."""
     from channels_manager import CAMERA_MAP, STYLE_MAP
 
     temiz = _EMOJI_RE.sub(" ", str(prompt or "")).strip() or "Sinematik özgün sahne"
     stil = STYLE_MAP.get(str(style_preset or "").strip(), STYLE_MAP["cinematic_realism"])
     cam = CAMERA_MAP.get(str(camera_motion or "").strip(), CAMERA_MAP["otomatik"])
     neg = str(negative_prompt or "").strip() or stil.get("negative_prompt", "")
+    style_suffix = stil.get("prompt_suffix", "")
+    hedef_sure = max(3.0, min(120.0, float(duration_sec or 5.0)))
+    lock_raw = str(character_lock or "").strip()
+    shot_labels = ("Açılış (Geniş)", "Gelişme (Orta)", "Odak (Yakın)", "Aksiyon (Dinamik)", "Final (Epik)", "Kapanış")
+    shot_types = ("wide", "medium", "close-up", "wide", "medium", "close-up")
 
     if use_llm:
-        llm_plan = _gemini_plan(temiz, style_preset, camera_motion, max(1, scene_count), duration_sec)
+        llm_plan = _gemini_plan(temiz, style_preset, camera_motion, max(1, scene_count), hedef_sure, character_lock=lock_raw)
         if llm_plan:
-            style_suffix = stil.get("prompt_suffix", "")
-            norm_scenes: List[Dict[str, str]] = []
-            for sc in llm_plan["scenes"]:
-                ip = str(sc["image_prompt"]).strip()
+            bible = str(llm_plan.get("character_bible") or "").strip()
+            chars = list(llm_plan.get("characters") or [])
+            if lock_raw and not bible:
+                bible, chars = _build_offline_characters(temiz, lock_raw, "", style_preset)
+            style_anchor = str(llm_plan.get("style_anchor") or style_suffix).strip()
+            durs = _distribute_scene_durations(len(llm_plan["scenes"]), hedef_sure)
+            norm_scenes: List[Dict[str, Any]] = []
+            for idx, sc in enumerate(llm_plan["scenes"]):
+                ip = _inject_character_lock(str(sc["image_prompt"]).strip(), bible)
                 mp = str(sc.get("motion_prompt") or llm_plan["motion_prompt"]).strip()
                 if style_suffix and style_suffix.split(",")[0].lower() not in ip.lower():
                     ip = f"{ip}, {style_suffix}"
-                norm_scenes.append({"image_prompt": ip[:1200], "motion_prompt": mp[:500]})
+                norm_scenes.append({
+                    "index": idx + 1,
+                    "title": str(sc.get("title") or shot_labels[idx % len(shot_labels)]).strip()[:60],
+                    "shot_type": str(sc.get("shot_type") or shot_types[idx % len(shot_types)]).strip()[:24],
+                    "duration_sec": durs[idx],
+                    "image_prompt": ip[:1200],
+                    "motion_prompt": mp[:500],
+                })
+            final_seed = _stable_seed(f"{temiz}|{bible}|{style_preset}", seed)
             return {
                 "narration_text": llm_plan["narration_text"],
+                "character_bible": bible,
+                "characters": chars,
+                "style_anchor": style_anchor[:240],
+                "seed": final_seed,
+                "total_duration_sec": round(sum(s["duration_sec"] for s in norm_scenes), 2),
                 "image_prompt": norm_scenes[0]["image_prompt"],
                 "motion_prompt": norm_scenes[0]["motion_prompt"],
                 "negative_prompt": neg[:400],
@@ -542,21 +698,175 @@ def plan_visual_scenes(
             }
 
     core_en, scene_prompts = _offline_visual_grounding(temiz, style_preset)
-    style_suffix = stil.get("prompt_suffix", "")
+    bible, chars = _build_offline_characters(temiz, lock_raw, core_en, style_preset)
     cam_motion = cam.get("prompt") or stil.get("motion_default") or "smooth steady cinematic camera drift"
-    primary_img = f"{core_en}, {style_suffix}" if (style_suffix and style_suffix.split(",")[0].lower() not in core_en.lower()) else core_en
+    primary_core = _inject_character_lock(core_en, bible)
+    primary_img = f"{primary_core}, {style_suffix}" if (style_suffix and style_suffix.split(",")[0].lower() not in primary_core.lower()) else primary_core
     mot = f"{cam_motion}, preserve exact reference framing and subject continuity"
 
-    norm_scenes = [
-        {"image_prompt": sp[:1200], "motion_prompt": mot[:500]}
-        for sp in scene_prompts[:max(1, scene_count)]
-    ]
+    req_n = max(1, int(scene_count))
+    while len(scene_prompts) < req_n:
+        idx = len(scene_prompts)
+        framing = ("epic wide view", "dramatic medium action shot", "expressive close-up portrait", "sweeping closing vista")[idx % 4]
+        scene_prompts.append(f"{framing} of {core_en}, {style_suffix}")
+
+    durs = _distribute_scene_durations(req_n, hedef_sure)
+    norm_scenes = []
+    for idx, sp in enumerate(scene_prompts[:req_n]):
+        locked_sp = _inject_character_lock(sp, bible)
+        norm_scenes.append({
+            "index": idx + 1,
+            "title": shot_labels[idx % len(shot_labels)],
+            "shot_type": shot_types[idx % len(shot_types)],
+            "duration_sec": durs[idx],
+            "image_prompt": locked_sp[:1200],
+            "motion_prompt": mot[:500],
+        })
+    final_seed = _stable_seed(f"{temiz}|{bible}|{style_preset}", seed)
     return {
         "narration_text": temiz,
+        "character_bible": bible,
+        "characters": chars,
+        "style_anchor": style_suffix[:240],
+        "seed": final_seed,
+        "total_duration_sec": round(sum(s["duration_sec"] for s in norm_scenes), 2),
         "image_prompt": primary_img[:1200],
         "motion_prompt": mot[:500],
         "negative_prompt": neg[:400],
         "scenes": norm_scenes,
         "planner_source": "cevrimdisi_gorsel_harita",
         "simulasyon": False,
+    }
+
+
+def revise_scene_prompt(
+    original_image_prompt: str,
+    instruction: str,
+    original_motion_prompt: str = "",
+    character_bible: str = "",
+    style_preset: str = "cinematic_realism",
+    camera_motion: str = "otomatik",
+    use_llm: bool = True,
+) -> Dict[str, Any]:
+    """AI Film Canvas'ta tek bir sahneyi sohbet talimatıyla karakter kimliğini bozmadan revize eder."""
+    from channels_manager import CAMERA_MAP, STYLE_MAP
+
+    orig_img = str(original_image_prompt or "").strip()
+    orig_mot = str(original_motion_prompt or "").strip()
+    talimat = _EMOJI_RE.sub(" ", str(instruction or "")).strip()
+    bible = str(character_bible or "").strip()
+    stil = STYLE_MAP.get(str(style_preset or "").strip(), STYLE_MAP["cinematic_realism"])
+    style_suffix = str(stil.get("prompt_suffix") or "").strip()
+    cam_hint = CAMERA_MAP.get(str(camera_motion or "").strip(), {}).get("prompt", "") or orig_mot or "smooth cinematic camera motion"
+
+    if not talimat:
+        return {
+            "image_prompt": _inject_character_lock(orig_img, bible)[:1200],
+            "motion_prompt": (orig_mot or cam_hint)[:500],
+            "planner_source": "degisiklik_yok",
+        }
+
+    if use_llm:
+        rev_prompt = (
+            "You are revising ONE single shot of an AI film storyboard based on the director's edit request.\n"
+            f"Original shot image_prompt: {orig_img}\n"
+            f"Original motion_prompt: {orig_mot or cam_hint}\n"
+            f"LOCKED character_bible (NEVER alter character face, hair, armor, colors): {bible or 'preserve exact subject'}\n"
+            f"Visual style: {style_suffix}\n"
+            f"Director edit instruction (may be Turkish or English): {talimat}\n\n"
+            "Return ONLY valid JSON: "
+            '{"narration_text": "revised", "scenes": [{"image_prompt": "<ENGLISH ONLY revised prompt preserving character_bible>", "motion_prompt": "<1 ENGLISH sentence>"}]}'
+        )
+        llm_res = None
+        keys = _gemini_keys()
+        if keys:
+            import time as _t
+            body = json.dumps({
+                "contents": [{"parts": [{"text": rev_prompt}]}],
+                "generationConfig": {"temperature": 0.35, "maxOutputTokens": 600, "responseMimeType": "application/json"},
+            }).encode("utf-8")
+            t0 = _t.monotonic()
+            for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+                for key in keys[:3]:
+                    if (_t.monotonic() - t0) > 4.5:
+                        break
+                    url = (
+                        "https://generativelanguage.googleapis.com/v1beta/models/"
+                        f"{urllib.parse.quote(model, safe='')}:generateContent?key={urllib.parse.quote(key, safe='')}"
+                    )
+                    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+                    try:
+                        with urllib.request.urlopen(req, timeout=4) as resp:
+                            raw = json.loads(resp.read().decode("utf-8"))
+                        parts = ((raw.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+                        txt = "".join(str(p.get("text") or "") for p in parts).strip()
+                        llm_res = _parse_plan_json(txt, 1, cam_hint, f"gemini:{model}")
+                        if llm_res:
+                            break
+                    except Exception:
+                        continue
+                if llm_res:
+                    break
+        if llm_res is None:
+            llm_res = _cloudflare_llm_plan(rev_prompt, 1, cam_hint)
+        if llm_res and llm_res.get("scenes"):
+            new_ip = _inject_character_lock(str(llm_res["scenes"][0]["image_prompt"]).strip(), bible)
+            if style_suffix and style_suffix.split(",")[0].lower() not in new_ip.lower():
+                new_ip = f"{new_ip}, {style_suffix}"
+            new_mp = str(llm_res["scenes"][0].get("motion_prompt") or llm_res.get("motion_prompt") or cam_hint).strip()
+            return {
+                "image_prompt": new_ip[:1200],
+                "motion_prompt": new_mp[:500],
+                "planner_source": llm_res.get("planner_source", "llm"),
+            }
+
+    # Çevrimdışı/deterministik sahne revizyonu (Türkçe direktifleri somut İngilizceye çevirir)
+    folded = _tr_ascii_fold(talimat)
+    ekler: List[str] = []
+    direktif_haritasi = (
+        ("yakin", "intimate dramatic close-up framing"),
+        ("genis", "sweeping wide establishing cinematic framing"),
+        ("ustten", "high-angle aerial bird's-eye camera perspective"),
+        ("alttan", "heroic low-angle upward camera perspective"),
+        ("gece", "moonlit deep night lighting with cool silver-blue rim glow"),
+        ("gunduz", "bright natural golden-hour daylight"),
+        ("gunes", "warm golden sunset rays streaming through atmosphere"),
+        ("yagmur", "pouring rain with wet reflective surfaces"),
+        ("kar", "drifting winter snowfall and frosty air"),
+        ("sis", "thick atmospheric volumetric mist"),
+        ("ates", "glowing firelight and floating bright embers"),
+        ("karanlik", "moody dark high-contrast chiaroscuro shadows"),
+        ("aydinlik", "luminous bright radiant lighting"),
+        ("altin", "rich warm golden amber lighting accents"),
+        ("mavi", "deep sapphire and cyan atmospheric lighting"),
+        ("kirmizi", "dramatic crimson lighting highlights"),
+    )
+    for kok, eng in direktif_haritasi:
+        if kok in folded and eng not in ekler:
+            ekler.append(eng)
+
+    if not ekler:
+        if _is_turkish_text(talimat):
+            t_en, _ = _offline_visual_grounding(talimat, style_preset)
+            ekler.append(t_en)
+        else:
+            ekler.append(talimat)
+
+    birlesik = f"{orig_img}, {', '.join(ekler)}" if orig_img else ", ".join(ekler)
+    birlesik = _inject_character_lock(birlesik, bible)
+    if style_suffix and style_suffix.split(",")[0].lower() not in birlesik.lower():
+        birlesik = f"{birlesik}, {style_suffix}"
+
+    new_mot = orig_mot or cam_hint
+    if "yavas" in folded:
+        new_mot = f"ultra slow graceful cinematic camera motion, {new_mot}"
+    elif "hizli" in folded or "dinamik" in folded:
+        new_mot = f"dynamic sweeping action tracking shot, {new_mot}"
+    elif "sabit" in folded:
+        new_mot = "locked stable camera framing while natural atmosphere moves subtly"
+
+    return {
+        "image_prompt": birlesik[:1200],
+        "motion_prompt": new_mot[:500],
+        "planner_source": "cevrimdisi_sahne_revizyonu",
     }

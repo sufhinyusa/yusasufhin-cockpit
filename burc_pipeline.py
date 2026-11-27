@@ -59,13 +59,14 @@ def burc_listesi() -> List[Dict[str, str]]:
 
 def _gemini_anahtarlari() -> List[str]:
     """Çoklu hesap GEMINI_API_KEY* havuzunu şelale sırasıyla toplar."""
-    try:
-        from gemini_audio import collect_gemini_keys
-        keys = collect_gemini_keys()
-        if keys:
-            return keys
-    except Exception:
-        pass
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        try:
+            from gemini_audio import collect_gemini_keys
+            keys = collect_gemini_keys()
+            if keys:
+                return keys
+        except Exception:
+            pass
     anahtarlar: List[str] = []
     for ad, deger in os.environ.items():
         if ad.upper().startswith("GEMINI_API_KEY") and deger and deger.strip():

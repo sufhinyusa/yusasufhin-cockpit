@@ -456,20 +456,103 @@
     }
   }
 
+  var _musicRefAudioB64 = null;
+  var _musicRefAudioJobId = null;
+
+  window.useTrackAsMusicRef = function (jobId, promptText, taskType) {
+    _musicRefAudioJobId = jobId;
+    _musicRefAudioB64 = null;
+    var taskSel = document.getElementById('musicTaskSelect');
+    if (taskSel) taskSel.value = taskType || 'cover';
+    var modelSel = document.getElementById('musicModelSelect');
+    if (modelSel) modelSel.value = 'gpu-acestep-1.5';
+    window.toggleMusicRefAudioRow();
+    var hint = document.getElementById('musicRefAudioSelectedHint');
+    if (hint) hint.textContent = '🎵 Referans parça seçildi: ' + jobId;
+    var pEl = document.getElementById('musicPromptInput');
+    if (pEl && promptText && !pEl.value.trim()) pEl.value = promptText;
+    if (pEl) pEl.focus();
+  };
+
   window.setMusicPrompt = function (txt) {
     var el = document.getElementById('musicPromptInput');
     if (el) { el.value = txt; el.focus(); }
   };
 
+  window.insertLyricsTag = function (tag) {
+    var el = document.getElementById('musicLyricsInput');
+    var chk = document.getElementById('musicVocalsCheck');
+    if (chk) chk.checked = true;
+    if (!el) return;
+    var cur = el.value || '';
+    el.value = (cur && !cur.endsWith('\n') ? cur + '\n\n' : cur) + tag;
+    el.focus();
+  };
+
+  window.toggleMusicRefAudioRow = function () {
+    var task = (document.getElementById('musicTaskSelect') || {}).value || 'text2music';
+    var wrap = document.getElementById('musicRefAudioWrap');
+    if (wrap) wrap.hidden = (task === 'text2music');
+  };
+
+  window.handleGenerateSongLyrics = function () {
+    var topic = ((document.getElementById('musicPromptInput') || {}).value || '').trim();
+    var genre = ((document.getElementById('musicGenreSelect') || {}).value || '').trim();
+    var mood = ((document.getElementById('musicMoodSelect') || {}).value || '').trim();
+    var lang = ((document.getElementById('musicVocalLangSelect') || {}).value || 'tr').trim();
+    var dur = parseInt(((document.getElementById('musicDurationSelect') || {}).value || '60'), 10);
+    var hud = document.getElementById('musicOutputHud');
+    var lyricsEl = document.getElementById('musicLyricsInput');
+    var chk = document.getElementById('musicVocalsCheck');
+    if (!topic) {
+      if (hud) hud.textContent = '⚠️ Önce üst kutuya şarkının temasını veya konusunu yazın.';
+      return;
+    }
+    if (hud) hud.textContent = '✨ AI şarkı sözü yazılıyor ([Verse]/[Chorus] yapısında)…';
+    af('/api/music/lyrics/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic: topic, genre: genre, mood: mood, vocal_language: lang, duration_sec: dur })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d || !res.d.success) {
+          if (hud) hud.textContent = '⚠️ Söz üretilemedi: ' + ((res.d && res.d.detail) || 'Hata');
+          return;
+        }
+        if (lyricsEl) lyricsEl.value = res.d.lyrics || '';
+        if (chk) chk.checked = true;
+        if (hud) hud.textContent = '✅ Şarkı sözleri hazırlandı (' + (res.d.used_key_label || 'Gemini') + '). İstediğiniz gibi düzenleyip üretebilirsiniz.';
+      })
+      .catch(function (err) {
+        if (hud) hud.textContent = '❌ Söz üretim hatası: ' + err.message;
+      });
+  };
+
+  (function _bindMusicRefAudioInput() {
+    document.addEventListener('change', function (ev) {
+      if (!ev.target || ev.target.id !== 'musicRefAudioInput') return;
+      var f = ev.target.files && ev.target.files[0];
+      if (!f) { _musicRefAudioB64 = null; return; }
+      var reader = new FileReader();
+      reader.onload = function () { _musicRefAudioB64 = reader.result || null; };
+      reader.readAsDataURL(f);
+    });
+  })();
+
   window.handleMusicGenerateSubmit = function (ev) {
     if (ev && ev.preventDefault) ev.preventDefault();
-    var modelId = (document.getElementById('musicModelSelect') || {}).value || 'lyria-3.5';
+    var modelId = (document.getElementById('musicModelSelect') || {}).value || 'gpu-acestep-1.5';
     var prompt = ((document.getElementById('musicPromptInput') || {}).value || '').trim();
     var genre = ((document.getElementById('musicGenreSelect') || {}).value || '').trim();
     var mood = ((document.getElementById('musicMoodSelect') || {}).value || '').trim();
-    var duration = parseInt(((document.getElementById('musicDurationSelect') || {}).value || '30'), 10);
+    var duration = parseInt(((document.getElementById('musicDurationSelect') || {}).value || '60'), 10);
     var instrumental = !((document.getElementById('musicVocalsCheck') || {}).checked);
     var lyrics = ((document.getElementById('musicLyricsInput') || {}).value || '').trim();
+    var vocalLanguage = ((document.getElementById('musicVocalLangSelect') || {}).value || 'tr').trim();
+    var bpmRaw = ((document.getElementById('musicBpmInput') || {}).value || '').trim();
+    var keyScale = ((document.getElementById('musicKeyScaleInput') || {}).value || '').trim();
+    var musicTask = ((document.getElementById('musicTaskSelect') || {}).value || 'text2music').trim();
     var hud = document.getElementById('musicOutputHud');
     var badge = document.getElementById('musicTaskBadge');
     var btn = document.getElementById('startMusicBtn');
@@ -482,18 +565,34 @@
     if (badge) badge.textContent = 'Çalışıyor…';
     if (hud) hud.textContent = 'Gerçek müzik modeline istek gönderiliyor (' + modelId + ')…';
 
+    var payload = {
+      model_id: modelId,
+      prompt: prompt,
+      genre: genre,
+      mood: mood,
+      duration_sec: duration,
+      instrumental: instrumental,
+      lyrics: lyrics,
+      vocal_language: vocalLanguage,
+      key_scale: keyScale,
+      music_task: musicTask
+    };
+    if (bpmRaw) payload.bpm = parseInt(bpmRaw, 10);
+    if (musicTask !== 'text2music') {
+      if (_musicRefAudioB64) payload.ref_audio_base64 = _musicRefAudioB64;
+      else if (_musicRefAudioJobId) payload.ref_music_job_id = _musicRefAudioJobId;
+      var covRaw = ((document.getElementById('musicCoverStrengthInput') || {}).value || '').trim();
+      var rsRaw = ((document.getElementById('musicRepaintStartInput') || {}).value || '').trim();
+      var reRaw = ((document.getElementById('musicRepaintEndInput') || {}).value || '').trim();
+      if (covRaw) payload.audio_cover_strength = parseFloat(covRaw);
+      if (rsRaw) payload.repaint_start = parseFloat(rsRaw);
+      if (reRaw) payload.repaint_end = parseFloat(reRaw);
+    }
+
     af('/api/music/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model_id: modelId,
-        prompt: prompt,
-        genre: genre,
-        mood: mood,
-        duration_sec: duration,
-        instrumental: instrumental,
-        lyrics: lyrics
-      })
+      body: JSON.stringify(payload)
     })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (res) {
@@ -505,7 +604,7 @@
         var job = res.d.job;
         if (job.status === 'queued_gpu') {
           if (badge) { badge.textContent = '⚡ GPU Kuyruğunda'; badge.className = 'site-badge site-badge-auto'; }
-          if (hud) hud.textContent = '⚡ Kaggle/Colab GPU MusicGen kuyruğuna alındı (' + job.job_id + '). GPU işçisi bağlıysa otomatik üretilip yüklenecektir…';
+          if (hud) hud.textContent = '⚡ ' + (job.model_name || 'Kaggle GPU Müzik') + ' kuyruğuna alındı (' + job.job_id + '). GPU işçisi bağlıysa otomatik üretilip yüklenecektir…';
         } else {
           if (hud) hud.textContent = '🎼 İş başlatıldı (' + job.job_id + ' · ' + job.model_name + '). Ses dosyası hazırlanıyor…';
         }
@@ -535,13 +634,14 @@
           var stage = document.getElementById('musicStageArea');
           if (job.status === 'queued_gpu') {
             var pct = Number(job.progress_pct || 0);
-            var stg = job.current_stage || 'Kaggle/Colab GPU MusicGen işçisi bekleniyor';
+            var stg = job.current_stage || 'Kaggle/Colab GPU müzik işçisi bekleniyor';
+            var mLabel = job.model_name || (job.model_id === 'gpu-acestep-1.5' ? 'Kaggle GPU ACE-Step 1.5' : 'Kaggle GPU Müzik');
             if (badge) { badge.textContent = pct > 0 ? ('⚡ GPU %' + pct) : '⚡ GPU Kuyruğunda'; badge.className = 'site-badge site-badge-auto'; }
             if (hud) {
               var workerHint = job.gpu_worker_online === false
                 ? '\n💡 Şu an canlı GPU işçisi bağlı değil: GPU sekmesinden Kaggle Notebook\'u başlattığınızda bu parça otomatik üretilecektir.'
                 : '';
-              hud.textContent = '⚡ Kaggle GPU MusicGen (' + job.job_id + ') — ' + stg + (pct > 0 ? (' (%' + pct + ')') : '') + workerHint;
+              hud.textContent = '⚡ ' + mLabel + ' (' + job.job_id + ') — ' + stg + (pct > 0 ? (' (%' + pct + ')') : '') + workerHint;
             }
             return;
           }
@@ -631,10 +731,17 @@
             var dl = document.createElement('a');
             dl.href = src + '&download=1';
             dl.className = 'site-chip-btn';
-            dl.style.cssText = 'text-decoration:none; display:inline-block; margin-top:8px;';
+            dl.style.cssText = 'text-decoration:none; display:inline-block; margin-top:8px; margin-right:6px;';
             dl.textContent = '⬇️ İndir';
+            var covBtn = document.createElement('button');
+            covBtn.type = 'button';
+            covBtn.className = 'site-chip-btn';
+            covBtn.style.marginTop = '8px';
+            covBtn.textContent = '🔁 Cover / Uzat';
+            covBtn.onclick = function () { window.useTrackAsMusicRef(it.job_id, it.prompt || '', 'cover'); };
             card.appendChild(au);
             card.appendChild(dl);
+            card.appendChild(covBtn);
           }
           grid.appendChild(card);
         });

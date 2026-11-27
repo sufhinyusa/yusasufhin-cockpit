@@ -41,18 +41,23 @@ logger = logging.getLogger("Fabrika.MusicStudio")
 
 MUSIC_SECRETS_FILENAME = ".music_secrets.json"
 MUSIC_HISTORY_FILENAME = "music_history.json"
+MUSIC_JOBS_STATE_FILENAME = "music_jobs_state.json"
 R2_MUSIC_SECRETS_KEY = "state/music_secrets.json"
 R2_MUSIC_HISTORY_KEY = "state/music_history.json"
+R2_MUSIC_JOBS_KEY = "state/music_jobs_state.json"
 ALLOWED_SECRET_KEYS = ("GEMINI_API_KEY", "ELEVENLABS_API_KEY", "STABILITY_API_KEY", "REPLICATE_API_TOKEN")
 AUTO_WATERFALL_ORDER = (
     "lyria-3.5",
     "lyria-3-clip-preview",
     "elevenlabs-music",
+    "gpu-acestep-1.5",
     "stable-audio-2",
     "replicate-musicgen",
     "gpu-musicgen",
     "local-musicgen-mac",
 )
+VALID_MUSIC_TASKS = ("text2music", "cover", "repaint", "extend")
+SUPPORTED_VOCAL_LANGUAGES = ("tr", "en", "de", "fr", "es", "it", "ja", "ko", "zh", "ar", "ru", "unknown")
 MAX_JOBS = 120
 
 _SECRETS_LOCK = threading.Lock()
@@ -62,15 +67,31 @@ _MUSIC_JOBS: Dict[str, Dict[str, Any]] = {}
 MUSIC_MODELS: List[Dict[str, Any]] = [
     {
         "id": "auto_waterfall",
-        "name": "⚡ Otomatik Şelale (Tüm Hesaplar & Modeller)",
+        "name": "⚡ Otomatik Şelale (Vokal Korumalı · Bulut → Kaggle ACE-Step 1.5)",
         "provider": "auto_waterfall",
         "env_key": None,
         "supports_vocals": True,
         "supports_lyrics": True,
-        "max_duration_sec": 180,
-        "default_duration_sec": 30,
-        "format": "mp3",
-        "description": "Tüm hesap anahtarlarınızı (GEMINI_API_KEY.._8+) ve hazır müzik modellerini otomatik şelale sırasıyla dener.",
+        "supports_tasks": ["text2music", "cover", "repaint", "extend"],
+        "max_duration_sec": 240,
+        "default_duration_sec": 60,
+        "format": "wav",
+        "description": "Vokal/söz içeren istekleri yalnızca vokal destekli modellere yönlendirir; ücretli API yoksa ücretsiz Kaggle GPU ACE-Step 1.5 kuyruğuna düşer.",
+    },
+    {
+        "id": "gpu-acestep-1.5",
+        "name": "🚀 Kaggle/Colab Ücretsiz GPU ACE-Step 1.5 (Suno Seviyesi · Vokal + Türkçe Söz + 4 dk)",
+        "provider": "gpu_queue",
+        "env_key": None,
+        "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
+        "license": "MIT",
+        "supports_vocals": True,
+        "supports_lyrics": True,
+        "supports_tasks": ["text2music", "cover", "repaint", "extend"],
+        "max_duration_sec": 240,
+        "default_duration_sec": 60,
+        "format": "wav",
+        "description": "MIT lisanslı 5B flow-matching DiT (48 kHz gerçek stereo): Türkçe/çok dilli vokal, [Verse]/[Chorus] şarkı yapısı, BPM, gam, Cover/Repaint ve 4 dk'ya kadar tam şarkı (Kaggle T4 ücretsiz).",
     },
     {
         "id": "lyria-3.5",
@@ -134,15 +155,17 @@ MUSIC_MODELS: List[Dict[str, Any]] = [
     },
     {
         "id": "gpu-musicgen",
-        "name": "🚀 Kaggle/Colab Ücretsiz GPU MusicGen (Yerel AI)",
+        "name": "🎹 Kaggle/Colab Ücretsiz GPU MusicGen Stereo (Hızlı Enstrümantal · 30 sn)",
         "provider": "gpu_queue",
         "env_key": None,
+        "repo": "facebook/musicgen-stereo-medium",
         "supports_vocals": False,
         "supports_lyrics": False,
+        "supports_tasks": ["text2music"],
         "max_duration_sec": 30,
         "default_duration_sec": 15,
         "format": "wav",
-        "description": "Meta MusicGen (medium) modeli Kaggle/Colab T4 GPU işçisinde yerel çalışır; ücret/kota yok, sahte ses üretilmez.",
+        "description": "Meta MusicGen Stereo Medium (32 kHz gerçek stereo) Kaggle/Colab T4 GPU işçisinde yerel çalışır; yalnızca enstrümantal (vokal için ACE-Step 1.5 kullanın).",
     },
     {
         "id": "local-musicgen-mac",
@@ -347,16 +370,26 @@ def _compose_music_prompt(
     duration_sec: int = 30,
     instrumental: bool = True,
     lyrics: str = "",
+    bpm: Optional[int] = None,
+    key_scale: str = "",
+    vocal_language: str = "tr",
 ) -> str:
     parts = [prompt.strip()]
     if genre:
         parts.append(f"Genre/Style: {genre.strip()}.")
     if mood:
         parts.append(f"Mood/Atmosphere: {mood.strip()}.")
+    if bpm:
+        parts.append(f"Tempo: {int(bpm)} BPM.")
+    if key_scale.strip():
+        parts.append(f"Key/Scale: {key_scale.strip()}.")
     if instrumental:
         parts.append("Purely instrumental, no vocals.")
-    elif lyrics.strip():
-        parts.append(f"Include vocals with these lyrics:\n{lyrics.strip()[:1200]}")
+    else:
+        if vocal_language and vocal_language != "unknown":
+            parts.append(f"Vocal language: {vocal_language}.")
+        if lyrics.strip():
+            parts.append(f"Include vocals with these lyrics:\n{lyrics.strip()[:2400]}")
     if duration_sec:
         parts.append(f"Target duration: approximately {int(duration_sec)} seconds.")
     return " ".join(parts)
@@ -382,7 +415,14 @@ def _generate_google_lyria(
         timeout=180,
     )
     if not resp.ok:
-        raise WaterfallProviderError(resp.status_code, f"Google Lyria HTTP {resp.status_code}: {resp.text[:220]}")
+        txt = resp.text[:260]
+        if resp.status_code == 429 and ("limit: 0" in txt.lower() or "free tier" in txt.lower()):
+            raise WaterfallProviderError(
+                429,
+                "Google Lyria Free Tier kotası 0 (ücretli Google Billing gerektirir) — "
+                "ücretsiz vokal+sözlü tam şarkı için Kaggle GPU 'gpu-acestep-1.5' kullanın.",
+            )
+        raise WaterfallProviderError(resp.status_code, f"Google Lyria HTTP {resp.status_code}: {txt}")
     data = resp.json()
     audio_bytes: Optional[bytes] = None
     ext = "mp3"
@@ -573,15 +613,78 @@ def _append_history(data_dir: Path, entry: Dict[str, Any]) -> None:
         pass
 
 
+def _load_jobs_state(data_dir: Optional[Path]) -> Dict[str, Dict[str, Any]]:
+    if data_dir is None:
+        return {}
+    yol = Path(data_dir) / MUSIC_JOBS_STATE_FILENAME
+    _sync_from_r2(yol, R2_MUSIC_JOBS_KEY)
+    if not yol.is_file():
+        return {}
+    try:
+        raw = json.loads(yol.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            return {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+    except (OSError, ValueError):
+        return {}
+    return {}
+
+
+def _push_r2_json_async(yol: Path, r2_key: str) -> None:
+    """R2 JSON senkronizasyonunu kilit dışında arka planda yapar."""
+    def _worker() -> None:
+        try:
+            import cloud_storage
+
+            if cloud_storage.is_configured() and yol.is_file():
+                cloud_storage.put_file(yol, key=r2_key, content_type="application/json")
+        except Exception as exc:
+            logger.debug("[MusicStudio] R2 arka plan yazımı atlandı (%s): %s", r2_key, exc)
+
+    threading.Thread(target=_worker, daemon=True, name="MusicR2Sync").start()
+
+
+def _save_jobs_state(data_dir: Optional[Path]) -> None:
+    """_JOBS_LOCK altında çağrılır: önce yerel atomik yazar, R2 yüklemesini kilit dışı thread'e devreder."""
+    if data_dir is None:
+        return
+    try:
+        Path(data_dir).mkdir(parents=True, exist_ok=True)
+        yol = Path(data_dir) / MUSIC_JOBS_STATE_FILENAME
+        # Liste kopyası üzerinden güvenli sıralama (mutasyon yarışı yok)
+        items_copy = list(_MUSIC_JOBS.items())
+        ordered = sorted(
+            items_copy,
+            key=lambda kv: float(kv[1].get("created_at") or 0),
+            reverse=True,
+        )[:MAX_JOBS]
+        snapshot = {k: dict(v) for k, v in ordered}
+        tmp = Path(data_dir) / f".music_jobs.{os.getpid()}.{threading.get_ident()}.tmp"
+        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, yol)
+        _push_r2_json_async(yol, R2_MUSIC_JOBS_KEY)
+    except OSError as exc:
+        logger.warning("[MusicStudio] music_jobs_state.json yazılamadı: %s", exc)
+
+
 def get_music_history(data_dir: Path, limit: int = 30) -> List[Dict[str, Any]]:
     with _JOBS_LOCK:
         return _load_history(data_dir)[: max(1, min(int(limit), 60))]
 
 
-def get_music_job(job_id: str) -> Optional[Dict[str, Any]]:
+def get_music_job(job_id: str, data_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     with _JOBS_LOCK:
         job = _MUSIC_JOBS.get(job_id)
-        return dict(job) if job else None
+        if job is not None:
+            return dict(job)
+        if data_dir is not None:
+            persisted = _load_jobs_state(data_dir)
+            if job_id in persisted:
+                _MUSIC_JOBS[job_id] = dict(persisted[job_id])
+                return dict(_MUSIC_JOBS[job_id])
+            for item in _load_history(data_dir):
+                if isinstance(item, dict) and item.get("job_id") == job_id:
+                    return dict(item)
+        return None
 
 
 def _gpu_kuyruga_al(
@@ -595,19 +698,49 @@ def _gpu_kuyruga_al(
     instrumental: bool,
     created_by: str,
     enqueue_gpu_fn: Callable[[Dict[str, Any]], Any],
+    data_dir: Optional[Path] = None,
     trace: Optional[List[str]] = None,
-    chosen_model: str = "gpu-musicgen",
+    chosen_model: str = "gpu-acestep-1.5",
+    lyrics: str = "",
+    vocal_language: str = "tr",
+    bpm: Optional[int] = None,
+    key_scale: str = "",
+    time_signature: str = "",
+    music_task: str = "text2music",
+    ref_audio_url: Optional[str] = None,
+    audio_cover_strength: float = 0.85,
+    repaint_start: Optional[float] = None,
+    repaint_end: Optional[float] = None,
+    seed: Optional[int] = None,
 ) -> bool:
-    """İşi Kaggle/Colab GPU kuyruğuna yazar; işçi çevrimdışıyken de kuyruğa alınabilir."""
+    """İşi Kaggle/Colab GPU kuyruğuna yazar (ACE-Step 1.5 veya MusicGen Stereo)."""
+    is_acestep = chosen_model == "gpu-acestep-1.5"
+    audio_model = "acestep-v15-xl-turbo" if is_acestep else "musicgen-stereo-medium"
+    max_cap = 240 if is_acestep else 30
+    effective_dur = max(5, min(max_cap, int(dur)))
     payload: Dict[str, Any] = {
         "job_id": job_id,
-        "prompt": composed,
+        "method": "acestep" if is_acestep else "musicgen",
+        "model_id": chosen_model,
+        "prompt": composed if not is_acestep else clean_prompt,
+        "composed_prompt": composed,
         "raw_prompt": clean_prompt,
-        "duration_sec": int(dur),
+        "duration_sec": effective_dur,
         "genre": genre.strip()[:60],
         "mood": mood.strip()[:60],
         "instrumental": bool(instrumental),
-        "audio_model": "musicgen-medium",
+        "lyrics": "" if instrumental else str(lyrics or "").strip()[:4096],
+        "vocal_language": str(vocal_language or "tr").strip().lower()[:12],
+        "bpm": int(bpm) if bpm else None,
+        "key_scale": str(key_scale or "").strip()[:32],
+        "time_signature": str(time_signature or "").strip()[:12],
+        "music_task": str(music_task or "text2music").strip().lower(),
+        "ref_audio_url": ref_audio_url,
+        "audio_cover_strength": float(audio_cover_strength),
+        "repaint_start": float(repaint_start) if repaint_start is not None else None,
+        "repaint_end": float(repaint_end) if repaint_end is not None else None,
+        "seed": int(seed) if seed is not None else None,
+        "audio_model": audio_model,
         "created_by": created_by,
     }
     try:
@@ -619,6 +752,7 @@ def _gpu_kuyruga_al(
             if job is not None:
                 job["status"] = "failed"
                 job["error"] = f"GPU kuyruğuna alınamadı: {str(exc)[:280]}"
+                _save_jobs_state(data_dir)
         return False
     with _JOBS_LOCK:
         job = _MUSIC_JOBS.get(job_id)
@@ -628,9 +762,11 @@ def _gpu_kuyruga_al(
         job["gpu_job_id"] = job_id
         job["model_id"] = chosen_model
         job["model_name"] = MUSIC_MODELS_BY_ID[chosen_model]["name"]
+        job["duration_sec"] = effective_dur
         job["queued_at"] = time.time()
         if trace is not None:
             job["waterfall_trace"] = trace[-12:]
+        _save_jobs_state(data_dir)
     return True
 
 
@@ -639,12 +775,13 @@ def complete_music_job(
     audio_url: str,
     filename: str,
     data_dir: Path,
-    engine_label: str = "Kaggle GPU MusicGen",
+    engine_label: str = "Kaggle GPU ACE-Step 1.5",
+    fallback_meta: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """GPU işçisinin yüklediği WAV/MP3'ü müzik işine bağlar ve geçmişe yazar.
+    """GPU işçisinin yüklediği WAV/MP3/FLAC'ı müzik işine bağlar ve geçmişe yazar.
 
-    `/api/worker/upload` `media_type=audio` için bu fonksiyonu çağırır; böylece
-    panelde `status=completed` + oynatılabilir `audio_url` görünür.
+    Sunucu yeniden başlamış olsa bile `music_jobs_state.json` veya `fallback_meta`
+    (video_jobs.json kaydı) üzerinden işi kurtarır; tamamlanan şarkı asla kaybolmaz.
     """
     temiz_url = str(audio_url or "").strip()
     if not job_id or not temiz_url:
@@ -652,29 +789,135 @@ def complete_music_job(
     with _JOBS_LOCK:
         job = _MUSIC_JOBS.get(job_id)
         if job is None:
-            logger.warning("[MusicStudio] Tamamlanacak müzik işi bulunamadı: %s", job_id)
-            return None
+            persisted = _load_jobs_state(data_dir)
+            if job_id in persisted:
+                job = dict(persisted[job_id])
+                _MUSIC_JOBS[job_id] = job
+            elif isinstance(fallback_meta, dict) and fallback_meta:
+                mid = str(fallback_meta.get("model_id") or (
+                    "gpu-acestep-1.5"
+                    if str(fallback_meta.get("method") or "").lower() in ("acestep", "gpu_acestep")
+                    else "gpu-musicgen"
+                ))
+                spec = MUSIC_MODELS_BY_ID.get(mid, MUSIC_MODELS_BY_ID["gpu-acestep-1.5"])
+                job = {
+                    "job_id": job_id,
+                    "status": "queued_gpu",
+                    "model_id": mid,
+                    "model_name": spec["name"],
+                    "provider": spec["provider"],
+                    "prompt": str(fallback_meta.get("raw_prompt") or fallback_meta.get("prompt") or ""),
+                    "genre": str(fallback_meta.get("genre") or ""),
+                    "mood": str(fallback_meta.get("mood") or ""),
+                    "duration_sec": int(fallback_meta.get("sure_sn") or fallback_meta.get("duration") or 30),
+                    "instrumental": bool(fallback_meta.get("instrumental", True)),
+                    "lyrics": str(fallback_meta.get("lyrics") or ""),
+                    "vocal_language": str(fallback_meta.get("vocal_language") or "tr"),
+                    "bpm": fallback_meta.get("bpm"),
+                    "key_scale": str(fallback_meta.get("key_scale") or ""),
+                    "music_task": str(fallback_meta.get("music_task") or "text2music"),
+                    "created_by": str(fallback_meta.get("created_by") or "owner"),
+                    "created_at": float(fallback_meta.get("created_at") or time.time()),
+                    "gpu_job_id": job_id,
+                    "waterfall_trace": [],
+                }
+                _MUSIC_JOBS[job_id] = job
+            else:
+                logger.warning("[MusicStudio] Tamamlanacak müzik işi bulunamadı: %s", job_id)
+                return None
         job["status"] = "completed"
         job["audio_url"] = temiz_url
         job["filename"] = str(filename or "")
         job["used_key_label"] = engine_label
         job["completed_at"] = time.time()
         job["error"] = None
+        _save_jobs_state(data_dir)
         _append_history(data_dir, dict(job))
         return dict(job)
 
 
-def fail_music_job(job_id: str, error_msg: str) -> bool:
-    """GPU işçisinin başarısız bildirdiği müzik işini dürüstçe işaretler."""
+def fail_music_job(job_id: str, error_msg: str, data_dir: Optional[Path] = None) -> bool:
+    """GPU işçisinin başarısız bildirdiği müzik işini dürüstçe işaretler (restart dayanıklı)."""
     with _JOBS_LOCK:
         job = _MUSIC_JOBS.get(job_id)
+        if job is None and data_dir is not None:
+            persisted = _load_jobs_state(data_dir)
+            if job_id in persisted:
+                job = dict(persisted[job_id])
+                _MUSIC_JOBS[job_id] = job
         if job is None:
             logger.warning("[MusicStudio] Başarısız işaretlenecek müzik işi bulunamadı: %s", job_id)
             return False
         job["status"] = "failed"
         job["error"] = str(error_msg or "GPU işçisi işi başarısız bildirdi.")[:360]
         job["failed_at"] = time.time()
+        _save_jobs_state(data_dir)
         return True
+
+
+def generate_song_lyrics(
+    *,
+    topic: str,
+    genre: str = "",
+    mood: str = "",
+    vocal_language: str = "tr",
+    duration_sec: int = 90,
+    data_dir: Path,
+    get_env: Callable[[str], Optional[str]],
+) -> Dict[str, Any]:
+    """Gemini çoklu hesap şelalesiyle Suno/ACE-Step yapısında ([Verse]/[Chorus]) gerçek şarkı sözü üretir."""
+    clean_topic = str(topic or "").strip()
+    if len(clean_topic) < 3:
+        raise ValueError("Şarkı sözü konusu en az 3 karakter olmalıdır.")
+    lang = str(vocal_language or "tr").strip().lower()
+    lang_label = {"tr": "Türkçe", "en": "English", "de": "Deutsch", "fr": "Français", "es": "Español"}.get(lang, lang)
+    prompt = (
+        f"Sen profesyonel bir söz yazarı ve müzik yapımcısısın.\n"
+        f"Konu: {clean_topic}\n"
+        f"Tür: {genre or 'Modern'}\n"
+        f"Atmosfer: {mood or 'Duygusal ve akılda kalıcı'}\n"
+        f"Hedef süre: ~{int(duration_sec)} saniye\n"
+        f"Dil: {lang_label}\n"
+        "Kurallar:\n"
+        "- Yalnızca şu yapı etiketlerini kullan: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Outro].\n"
+        "- Ritimli, söylenebilir, kafiyeli ve doğal şarkı sözleri yaz.\n"
+        "- Açıklama veya ekstra yorum ekleme, yalnızca şarkı sözünü döndür."
+    )
+
+    def _call_gemini(api_key: str) -> str:
+        for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.85, "maxOutputTokens": 900},
+                },
+                timeout=30,
+            )
+            if resp.ok:
+                data = resp.json()
+                cands = data.get("candidates") or []
+                parts = ((cands[0].get("content") or {}).get("parts") or []) if cands else []
+                text = "".join(str(p.get("text") or "") for p in parts).strip()
+                if text:
+                    return text
+            elif resp.status_code in (401, 403, 429):
+                raise WaterfallProviderError(resp.status_code, f"Gemini HTTP {resp.status_code}: {resp.text[:180]}")
+        raise WaterfallProviderError(502, "Gemini söz üretiminden geçerli yanıt alınamadı.")
+
+    lyrics_text, used_label, trace = execute_key_waterfall(
+        "GEMINI_API_KEY",
+        _call_gemini,
+        data_dir=data_dir,
+        base_get_env=get_env,
+    )
+    return {
+        "lyrics": lyrics_text.strip(),
+        "vocal_language": lang,
+        "used_key_label": used_label,
+        "trace": trace,
+    }
 
 
 def start_music_job(
@@ -686,6 +929,16 @@ def start_music_job(
     duration_sec: int = 30,
     instrumental: bool = True,
     lyrics: str = "",
+    vocal_language: str = "tr",
+    bpm: Optional[int] = None,
+    key_scale: str = "",
+    time_signature: str = "",
+    music_task: str = "text2music",
+    ref_audio_url: Optional[str] = None,
+    audio_cover_strength: float = 0.85,
+    repaint_start: Optional[float] = None,
+    repaint_end: Optional[float] = None,
+    seed: Optional[int] = None,
     created_by: str = "owner",
     data_dir: Path,
     media_dir: Path,
@@ -693,23 +946,58 @@ def start_music_job(
     mac_dispatch_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
     enqueue_gpu_fn: Optional[Callable[[Dict[str, Any]], Any]] = None,
 ) -> Dict[str, Any]:
-    """Çoklu hesap şelalesiyle gerçek bir müzik üretim işini doğrular ve başlatır."""
+    """Çoklu hesap şelalesiyle veya Kaggle GPU ACE-Step 1.5/MusicGen ile gerçek müzik işi başlatır."""
     spec = MUSIC_MODELS_BY_ID.get(model_id)
     if not spec:
         raise ValueError(f"Bilinmeyen müzik modeli: {model_id}")
     clean_prompt = str(prompt or "").strip()
     if len(clean_prompt) < 4:
         raise ValueError("Müzik promptu en az 4 karakter olmalıdır.")
+    task_norm = str(music_task or "text2music").strip().lower()
+    if task_norm not in VALID_MUSIC_TASKS:
+        raise ValueError(f"Geçersiz müzik görevi: {music_task!r}. Geçerliler: {', '.join(VALID_MUSIC_TASKS)}")
+    if task_norm in ("cover", "repaint", "extend") and not ref_audio_url:
+        raise ValueError(f"'{task_norm}' görevi için referans ses dosyası (ref_audio_base64 veya ref_audio_url) zorunludur.")
+
+    clean_lyrics = str(lyrics or "").strip()[:4096]
+    needs_vocals = (not bool(instrumental)) or bool(clean_lyrics)
+    if needs_vocals and model_id != "auto_waterfall" and not spec.get("supports_vocals"):
+        raise ValueError(
+            f"'{spec['name']}' yalnızca enstrümantal destekler (vokal/şarkı sözü üretmez). "
+            "Vokal ve sözlü şarkı için 'gpu-acestep-1.5' (ücretsiz Kaggle GPU) veya 'auto_waterfall' seçin."
+        )
+    supported_tasks = spec.get("supports_tasks") or ["text2music"]
+    if task_norm != "text2music" and model_id != "auto_waterfall" and task_norm not in supported_tasks:
+        raise ValueError(
+            f"'{spec['name']}' modeli '{task_norm}' görevini desteklemiyor. Cover/Repaint/Extend için 'gpu-acestep-1.5' seçin."
+        )
+
+    lang_norm = str(vocal_language or "tr").strip().lower()[:12]
+    if lang_norm not in SUPPORTED_VOCAL_LANGUAGES:
+        lang_norm = "unknown"
+
+    clean_bpm: Optional[int] = None
+    if bpm is not None and str(bpm).strip() != "":
+        try:
+            clean_bpm = max(40, min(240, int(bpm)))
+        except (TypeError, ValueError):
+            clean_bpm = None
+
+    try:
+        cov_strength = max(0.0, min(1.0, float(audio_cover_strength)))
+    except (TypeError, ValueError):
+        cov_strength = 0.85
+
     dur = max(5, min(int(spec["max_duration_sec"]), int(duration_sec or spec["default_duration_sec"])))
 
-    # Ön doğrulama: tekil modelde en az 1 anahtar var mı?
+    # Ön doğrulama: tekil bulut modelde en az 1 anahtar var mı?
     env_key = spec.get("env_key")
     if env_key:
         keys = collect_provider_keys(env_key, data_dir=data_dir, base_get_env=get_env)
         if not keys:
             raise PermissionError(
-                f"'{spec['name']}' için {env_key} (veya {env_key}_1.._8) anahtarı yapılandırılmamış. "
-                "Müzik Stüdyosu → API Şelalesi panelinden ekleyin."
+                f"'{spec['name']}' için {env_key} (veya {env_key}_1.._9) anahtarı yapılandırılmamış. "
+                "Müzik Stüdyosu → API Şelalesi panelinden ekleyin veya ücretsiz 'gpu-acestep-1.5' seçin."
             )
     elif model_id == "auto_waterfall":
         any_keys = any(
@@ -718,19 +1006,27 @@ def start_music_job(
         )
         if not any_keys and mac_dispatch_fn is None and enqueue_gpu_fn is None:
             raise PermissionError(
-                "Otomatik Şelale için en az bir sağlayıcı anahtarı (GEMINI_API_KEY, ELEVENLABS_API_KEY, "
-                "STABILITY_API_KEY veya REPLICATE_API_TOKEN) gereklidir."
+                "Otomatik Şelale için en az bir sağlayıcı anahtarı veya Kaggle GPU kuyruğu gereklidir."
             )
 
-    if model_id == "gpu-musicgen" and enqueue_gpu_fn is None:
+    if model_id in ("gpu-musicgen", "gpu-acestep-1.5") and enqueue_gpu_fn is None:
         raise PermissionError(
             "GPU kuyruğu köprüsü etkin değil: Kaggle/Colab işçisine iş gönderilemiyor."
         )
 
     job_id = f"mus_{int(time.time())}_{secrets.token_hex(4)}"
     composed = _compose_music_prompt(
-        clean_prompt, genre=genre, mood=mood, duration_sec=dur, instrumental=instrumental, lyrics=lyrics
+        clean_prompt,
+        genre=genre,
+        mood=mood,
+        duration_sec=dur,
+        instrumental=bool(instrumental) and not bool(clean_lyrics),
+        lyrics=clean_lyrics,
+        bpm=clean_bpm,
+        key_scale=key_scale,
+        vocal_language=lang_norm,
     )
+    eff_instrumental = bool(instrumental) and not bool(clean_lyrics)
     job: Dict[str, Any] = {
         "job_id": job_id,
         "status": "running",
@@ -741,12 +1037,19 @@ def start_music_job(
         "genre": genre.strip()[:60],
         "mood": mood.strip()[:60],
         "duration_sec": dur,
-        "instrumental": bool(instrumental),
+        "instrumental": eff_instrumental,
+        "vocal_language": lang_norm,
+        "bpm": clean_bpm,
+        "key_scale": str(key_scale or "").strip()[:32],
+        "time_signature": str(time_signature or "").strip()[:12],
+        "music_task": task_norm,
+        "ref_audio_url": ref_audio_url,
+        "seed": int(seed) if seed is not None else None,
         "created_by": created_by,
         "created_at": time.time(),
         "audio_url": None,
         "filename": None,
-        "lyrics": "",
+        "lyrics": clean_lyrics,
         "used_key_label": None,
         "waterfall_trace": [],
         "error": None,
@@ -758,9 +1061,10 @@ def start_music_job(
             for k in oldest:
                 _MUSIC_JOBS.pop(k, None)
         _MUSIC_JOBS[job_id] = job
+        _save_jobs_state(data_dir)
 
-    # GPU kuyruğu: işçi şu an standby olsa bile iş kuyruğa alınır (Kaggle sonra başlatılabilir).
-    if model_id == "gpu-musicgen":
+    # Doğrudan Kaggle/Colab GPU modelleri (ACE-Step 1.5 veya MusicGen Stereo)
+    if model_id in ("gpu-acestep-1.5", "gpu-musicgen"):
         _gpu_kuyruga_al(
             job_id=job_id,
             composed=composed,
@@ -768,9 +1072,54 @@ def start_music_job(
             dur=dur,
             genre=genre,
             mood=mood,
-            instrumental=instrumental,
+            instrumental=eff_instrumental,
             created_by=created_by,
             enqueue_gpu_fn=enqueue_gpu_fn,  # type: ignore[arg-type]
+            data_dir=data_dir,
+            chosen_model=model_id,
+            lyrics=clean_lyrics,
+            vocal_language=lang_norm,
+            bpm=clean_bpm,
+            key_scale=key_scale,
+            time_signature=time_signature,
+            music_task=task_norm,
+            ref_audio_url=ref_audio_url,
+            audio_cover_strength=cov_strength,
+            repaint_start=repaint_start,
+            repaint_end=repaint_end,
+            seed=seed,
+        )
+        with _JOBS_LOCK:
+            return dict(_MUSIC_JOBS[job_id])
+
+    # Cover / Repaint / Extend görevlerinde auto_waterfall doğrudan ACE-Step 1.5 GPU kuyruğuna yönlenir
+    if model_id == "auto_waterfall" and task_norm != "text2music":
+        if enqueue_gpu_fn is None:
+            raise PermissionError(f"'{task_norm}' görevi için Kaggle GPU ACE-Step 1.5 kuyruğu gereklidir.")
+        _gpu_kuyruga_al(
+            job_id=job_id,
+            composed=composed,
+            clean_prompt=clean_prompt,
+            dur=dur,
+            genre=genre,
+            mood=mood,
+            instrumental=eff_instrumental,
+            created_by=created_by,
+            enqueue_gpu_fn=enqueue_gpu_fn,
+            data_dir=data_dir,
+            trace=[f"[auto_waterfall] '{task_norm}' görevi için gpu-acestep-1.5 seçildi"],
+            chosen_model="gpu-acestep-1.5",
+            lyrics=clean_lyrics,
+            vocal_language=lang_norm,
+            bpm=clean_bpm,
+            key_scale=key_scale,
+            time_signature=time_signature,
+            music_task=task_norm,
+            ref_audio_url=ref_audio_url,
+            audio_cover_strength=cov_strength,
+            repaint_start=repaint_start,
+            repaint_end=repaint_end,
+            seed=seed,
         )
         with _JOBS_LOCK:
             return dict(_MUSIC_JOBS[job_id])
@@ -781,7 +1130,7 @@ def start_music_job(
             chosen_model = model_id
             audio_bytes: Optional[bytes] = None
             ext = "mp3"
-            out_lyrics = ""
+            out_lyrics = clean_lyrics
             used_label = ""
 
             if model_id == "local-musicgen-mac":
@@ -793,15 +1142,21 @@ def start_music_job(
                 with _JOBS_LOCK:
                     _MUSIC_JOBS[job_id]["status"] = "delegated_mac"
                     _MUSIC_JOBS[job_id]["lyrics"] = str(res.get("text") or "Mac Fabrika'ya iletildi.")
+                    _save_jobs_state(data_dir)
                 return
 
             if model_id == "auto_waterfall":
                 last_exc: Optional[Exception] = None
                 for cand_id in AUTO_WATERFALL_ORDER:
                     cspec = MUSIC_MODELS_BY_ID[cand_id]
-                    if cand_id == "gpu-musicgen":
+                    # KRİTİK VOKAL KORUMASI: Vokal/şarkı sözü isteyen kullanıcı asla
+                    # enstrümantal-only modele sessizce düşürülmez!
+                    if needs_vocals and not cspec.get("supports_vocals"):
+                        all_traces.append(f"[{cand_id}] atlandı (vokal/söz desteklemiyor)")
+                        continue
+                    if cand_id in ("gpu-acestep-1.5", "gpu-musicgen"):
                         if enqueue_gpu_fn is not None:
-                            all_traces.append("[gpu-musicgen] GPU kuyruğuna alındı")
+                            all_traces.append(f"[{cand_id}] Kaggle GPU kuyruğuna alındı")
                             _gpu_kuyruga_al(
                                 job_id=job_id,
                                 composed=composed,
@@ -809,14 +1164,26 @@ def start_music_job(
                                 dur=dur,
                                 genre=genre,
                                 mood=mood,
-                                instrumental=instrumental,
+                                instrumental=eff_instrumental,
                                 created_by=created_by,
                                 enqueue_gpu_fn=enqueue_gpu_fn,
+                                data_dir=data_dir,
                                 trace=all_traces,
                                 chosen_model=cand_id,
+                                lyrics=clean_lyrics,
+                                vocal_language=lang_norm,
+                                bpm=clean_bpm,
+                                key_scale=key_scale,
+                                time_signature=time_signature,
+                                music_task=task_norm,
+                                ref_audio_url=ref_audio_url,
+                                audio_cover_strength=cov_strength,
+                                repaint_start=repaint_start,
+                                repaint_end=repaint_end,
+                                seed=seed,
                             )
                             return
-                        all_traces.append("[gpu-musicgen] GPU kuyruğu köprüsü etkin değil")
+                        all_traces.append(f"[{cand_id}] GPU kuyruğu köprüsü etkin değil")
                         continue
                     if cand_id == "local-musicgen-mac":
                         if mac_dispatch_fn is not None:
@@ -828,6 +1195,7 @@ def start_music_job(
                                     _MUSIC_JOBS[job_id]["model_name"] = cspec["name"]
                                     _MUSIC_JOBS[job_id]["waterfall_trace"] = all_traces + ["Mac Köprüsü: ✅ iletildi"]
                                     _MUSIC_JOBS[job_id]["lyrics"] = str(res.get("text") or "Mac Fabrika'ya iletildi.")
+                                    _save_jobs_state(data_dir)
                                 return
                             all_traces.append("Mac Köprüsü: çevrimdışı")
                         continue
@@ -835,10 +1203,12 @@ def start_music_job(
                     if not collect_provider_keys(ckey, data_dir=data_dir, base_get_env=get_env):
                         continue
                     try:
-                        audio_bytes, ext, out_lyrics, used_label, tr = _run_single_model_with_key_waterfall(
+                        audio_bytes, ext, got_lyrics, used_label, tr = _run_single_model_with_key_waterfall(
                             cand_id, composed, dur, data_dir=data_dir, base_get_env=get_env
                         )
                         all_traces.extend(f"[{cand_id}] {x}" for x in tr)
+                        if got_lyrics:
+                            out_lyrics = got_lyrics
                         chosen_model = cand_id
                         break
                     except Exception as exc:
@@ -847,9 +1217,11 @@ def start_music_job(
                 if audio_bytes is None:
                     raise RuntimeError(str(last_exc or "Otomatik şelalede çalışan müzik modeli bulunamadı."))
             else:
-                audio_bytes, ext, out_lyrics, used_label, tr = _run_single_model_with_key_waterfall(
+                audio_bytes, ext, got_lyrics, used_label, tr = _run_single_model_with_key_waterfall(
                     model_id, composed, dur, data_dir=data_dir, base_get_env=get_env
                 )
+                if got_lyrics:
+                    out_lyrics = got_lyrics
                 all_traces.extend(tr)
 
             Path(media_dir).mkdir(parents=True, exist_ok=True)
@@ -859,7 +1231,7 @@ def start_music_job(
             tmp_path.write_bytes(audio_bytes)
             os.replace(tmp_path, out_path)
 
-            mime = "audio/wav" if ext == "wav" else "audio/mpeg"
+            mime = "audio/wav" if ext == "wav" else ("audio/flac" if ext == "flac" else "audio/mpeg")
             try:
                 import cloud_storage
 
@@ -879,6 +1251,7 @@ def start_music_job(
                 _MUSIC_JOBS[job_id]["used_key_label"] = used_label
                 _MUSIC_JOBS[job_id]["waterfall_trace"] = all_traces[-12:]
                 _MUSIC_JOBS[job_id]["completed_at"] = time.time()
+                _save_jobs_state(data_dir)
                 _append_history(data_dir, dict(_MUSIC_JOBS[job_id]))
         except Exception as exc:
             logger.warning("[MusicStudio] İş başarısız (%s): %s", job_id, exc)
@@ -886,6 +1259,7 @@ def start_music_job(
                 _MUSIC_JOBS[job_id]["status"] = "failed"
                 _MUSIC_JOBS[job_id]["waterfall_trace"] = all_traces[-12:]
                 _MUSIC_JOBS[job_id]["error"] = str(exc)[:360]
+                _save_jobs_state(data_dir)
 
     t = threading.Thread(target=_run, daemon=True, name=f"MusicJob-{job_id}")
     t.start()

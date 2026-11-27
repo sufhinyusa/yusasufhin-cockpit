@@ -81,6 +81,20 @@ IMAGE_MODELS: List[Dict[str, Any]] = [
 # Doğrulanmış (HF API gated=False) Görselden-Videoya (I2V) & Video modelleri
 I2V_MODELS: List[Dict[str, Any]] = [
     {
+        "id": "wan2.1-vace-1.3b",
+        "repo": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+        "ad": "Wan 2.1 VACE 1.3B (Tutarlı Karakter R2V + İlk/Son Kare FLF2V — Higgsfield Tarzı)",
+        "is_i2v": True,
+        "tur": "vace",
+        "supports_r2v": True,
+        "supports_flf2v": True,
+        "adim": 30,
+        "fps": 16,
+        "vram": "T4 16GB (CPU Offload)",
+        "pipeline": "WanVACEPipeline",
+        "guclu": "Referans karakter portresinden yeni sahneler (R2V) ve İlk→Son kare arası yumuşak sinematik geçişler (FLF2V) üretir.",
+    },
+    {
         "id": "wan2.1-i2v-14b",
         "repo": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
         "ad": "Wan 2.1 I2V 14B (NF4 4-bit — En Yüksek Fizik & Yüz Sadakati)",
@@ -172,6 +186,16 @@ PRODUCTION_WORKFLOWS: List[Dict[str, str]] = [
         "ozet": "Yüklediğiniz kendi PNG/JPG görselinizi doğrudan seçili I2V modeliyle videoya çevirir.",
     },
     {
+        "id": "vace_r2v",
+        "ad": "3b. Tutarlı Karakter Referans→Video (Wan2.1 VACE · Higgsfield Tarzı)",
+        "ozet": "Kayıtlı karakter portrenizi veya referans görselinizi koruyarak yepyeni kamera açısı ve mekanlarda tutarlı video üretir.",
+    },
+    {
+        "id": "flf2v",
+        "ad": "3c. İlk Kare + Son Kare Geçiş Videosu (FLF2V · Wan2.1 VACE)",
+        "ozet": "Başlangıç ve bitiş anahtar karelerinizi yükleyin; yapay zeka iki kare arasındaki sinematik geçişi üretir.",
+    },
+    {
         "id": "hyperframes_motion",
         "ad": "4. HyperFrames Sinematik Motion + Kinetik Yazı (#296)",
         "ozet": "Anında HTML5 zaman çizelgesi + çoklu xfade geçiş + ilk-kare kalite kontrolüyle H.264 MP4 üretir.",
@@ -256,7 +280,13 @@ CAMERA_MOTIONS: List[Dict[str, str]] = [
     {"id": "push_in", "ad": "Yavaş Yakınlaşma (Push-In)", "prompt": "slow steady cinematic camera push-in toward the focal subject"},
     {"id": "pull_out", "ad": "Yavaş Uzaklaşma (Reveal Pull-Out)", "prompt": "smooth slow pull-back revealing the grand environment around the subject"},
     {"id": "orbital", "ad": "Yörünge Dönüşü (360° Orbital)", "prompt": "graceful gentle orbital arc rotating softly around the central subject"},
-    {"id": "pan_right", "ad": "Yatay Kaydırma (Pan Right)", "prompt": "smooth horizontal tracking pan from left to right across the scene"},
+    {"id": "pan_right", "ad": "Yatay Kaydırma Sağa (Pan Right)", "prompt": "smooth horizontal tracking pan from left to right across the scene"},
+    {"id": "pan_left", "ad": "Yatay Kaydırma Sola (Pan Left)", "prompt": "smooth horizontal tracking pan from right to left across the scene"},
+    {"id": "crane_up", "ad": "Vinç Yükselişi (Crane Up Reveal)", "prompt": "sweeping upward cinema crane jib rise revealing the horizon and subject scale"},
+    {"id": "dolly_zoom", "ad": "Vertigo / Dolly Zoom (Higgsfield)", "prompt": "dramatic Hitchcock dolly zoom vertigo perspective compression on the subject"},
+    {"id": "fpv_drone", "ad": "FPV Drone Uçuşu (Dinamik Takip)", "prompt": "dynamic agile FPV cinema drone swooping smoothly forward through the environment"},
+    {"id": "handheld_track", "ad": "El Kamerası Takip (Handheld Cinema)", "prompt": "authentic naturalistic handheld cinema tracking shot following the character motion"},
+    {"id": "bullet_time", "ad": "Bullet Time / Ağır Çekim Yörünge", "prompt": "ultra slow-motion frozen moment bullet-time arc sweeping around the suspended subject"},
     {"id": "wind_cloth_glow", "ad": "Sabit Kadraj + Rüzgar & Işık Akışı", "prompt": "locked stable framing while wind ripples fabric/hair and ambient particles shimmer softly"},
 ]
 
@@ -398,8 +428,10 @@ def compose_story_plan(
     negative_prompt: str = "",
     scene_count: int = 3,
     duration_sec: float = 5.0,
+    character_lock: str = "",
+    seed: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Konudan anlatım (TR) + somut İngilizce sahneler + hareket planı üretir."""
+    """Konudan anlatım (TR) + karakter kilidi + somut İngilizce sahneler + hareket planı üretir."""
     try:
         from prompt_director import plan_visual_scenes
 
@@ -410,6 +442,8 @@ def compose_story_plan(
             scene_count=scene_count,
             duration_sec=duration_sec,
             negative_prompt=negative_prompt,
+            character_lock=character_lock,
+            seed=seed,
             use_llm=True,
         )
     except Exception:
@@ -417,19 +451,27 @@ def compose_story_plan(
         stil = STYLE_MAP.get(str(style_preset or "").strip(), STYLE_PRESETS[0])
         cam = CAMERA_MAP.get(str(camera_motion or "").strip(), CAMERA_MOTIONS[0])
         suffix = stil.get("prompt_suffix", "")
-        ip = (f"{temiz_prompt}, {suffix}" if suffix else temiz_prompt)[:1200]
+        lock_txt = str(character_lock or "").strip()
+        ip_base = f"{lock_txt}, {temiz_prompt}" if lock_txt else temiz_prompt
+        ip = (f"{ip_base}, {suffix}" if suffix else ip_base)[:1200]
         hareket = cam.get("prompt") or stil.get("motion_default") or ""
         mp = (
             f"{hareket}, based closely on the reference frame, consistent character and lighting"
             if hareket else stil.get("motion_default", "")
         )[:500]
         neg = (str(negative_prompt or "").strip() or stil.get("negative_prompt", ""))[:400]
+        per_dur = round(max(2.0, float(duration_sec or 5.0)) / max(1, scene_count), 2)
         return {
             "narration_text": temiz_prompt,
+            "character_bible": lock_txt,
+            "characters": ([{"name": "Ana Karakter", "role": "Başrol", "visual_anchor": lock_txt}] if lock_txt else []),
+            "style_anchor": suffix,
+            "seed": int(seed or 42),
+            "total_duration_sec": round(float(duration_sec or 5.0), 2),
             "image_prompt": ip,
             "motion_prompt": mp,
             "negative_prompt": neg,
-            "scenes": [{"image_prompt": ip, "motion_prompt": mp}],
+            "scenes": [{"index": 1, "title": "Sahne 1", "shot_type": "wide", "duration_sec": per_dur, "image_prompt": ip, "motion_prompt": mp}],
             "planner_source": "fallback",
             "simulasyon": True,
         }

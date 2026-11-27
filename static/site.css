@@ -1747,3 +1747,333 @@ html[data-site-theme="saas"] .site-nav-pill.active {
   .reveal-on-scroll { opacity: 1; transform: none; transition: none; }
   .demo-caret { animation: none; }
 }
+
+/* ── v34 Sadeleştirilmiş Video Stüdyosu & AI Film Canvas ───────────────── */
+.vstudio-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.vstudio-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 72%, transparent);
+}
+
+.vstudio-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--site-text-dim);
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.vstudio-mode-btn:hover { color: var(--site-text); }
+
+.vstudio-mode-btn.active {
+  background: linear-gradient(135deg, var(--site-accent), var(--site-accent-2));
+  color: #04121a;
+}
+
+html[data-site-theme="saas"] .vstudio-mode-btn.active { color: #ffffff; }
+
+.vstudio-composer {
+  padding: 20px;
+}
+
+.vstudio-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.vstudio-prompt-box {
+  min-height: 84px;
+  font-size: 0.92rem;
+}
+
+.vstudio-lock-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.vstudio-lock-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.vstudio-lock-ico {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.84rem;
+  pointer-events: none;
+}
+
+.vstudio-lock-input {
+  padding-left: 32px !important;
+  font-size: 0.82rem !important;
+  padding-top: 9px !important;
+  padding-bottom: 9px !important;
+}
+
+.vstudio-ref-btn {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vstudio-ref-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-accent) 6%, transparent);
+}
+
+.vstudio-ref-preview img {
+  height: 44px;
+  width: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.vstudio-core-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.vstudio-core-controls .site-field { margin-bottom: 0; }
+
+@media (max-width: 720px) {
+  .vstudio-core-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.vstudio-actions-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.vstudio-cta-main {
+  flex: 1;
+  min-width: 170px;
+  padding: 11px 16px;
+  font-weight: 700;
+}
+
+.vstudio-advanced {
+  margin-top: 14px;
+  border: 1px solid var(--site-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--site-bg-soft) 50%, transparent);
+}
+
+.vstudio-advanced summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--site-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.vstudio-advanced summary::-webkit-details-marker { display: none; }
+.vstudio-advanced summary::after { content: "▾"; opacity: 0.7; transition: transform 0.18s ease; }
+.vstudio-advanced[open] summary::after { transform: rotate(180deg); }
+.vstudio-advanced[open] summary { border-bottom: 1px solid var(--site-border); color: var(--site-text); }
+
+.vstudio-advanced-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vstudio-steps-slim {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.vstudio-steps-slim .site-pipeline-step {
+  padding: 6px 8px;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.vstudio-stage-head,
+.vstudio-sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.vstudio-hud-compact {
+  margin-top: 10px;
+  font-size: 0.77rem;
+  padding: 9px 12px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+
+/* AI Film Canvas (Buzzy AI tarzı karakter + sahne tuvali) */
+.vstudio-canvas-panel {
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.vstudio-canvas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--site-border);
+}
+
+.vstudio-ratio-pills {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 72%, transparent);
+}
+
+.vstudio-ratio-pill {
+  border: none;
+  background: transparent;
+  color: var(--site-text-dim);
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vstudio-ratio-pill.active {
+  background: var(--site-accent);
+  color: #04121a;
+}
+
+.vstudio-char-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.vstudio-char-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--site-accent) 36%, transparent);
+  background: color-mix(in srgb, var(--site-accent) 8%, transparent);
+  max-width: 310px;
+}
+
+.vstudio-char-chip strong { font-size: 0.8rem; color: var(--site-text); }
+.vstudio-char-chip span { font-size: 0.72rem; color: var(--site-text-dim); line-height: 1.35; }
+
+.vstudio-shots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.vstudio-shot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--site-border-strong);
+  background: color-mix(in srgb, var(--site-bg-soft) 65%, transparent);
+}
+
+.vstudio-shot-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #070b14;
+  border: 1px solid var(--site-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vstudio-shot-thumb.portrait { aspect-ratio: 9 / 16; max-height: 280px; }
+.vstudio-shot-thumb.square { aspect-ratio: 1 / 1; }
+
+.vstudio-shot-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vstudio-shot-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.vstudio-shot-dur {
+  width: 62px !important;
+  padding: 3px 6px !important;
+  font-size: 0.74rem !important;
+  text-align: center;
+}
+
+.vstudio-shot-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--site-border);
+}

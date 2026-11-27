@@ -213,19 +213,29 @@ def preview_single_image(
     style_preset: str = "cinematic_realism",
     camera_motion: str = "otomatik",
     use_planner: bool = True,
+    seed: int = 42,
+    character_lock: str = "",
+    reference_image_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Hızlı bulut önizleme PNG üretir (Cloudflare FLUX.1-schnell birincil, Pollinations yedek)."""
+    """Hızlı bulut önizleme PNG üretir (FLUX.2 referans görsel kilidi + sabit tohum destekli)."""
     if use_planner:
         try:
             from prompt_director import plan_visual_scenes
 
             plan = plan_visual_scenes(
-                prompt=prompt, style_preset=style_preset, camera_motion=camera_motion, scene_count=1, use_llm=True
+                prompt=prompt,
+                style_preset=style_preset,
+                camera_motion=camera_motion,
+                scene_count=1,
+                character_lock=character_lock,
+                seed=seed,
+                use_llm=True,
             )
             img_prompt = plan["image_prompt"]
             mot_prompt = plan["motion_prompt"]
             narration = plan["narration_text"]
             planner = plan["planner_source"]
+            seed = int(plan.get("seed") or seed or 42)
         except Exception:
             img_prompt = prompt
             mot_prompt = prompt
@@ -233,13 +243,26 @@ def preview_single_image(
             planner = "ham_fallback"
     else:
         img_prompt = prompt
+        if character_lock and character_lock.strip():
+            try:
+                from prompt_director import _inject_character_lock
+                img_prompt = _inject_character_lock(img_prompt, character_lock)
+            except Exception:
+                pass
         mot_prompt = prompt
         narration = prompt
         planner = "hazir_sahne"
 
     hedef = Path(hedef)
     hedef.parent.mkdir(parents=True, exist_ok=True)
-    yol, saglayici = _tek_gorsel_saglayici_zinciri(img_prompt, hedef, genislik, yukseklik, 42)
+    yol, saglayici = _tek_gorsel_saglayici_zinciri(
+        img_prompt,
+        hedef,
+        genislik,
+        yukseklik,
+        int(seed or 42),
+        reference_image_path=reference_image_path,
+    )
     if yol is not None and hedef.is_file():
         return {
             "ok": True,
@@ -249,6 +272,8 @@ def preview_single_image(
             "motion_prompt": mot_prompt,
             "narration_text": narration,
             "planner_source": planner,
+            "seed": int(seed or 42),
+            "reference_used": bool(reference_image_path and Path(reference_image_path).is_file() and saglayici == "hf-flux2-klein-4b"),
         }
     return {
         "ok": False,
@@ -258,6 +283,7 @@ def preview_single_image(
         "motion_prompt": mot_prompt,
         "narration_text": narration,
         "planner_source": planner,
+        "seed": int(seed or 42),
         "error": "Gerçek YZ görsel sağlayıcıları yanıt vermedi (Pollinations devre dışı; metin kartı üretilmez).",
     }
 
@@ -437,9 +463,21 @@ def _gradio_dosya_yolu(sonuc: Any) -> Optional[str]:
     return None
 
 
-def _flux_sahne(istemci: Any, space_id: str, prompt: str, hedef: Path,
-                genislik: int, yukseklik: int, tohum: int) -> Optional[Path]:
-    """HuggingFace ZeroGPU Space (`FLUX.2-klein-4B` veya `FLUX.1-schnell`) ile sahne üretir."""
+def _flux_sahne(
+    istemci: Any,
+    space_id: str,
+    prompt: str,
+    hedef: Path,
+    genislik: int,
+    yukseklik: int,
+    tohum: int,
+    reference_image_path: Optional[Path] = None,
+) -> Optional[Path]:
+    """HuggingFace ZeroGPU Space (`FLUX.2-klein-4B` veya `FLUX.1-schnell`) ile sahne üretir.
+
+    `FLUX.2-klein-4B` referans görsel (`input_images`) desteklediği için karakter tutarlılığında
+    ilk sahne / karakter referansı doğrudan modele verilir.
+    """
     try:
         from PIL import Image
     except Exception:
@@ -448,19 +486,43 @@ def _flux_sahne(istemci: Any, space_id: str, prompt: str, hedef: Path,
     kaynak_yol: Optional[str] = None
     try:
         if "FLUX.2" in space_id:
-            sonuc = istemci.predict(
-                prompt=prompt,
-                input_images=[],
-                mode_choice="Distilled (4 steps)",
-                seed=tohum,
-                randomize_seed=False,
-                width=w,
-                height=h,
-                num_inference_steps=4,
-                guidance_scale=1.0,
-                prompt_upsampling=False,
-                api_name="/infer",
-            )
+            ref_list: List[Any] = []
+            if reference_image_path and Path(reference_image_path).is_file():
+                try:
+                    from gradio_client import handle_file
+                    ref_list = [handle_file(str(reference_image_path))]
+                except Exception:
+                    ref_list = []
+            try:
+                sonuc = istemci.predict(
+                    prompt=prompt,
+                    input_images=ref_list,
+                    mode_choice="Distilled (4 steps)",
+                    seed=tohum,
+                    randomize_seed=False,
+                    width=w,
+                    height=h,
+                    num_inference_steps=4,
+                    guidance_scale=1.0,
+                    prompt_upsampling=False,
+                    api_name="/infer",
+                )
+            except Exception:
+                if not ref_list:
+                    raise
+                sonuc = istemci.predict(
+                    prompt=prompt,
+                    input_images=[],
+                    mode_choice="Distilled (4 steps)",
+                    seed=tohum,
+                    randomize_seed=False,
+                    width=w,
+                    height=h,
+                    num_inference_steps=4,
+                    guidance_scale=1.0,
+                    prompt_upsampling=False,
+                    api_name="/infer",
+                )
         else:
             sonuc = istemci.predict(
                 prompt=prompt,
@@ -483,8 +545,14 @@ def _flux_sahne(istemci: Any, space_id: str, prompt: str, hedef: Path,
             shutil.rmtree(Path(kaynak_yol).parent, ignore_errors=True)
 
 
-def _hf_zerogpu_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
-                      tohum: int = 42) -> Tuple[Optional[Path], Optional[str]]:
+def _hf_zerogpu_sahne(
+    prompt: str,
+    hedef: Path,
+    genislik: int,
+    yukseklik: int,
+    tohum: int = 42,
+    reference_image_path: Optional[Path] = None,
+) -> Tuple[Optional[Path], Optional[str]]:
     """HF_TOKEN varsa token'lı, yoksa anonim ZeroGPU üzerinden FLUX.2 / FLUX.1 sahnesi üretir."""
     if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("HF_TOKEN"):
         return None, None
@@ -497,7 +565,8 @@ def _hf_zerogpu_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
     for space, etiket in ((FLUX2_SPACE, "hf-flux2-klein-4b"), (FLUX_SPACE, "hf-flux1-schnell")):
         try:
             istemci = Client(space, verbose=False, token=tok or None)
-            if _flux_sahne(istemci, space, prompt, hedef, genislik, yukseklik, tohum):
+            ref = reference_image_path if "FLUX.2" in space else None
+            if _flux_sahne(istemci, space, prompt, hedef, genislik, yukseklik, tohum, reference_image_path=ref):
                 return hedef, etiket
         except Exception as e:
             logger.info("[AIVideoMontaj] %s bağlantısı kurulamadı: %s", space, str(e)[:120])
@@ -506,9 +575,21 @@ def _hf_zerogpu_sahne(prompt: str, hedef: Path, genislik: int, yukseklik: int,
 
 
 def _tek_gorsel_saglayici_zinciri(
-    prompt: str, hedef: Path, genislik: int, yukseklik: int, tohum: int = 42,
+    prompt: str,
+    hedef: Path,
+    genislik: int,
+    yukseklik: int,
+    tohum: int = 42,
+    reference_image_path: Optional[Path] = None,
 ) -> Tuple[Optional[Path], Optional[str]]:
-    """NVIDIA FLUX -> Cloudflare FLUX -> HF ZeroGPU FLUX.2/1 sırasıyla gerçek görsel üretir (Pollinations yok)."""
+    """Referans karakter kilidi varsa önce FLUX.2-klein-4B, ardından NVIDIA -> Cloudflare -> HF ZeroGPU dener."""
+    if reference_image_path and Path(reference_image_path).is_file() and _hf_token():
+        hf_yol, hf_etiket = _hf_zerogpu_sahne(
+            prompt, hedef, genislik, yukseklik, tohum, reference_image_path=reference_image_path
+        )
+        if hf_yol is not None:
+            return hf_yol, hf_etiket
+
     if _nvidia_kimlik() and _nvidia_sahne(prompt, hedef, genislik, yukseklik):
         return hedef, "nvidia-flux1-dev"
 
@@ -516,15 +597,25 @@ def _tek_gorsel_saglayici_zinciri(
     if cf_tok and cf_acc and _cloudflare_sahne(prompt, hedef, genislik, yukseklik, tohum):
         return hedef, "cloudflare-flux1-schnell"
 
-    hf_yol, hf_etiket = _hf_zerogpu_sahne(prompt, hedef, genislik, yukseklik, tohum)
+    hf_yol, hf_etiket = _hf_zerogpu_sahne(
+        prompt, hedef, genislik, yukseklik, tohum, reference_image_path=reference_image_path
+    )
     if hf_yol is not None:
         return hf_yol, hf_etiket
     return None, None
 
 
-def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
-                   log=None) -> List[Path]:
-    """Prompt'tan gerçek YZ sahne görselleri üretir (Pollinations devre dışı)."""
+def sahneleri_uret(
+    prompt: str,
+    adet: int,
+    genislik: int,
+    yukseklik: int,
+    log=None,
+    seed: int = 42,
+    character_lock: str = "",
+    reference_image_path: Optional[Path] = None,
+) -> List[Path]:
+    """Prompt'tan karakter/tohum tutarlı gerçek YZ sahne görselleri üretir (Pollinations devre dışı)."""
     def _log(m: str) -> None:
         logger.info(m)
         if log:
@@ -542,14 +633,25 @@ def sahneleri_uret(prompt: str, adet: int, genislik: int, yukseklik: int,
     gecici = Path(tempfile.mkdtemp(prefix="ai_sahne_"))
     yollar: List[Path] = []
     promptlar = _sahne_promptlari(prompt, adet)
+    if character_lock and character_lock.strip():
+        try:
+            from prompt_director import _inject_character_lock
+            promptlar = [_inject_character_lock(sp, character_lock) for sp in promptlar]
+        except Exception:
+            pass
     son_saglayici = ""
+    anchor_ref: Optional[Path] = reference_image_path if (reference_image_path and Path(reference_image_path).is_file()) else None
 
     for i, sahne_prompt in enumerate(promptlar, 1):
         _log(f"🎨 Sahne {i}/{adet} üretiliyor…")
         hedef = gecici / f"sahne_{i}.png"
-        yol, saglayici = _tek_gorsel_saglayici_zinciri(sahne_prompt, hedef, genislik, yukseklik, 42 + i)
+        yol, saglayici = _tek_gorsel_saglayici_zinciri(
+            sahne_prompt, hedef, genislik, yukseklik, int(seed or 42), reference_image_path=anchor_ref
+        )
         if yol is not None and hedef.is_file():
             yollar.append(hedef)
+            if anchor_ref is None:
+                anchor_ref = hedef
             son_saglayici = saglayici or son_saglayici
             _log(f"   ✅ Sahne {i} hazır ({saglayici}, {hedef.stat().st_size // 1024} KB)")
         else:
@@ -589,8 +691,30 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
     elif mod == "pan_left":
         z_ifade = "1.12"
         x_ifade = f"(iw-iw/zoom)*(1-on/{kare})"
-    elif mod in ("zoom_in", "push_in", "slow_dolly_in", "orbital"):
+    elif mod in ("crane_up", "tilt_up"):
+        z_ifade = "1.14"
+        y_ifade = f"(ih-ih/zoom)*(1-on/{kare})"
+    elif mod in ("dolly_zoom", "vertigo"):
+        # Hızlı perspektif baskısı + hafif odak kayması
+        z_ifade = f"1.0+0.26*on/{kare}"
+        x_ifade = "iw/2-(iw/zoom/2)"
+        y_ifade = "ih/2-(ih/zoom/2)"
+    elif mod in ("fpv_drone", "fpv"):
+        z_ifade = f"1.04+0.20*on/{kare}"
+        x_ifade = f"(iw-iw/zoom)*(0.5+0.28*sin(2*PI*on/{kare}))"
+        y_ifade = f"(ih-ih/zoom)*(0.55-0.18*on/{kare})"
+    elif mod in ("handheld_track", "handheld"):
+        z_ifade = "1.10"
+        x_ifade = f"(iw-iw/zoom)*(0.35+0.30*on/{kare}+0.05*sin(6*PI*on/{kare}))"
+        y_ifade = f"(ih-ih/zoom)*(0.50+0.04*cos(5*PI*on/{kare}))"
+    elif mod in ("orbital", "bullet_time"):
+        z_ifade = "1.15"
+        x_ifade = f"(iw-iw/zoom)*(0.5+0.45*sin(PI*on/{kare}-PI/2))"
+        y_ifade = f"(ih-ih/zoom)*(0.5+0.08*sin(2*PI*on/{kare}))"
+    elif mod in ("zoom_in", "push_in", "slow_dolly_in"):
         z_ifade = "min(zoom+0.0015,1.18)"
+    elif mod in ("zoom_out", "pull_out", "reveal_pull_out"):
+        z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"
     else:
         z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"
 
@@ -669,8 +793,11 @@ def ai_video_uret(
     sahne_sure_sn: float = SAHNE_SURE_SN,
     ses_yolu: Optional[Path] = None,
     log=None,
+    hedef_sure_sn: Optional[float] = None,
+    character_lock: str = "",
+    seed: int = 42,
 ) -> Dict[str, Any]:
-    """Prompt'tan GERÇEK YZ görselleri üretip sinematik video montajı yapar.
+    """Prompt'tan GERÇEK YZ görselleri üretip hedef süreye tam uyumlu sinematik video montajı yapar.
 
     Döner: {"basarili", "yol", "boyut", "sahne", "kaynak", "hata"}
     """
@@ -686,9 +813,18 @@ def ai_video_uret(
     hedef_mp4.parent.mkdir(parents=True, exist_ok=True)
     baslangic = time.time()
 
-    _log(f"🎬 Gerçek YZ video hattı: {sahne_sayisi} sahne, {genislik}x{yukseklik}")
+    if hedef_sure_sn is not None and float(hedef_sure_sn) > 0:
+        istenen = max(3.0, min(60.0, float(hedef_sure_sn)))
+        n_eff = max(1, int(sahne_sayisi))
+        sahne_sure_sn = max(2.0, (istenen + max(0, n_eff - 1) * GECIS_SN) / n_eff)
+    else:
+        istenen = max(2.0, sahne_sayisi * sahne_sure_sn - max(0, sahne_sayisi - 1) * GECIS_SN)
 
-    sahneler = sahneleri_uret(prompt, sahne_sayisi, genislik, yukseklik, log=_log)
+    _log(f"🎬 Gerçek YZ video hattı: {sahne_sayisi} sahne × {sahne_sure_sn:.2f}s (hedef ~{istenen:.1f}s), {genislik}x{yukseklik}")
+
+    sahneler = sahneleri_uret(
+        prompt, sahne_sayisi, genislik, yukseklik, log=_log, seed=seed, character_lock=character_lock
+    )
     if not sahneler:
         tesis = tesis_durumu()
         neden = "; ".join(tesis.get("eksikler") or ["FLUX Space erişilemedi (kota/ağ)"])
@@ -700,6 +836,9 @@ def ai_video_uret(
             "tesis": tesis,
         }
 
+    # Gerçek üretilen sahne sayısı istenenden azsa süreyi tekrar dengele ki video kısalmasın!
+    if hedef_sure_sn is not None and len(sahneler) > 0:
+        sahne_sure_sn = max(2.0, (istenen + max(0, len(sahneler) - 1) * GECIS_SN) / len(sahneler))
 
     gecici = Path(tempfile.mkdtemp(prefix="ai_montaj_"))
     parcalar: List[Path] = []
@@ -729,12 +868,16 @@ def ai_video_uret(
         }
 
     son = hedef_mp4
+    hedef_toplam = max(2.0, len(parcalar) * sahne_sure_sn - max(0, len(parcalar) - 1) * GECIS_SN)
     if ses_yolu is not None and Path(ses_yolu).is_file() and Path(ses_yolu).stat().st_size > 500:
+        # KISA SES VİDEOYU KESMEMELİ: apad ile sessizlikle doldur, -t ile hedef sürede sabitle
         cmd = [
             _ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
             "-i", str(sessiz), "-i", str(ses_yolu),
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
-            "-shortest", "-movflags", "+faststart", str(son),
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c:v", "copy", "-af", f"apad=whole_dur={hedef_toplam:.3f}",
+            "-c:a", "aac", "-b:a", "128k",
+            "-t", f"{hedef_toplam:.3f}", "-movflags", "+faststart", str(son),
         ]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)

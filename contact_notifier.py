@@ -40,7 +40,24 @@ MAIL_SECRETS_FILENAME = ".mail_secrets.json"
 R2_MAIL_SECRETS_KEY = "state/mail_secrets.json"
 MAX_RECIPIENTS = 10
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
+GMAIL_APP_PASSWORD_RE = re.compile(r"^[a-z]{16}$")
 _MAIL_LOCK = threading.Lock()
+
+
+def gmail_app_password_warning(host: Optional[str], password: Optional[str]) -> Optional[str]:
+    """Gmail/Google Workspace SMTP parolasının 16 küçük harfli Uygulama Şifresi olup olmadığını denetler."""
+    if not host or ("gmail" not in host.lower() and "googlemail" not in host.lower()):
+        return None
+    clean = str(password or "").replace(" ", "").strip()
+    if not clean:
+        return None
+    if not GMAIL_APP_PASSWORD_RE.fullmatch(clean):
+        return (
+            "Gmail/Google Workspace SMTP normal hesap şifresini reddeder (535 BadCredentials). "
+            "https://myaccount.google.com/apppasswords üzerinden 16 küçük harfli Uygulama Şifresi "
+            "oluşturup kaydedin veya RESEND_API_KEY girin."
+        )
+    return None
 
 
 def normalize_email(raw: Any) -> str:
@@ -230,7 +247,8 @@ def notifier_status(
     smtp_pass = get_env("SMTP_PASS")
     smtp_host = get_env("SMTP_HOST") or ("smtp.gmail.com" if smtp_pass else None)
     smtp_user = get_env("SMTP_USER") or (to_email if smtp_pass else None)
-    has_smtp = bool(smtp_host and smtp_user and smtp_pass)
+    smtp_warning = gmail_app_password_warning(smtp_host, smtp_pass) if smtp_pass else None
+    has_smtp = bool(smtp_host and smtp_user and smtp_pass and not smtp_warning)
     has_tg = bool(get_env("TELEGRAM_BOT_TOKEN") and get_env("TELEGRAM_CHAT_ID"))
     has_mac_relay = bool(mac_smtp_ready or (mac_online and has_smtp))
 
@@ -247,6 +265,8 @@ def notifier_status(
     alici_ozet = ", ".join(recipients)
     if email_ready:
         hint = f"✅ Canlı e-posta aktif (alıcılar: {alici_ozet} • kanal: {email_method})."
+    elif smtp_warning:
+        hint = f"⚠️ {smtp_warning}"
     else:
         hint = (
             f"⚠️ {alici_ozet} adreslerine doğrudan mail düşmesi için 16 haneli Google Uygulama Şifrenizi "
@@ -261,6 +281,7 @@ def notifier_status(
         "email_configured": email_ready,
         "resend_configured": has_resend,
         "smtp_configured": has_smtp,
+        "smtp_warning": smtp_warning,
         "mac_relay_ready": has_mac_relay,
         "mac_online": mac_online,
         "email_method": email_method,
@@ -303,6 +324,35 @@ def _send_via_resend(
     return {"ok": False, "provider": "resend", "error": f"HTTP {resp.status_code}: {resp.text[:160]}"}
 
 
+def _smtp_login_safe(server: smtplib.SMTP, host: str, user: str, clean_pass: str) -> None:
+    """535 BadCredentials sonrası Python smtplib'in AUTH LOGIN denerken kopan soketi maskelemesini engeller."""
+    last_reply: List[Any] = []
+    orig_getreply = server.getreply
+
+    def _watching_getreply():
+        code, msg = orig_getreply()
+        text = msg.decode("utf-8", errors="replace") if isinstance(msg, (bytes, bytearray)) else str(msg)
+        last_reply[:] = [code, text]
+        return code, msg
+
+    server.getreply = _watching_getreply  # type: ignore[method-assign]
+    try:
+        server.login(user, clean_pass)
+    except smtplib.SMTPAuthenticationError as exc:
+        warn = gmail_app_password_warning(host, clean_pass)
+        ek = f" — {warn}" if warn else ""
+        raw = exc.smtp_error.decode("utf-8", errors="replace") if isinstance(exc.smtp_error, bytes) else str(exc.smtp_error)
+        raise smtplib.SMTPAuthenticationError(exc.smtp_code, f"{raw}{ek}".encode("utf-8")) from exc
+    except smtplib.SMTPServerDisconnected as exc:
+        if last_reply and last_reply[0] == 535:
+            warn = gmail_app_password_warning(host, clean_pass)
+            ek = f" — {warn}" if warn else ""
+            raise smtplib.SMTPAuthenticationError(535, f"{last_reply[1][:180]}{ek}".encode("utf-8")) from exc
+        raise
+    finally:
+        server.getreply = orig_getreply  # type: ignore[method-assign]
+
+
 def send_via_smtp_direct(
     *,
     host: str,
@@ -316,6 +366,9 @@ def send_via_smtp_direct(
     to_emails: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Doğrudan TLS/SSL SMTP üzerinden tek veya çoklu alıcıya gerçek e-posta gönderir."""
+    warn = gmail_app_password_warning(host, password)
+    if warn:
+        raise ValueError(warn)
     clean_pass = password.replace(" ", "") if "gmail" in host.lower() else password
     recipients = parse_recipient_list(to_emails) if to_emails else parse_recipient_list(to_email)
     to_header = ", ".join(recipients) if recipients else to_email
@@ -334,14 +387,14 @@ def send_via_smtp_direct(
     ctx = ssl.create_default_context()
     if port == 465:
         with smtplib.SMTP_SSL(host, port, timeout=12, context=ctx) as server:
-            server.login(user, clean_pass)
+            _smtp_login_safe(server, host, user, clean_pass)
             server.send_message(msg)
     else:
         with smtplib.SMTP(host, port, timeout=12) as server:
             server.ehlo()
             server.starttls(context=ctx)
             server.ehlo()
-            server.login(user, clean_pass)
+            _smtp_login_safe(server, host, user, clean_pass)
             server.send_message(msg)
     return {"ok": True, "provider": "smtp", "error": None}
 
@@ -387,6 +440,7 @@ def dispatch_contact_notification(
     message: str,
     get_env: Callable[[str], Optional[str]],
     mac_relay_fn: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
+    send_telegram: bool = True,
 ) -> Dict[str, Any]:
     """Resend -> Doğrudan SMTP -> Mac Port-443 Gmail Rölesi (+ Çevrimdışı Kuyruk) + Telegram ile tüm alıcılara yollar."""
     recipients = get_contact_recipients(get_env)
@@ -435,7 +489,7 @@ def dispatch_contact_notification(
             email_error = None
         except Exception as exc:
             email_provider = "smtp"
-            email_error = f"{type(exc).__name__}: {str(exc)[:140]}"
+            email_error = f"{type(exc).__name__}: {str(exc)[:260]}"
             logger.warning("[Contact] Doğrudan SMTP hatası, Mac rölesi denenecek: %s", email_error)
 
     # 3. Mac Port-443 Köprüsü Üzerinden TLS 587 Rölesi (çoklu to_emails + geriye uyumlu to_email)
@@ -452,6 +506,7 @@ def dispatch_contact_notification(
             "smtp_port": smtp_port,
             "smtp_user": smtp_user or to_email,
             "smtp_pass": smtp_pass or "",
+            "send_telegram": bool(send_telegram),
         }
         try:
             mr = mac_relay_fn(relay_payload)
@@ -465,22 +520,23 @@ def dispatch_contact_notification(
                 email_error = mr.get("error")
             elif mr.get("error"):
                 email_error = str(mr.get("error"))
-            if mr.get("telegram_sent"):
+            if send_telegram and mr.get("telegram_sent"):
                 telegram_sent = True
         except Exception as exc:
             logger.warning("[Contact] Mac röle çağrısı hatası: %s", exc)
 
-    # 4. Bulut Telegram Bildirimi
-    tg_tok = get_env("TELEGRAM_BOT_TOKEN")
-    tg_chat = get_env("TELEGRAM_CHAT_ID")
-    if not telegram_sent and tg_tok and tg_chat:
-        try:
-            tr = _send_via_telegram(tg_tok, tg_chat, name, sender_email, message)
-            telegram_sent = bool(tr["ok"])
-            telegram_error = tr["error"]
-        except Exception as exc:
-            telegram_error = f"{type(exc).__name__}: {str(exc)[:140]}"
-            logger.warning("[Contact] Telegram bildirim hatası: %s", telegram_error)
+    # 4. Bulut Telegram Bildirimi (yalnız send_telegram=True ise — e-posta testi Telegram'ı spamlamaz)
+    if send_telegram and not telegram_sent:
+        tg_tok = get_env("TELEGRAM_BOT_TOKEN")
+        tg_chat = get_env("TELEGRAM_CHAT_ID")
+        if tg_tok and tg_chat:
+            try:
+                tr = _send_via_telegram(tg_tok, tg_chat, name, sender_email, message)
+                telegram_sent = bool(tr["ok"])
+                telegram_error = tr["error"]
+            except Exception as exc:
+                telegram_error = f"{type(exc).__name__}: {str(exc)[:140]}"
+                logger.warning("[Contact] Telegram bildirim hatası: %s", telegram_error)
 
     if email_sent and telegram_sent:
         channel = "email+telegram"

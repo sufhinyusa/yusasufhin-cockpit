@@ -13,20 +13,26 @@
 
 torch>=2.4.0
 torchvision>=0.19.0
-diffusers>=0.36.0
-transformers>=4.46.0
+torchaudio>=2.4.0
+# FLUX.2, Wan2.1-VACE ve ACE-Step 1.5 (`AceStepPipeline`) için güncel diffusers gerekir.
+# PyPI sürümü henüz AceStepPipeline / Flux2KleinPipeline içermiyorsa Kaggle hücresinde:
+#   !pip -q install -U "git+https://github.com/huggingface/diffusers.git"
+diffusers>=0.38.0
+transformers>=4.48.0
 accelerate>=1.0.0
 safetensors>=0.4.5
 sentencepiece>=0.2.0
 protobuf>=5.28.0
 ftfy>=6.2.0
+einops>=0.8.0
 Pillow>=10.1.0
 imageio>=2.35.0
 imageio-ffmpeg>=0.5.1
-huggingface_hub>=0.26.0
+huggingface_hub>=0.27.0
 # gpu_worker.py sunucu uçları (claim/heartbeat/upload) HTTP istemcisi
 requests>=2.31.0
 # Wan2.1-I2V-14B'yi T4 16GB'a sığdıran NF4 4-bit kuantizasyon (2026-11-11)
 bitsandbytes>=0.44.0
-# MusicGen WAV yazımı için (stdlib wave+struct fallback de var)
+# ACE-Step 1.5 (48 kHz stereo) ve MusicGen Stereo (32 kHz) WAV/FLAC yazımı/okuması
 scipy>=1.11.0
+soundfile>=0.12.1

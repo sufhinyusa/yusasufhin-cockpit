@@ -46,6 +46,7 @@ KULLANIM (Kaggle / Colab hücresi)
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import shutil
@@ -75,12 +76,18 @@ ANIMAGINE_XL = "cagliostrolab/animagine-xl-3.1"
 
 WAN21_T2V = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 WAN21_I2V = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+WAN21_VACE = "Wan-AI/Wan2.1-VACE-1.3B-diffusers"
 WAN22_TI2V = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 LTX_VIDEO = "Lightricks/LTX-Video"
 COGVIDEOX_I2V = "THUDM/CogVideoX-5b-I2V"
 SVD_XT = "stabilityai/stable-video-diffusion-img2vid-xt"
 
-# MusicGen — ücretsiz yerel AI müzik (transformers, T4 15 GB'da fp32 ile çalışır)
+# Ücretsiz Yerel AI Müzik Modelleri (Kaggle/Colab T4 15 GB doğrulandı)
+# ACE-Step 1.5 (MIT, 5B DiT, 48 kHz stereo, Türkçe/çok dilli vokal + söz + Cover/Repaint, 240 sn)
+ACESTEP_TURBO = "ACE-Step/acestep-v15-xl-turbo-diffusers"
+ACESTEP_SFT = "ACE-Step/acestep-v15-xl-sft-diffusers"
+# Meta MusicGen (hızlı enstrümantal yedek, 32 kHz gerçek stereo)
+MUSICGEN_STEREO_MEDIUM = "facebook/musicgen-stereo-medium"
 MUSICGEN_MEDIUM = "facebook/musicgen-medium"
 MUSICGEN_SMALL = "facebook/musicgen-small"
 
@@ -99,6 +106,10 @@ IMAGE_MODEL_REPOS: Dict[str, str] = {
 }
 
 I2V_MODEL_REPOS: Dict[str, str] = {
+    "wan2.1-vace-1.3b": WAN21_VACE,
+    "wan2.1_vace": WAN21_VACE,
+    "vace": WAN21_VACE,
+    "wan-ai/wan2.1-vace-1.3b-diffusers": WAN21_VACE,
     "wan2.1_i2v": WAN21_I2V,
     "wan2.1-i2v-14b": WAN21_I2V,
     "wan-ai/wan2.1-i2v-14b-480p-diffusers": WAN21_I2V,
@@ -227,15 +238,22 @@ _EXTRA_IMG_PIPE = None
 _EXTRA_IMG_KEY = ""
 _EXTRA_VID_PIPE = None
 _EXTRA_VID_KEY = ""
+_EXTRA_T2V_PIPE = None
+_EXTRA_T2V_KEY = ""
+_WAN_VACE = None
 _MUZIK_PIPE = None
 _MUZIK_KEY = ""
+_ACESTEP_PIPE = None
+_ACESTEP_KEY = ""
 
 
 def _muzik_cache_temizle() -> None:
-    """MusicGen boru hattını RAM/VRAM'den bırakır (FLUX/Wan ile VRAM paylaşımı için)."""
-    global _MUZIK_PIPE, _MUZIK_KEY
+    """ACE-Step / MusicGen boru hatlarını RAM/VRAM'den bırakır (FLUX/Wan ile VRAM paylaşımı için)."""
+    global _MUZIK_PIPE, _MUZIK_KEY, _ACESTEP_PIPE, _ACESTEP_KEY
     _MUZIK_PIPE = None
     _MUZIK_KEY = ""
+    _ACESTEP_PIPE = None
+    _ACESTEP_KEY = ""
     _bosalt()
 
 
@@ -251,11 +269,14 @@ def _gorsel_cache_temizle() -> None:
 
 def _video_cache_temizle() -> None:
     """Video boru hatlarını RAM/VRAM'den bırakır (farklı modele geçerken)."""
-    global _WAN_T2V, _WAN_I2V, _EXTRA_VID_PIPE, _EXTRA_VID_KEY
+    global _WAN_T2V, _WAN_I2V, _WAN_VACE, _EXTRA_VID_PIPE, _EXTRA_VID_KEY, _EXTRA_T2V_PIPE, _EXTRA_T2V_KEY
     _WAN_T2V = None
     _WAN_I2V = None
+    _WAN_VACE = None
     _EXTRA_VID_PIPE = None
     _EXTRA_VID_KEY = ""
+    _EXTRA_T2V_PIPE = None
+    _EXTRA_T2V_KEY = ""
     _muzik_cache_temizle()
     _bosalt()
 
@@ -318,13 +339,15 @@ def flux2_yukle(log=print):
 
 
 def flux2_gorsel_uret(prompt: str, genislik: int, yukseklik: int,
-                      adim: int = 4, tohum: int = 42, log=print) -> Path:
-    """Prompt'tan GERÇEK FLUX.2 görseli üretir. Döner: PNG yolu.
+                      adim: int = 4, tohum: int = 42,
+                      ref_gorsel: Optional[Path] = None, log=print) -> Path:
+    """Prompt'tan GERÇEK FLUX.2-klein-4B görseli üretir (seed + çoklu referans karakter kilidi destekli).
 
-    `Flux2KleinPipeline` distilled bir modeldir: difüzyon adım sayısı sabittir
-    (4). `adim` parametresi yalnız arayüz uyumluluğu/log içindir; gerçek adım
-    sayısını değiştirmez. Süre GPU ve CPU-offload durumuna göre değişir.
+    `Flux2KleinPipeline` distilled 4 adımlı bir modeldir ve `image` parametresiyle
+    karakter portre referansı alarak yüz/kıyafet tutarlılığını koruyabilir.
     """
+    import torch
+
     pipe = flux2_yukle(log=log)
     # Kenar uzunlukları 16'nın katı olmalı
     w = max(256, (genislik // 16) * 16)
@@ -332,8 +355,36 @@ def flux2_gorsel_uret(prompt: str, genislik: int, yukseklik: int,
     uid = uuid.uuid4().hex[:8]
     hedef = Path(tempfile.gettempdir()) / f"flux2_{uid}.png"
 
-    log(f"🎨 FLUX.2 difüzyon: {w}x{h} (sabit 4 distilled adım, CPU offload)")
-    sonuc = pipe(prompt=prompt, width=w, height=h)
+    sig = inspect.signature(pipe.__call__)
+    sig_params = set(sig.parameters.keys())
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    kwargs: Dict[str, Any] = {"prompt": prompt, "width": w, "height": h}
+    if has_var_kw or "num_inference_steps" in sig_params:
+        kwargs["num_inference_steps"] = max(1, min(12, int(adim or 4)))
+    if has_var_kw or "generator" in sig_params:
+        kwargs["generator"] = torch.Generator(device="cpu").manual_seed(int(tohum or 42))
+
+    ref_kullanildi = False
+    ref_pil = None
+    if ref_gorsel is not None and Path(ref_gorsel).is_file() and (has_var_kw or "image" in sig_params):
+        from PIL import Image
+        ref_pil = Image.open(ref_gorsel).convert("RGB")
+        kwargs["image"] = [ref_pil]
+        ref_kullanildi = True
+
+    log(
+        f"🎨 FLUX.2 difüzyon: {w}x{h} (seed={tohum}, "
+        f"karakter_ref={'EVET' if ref_kullanildi else 'yok'}, CPU offload)"
+    )
+    try:
+        sonuc = pipe(**kwargs)
+    except TypeError:
+        if ref_pil is not None:
+            # Bazı tekil referans sarmalayıcıları liste yerine tek PIL.Image bekler
+            kwargs["image"] = ref_pil
+            sonuc = pipe(**kwargs)
+        else:
+            raise
     sonuc.images[0].save(hedef, "PNG")
     log(f"✅ Görsel hazır: {hedef.stat().st_size // 1024} KB")
     return hedef
@@ -341,13 +392,13 @@ def flux2_gorsel_uret(prompt: str, genislik: int, yukseklik: int,
 
 def secimli_gorsel_uret(prompt: str, model_key: Optional[str], genislik: int, yukseklik: int,
                         neg_prompt: str = "", adim: Optional[int] = None,
-                        tohum: int = 42, log=print) -> Path:
+                        tohum: int = 42, ref_gorsel: Optional[Path] = None, log=print) -> Path:
     """Seçilen görsel modeliyle (FLUX.2, Z-Image-Turbo, SDXL-Turbo, RealVisXL, AnimagineXL) PNG üretir."""
     global _EXTRA_IMG_PIPE, _EXTRA_IMG_KEY
     repo = _gorsel_modeli_coz(model_key)
     if repo == FLUX2_KLEIN:
         return flux2_gorsel_uret(prompt, genislik, yukseklik,
-                                 adim=adim or 4, tohum=tohum, log=log)
+                                 adim=adim or 4, tohum=tohum, ref_gorsel=ref_gorsel, log=log)
 
     import torch
     from diffusers import DiffusionPipeline
@@ -643,20 +694,321 @@ def _extra_vid_pipe_al(repo: str, log=print):
     return pipe
 
 
-def secimli_i2v_uret(gorsel_yolu: Path, prompt: str, model_key: Optional[str],
-                     genislik: int, yukseklik: int, neg_prompt: str = "",
-                     sure_sn: float = 4.0, adim: int = 24,
-                     tohum: int = 42, log=print) -> Path:
-    """Seçilen I2V modeliyle (Wan2.1-14B, Wan2.2-5B, LTX-Video, CogVideoX-5B, SVD-XT) video üretir."""
-    repo = _i2v_modeli_coz(model_key)
+_I2V_TEK_GECIS_MAX_SN: Dict[str, float] = {
+    WAN21_VACE: 5.0,
+    WAN21_I2V: 5.0,
+    WAN22_TI2V: 3.3,
+    LTX_VIDEO: 4.0,
+    COGVIDEOX_I2V: 6.0,
+    SVD_XT: 3.5,
+}
+_I2V_MODEL_FPS: Dict[str, int] = {
+    WAN21_VACE: 16,
+    WAN21_I2V: 16,
+    WAN22_TI2V: 24,
+    LTX_VIDEO: 24,
+    COGVIDEOX_I2V: 8,
+    SVD_XT: 7,
+}
+
+
+def wan21_vace_yukle(log=print):
+    """Wan2.1-VACE-1.3B (Tutarlı Karakter R2V + İlk/Son Kare FLF2V — T4 15 GB uyumlu)."""
+    global _WAN_VACE
+    if _WAN_VACE is not None:
+        return _WAN_VACE
+
+    import torch
+    from diffusers import AutoencoderKLWan
+    from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+    try:
+        from diffusers import WanVACEPipeline
+    except ImportError as exc:
+        raise RuntimeError(
+            "WanVACEPipeline kurulu diffusers sürümünde yok. "
+            "Kaggle hücresinde: pip install -U git+https://github.com/huggingface/diffusers.git"
+        ) from exc
+
+    _gorsel_cache_temizle()
+    _video_cache_temizle()
+    log(f"⏳ {WAN21_VACE} yükleniyor (CPU offload + VAE slicing/tiling)…")
+    vae = AutoencoderKLWan.from_pretrained(WAN21_VACE, subfolder="vae", torch_dtype=torch.float32)
+    pipe = WanVACEPipeline.from_pretrained(
+        WAN21_VACE, vae=vae, torch_dtype=_dtype(), low_cpu_mem_usage=True
+    )
+    pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=3.0)
+    pipe.enable_model_cpu_offload()
+    pipe.vae.enable_slicing()
+    pipe.vae.enable_tiling()
+    _WAN_VACE = pipe
+    log("✅ Wan2.1-VACE-1.3B hazır (R2V tutarlı karakter + FLF2V geçiş)")
+    return pipe
+
+
+def wan21_vace_uret(
+    prompt: str,
+    genislik: int,
+    yukseklik: int,
+    *,
+    ilk_kare: Optional[Path] = None,
+    son_kare: Optional[Path] = None,
+    ref_gorseller: Optional[list[Path]] = None,
+    neg_prompt: str = "",
+    sure_sn: float = 5.0,
+    adim: int = 30,
+    tohum: int = 42,
+    log=print,
+) -> Path:
+    """Wan2.1-VACE-1.3B ile Tutarlı Karakter R2V, İlk+Son Kare FLF2V veya Karakter-Kilitli I2V üretir."""
+    import torch
+    from PIL import Image
+
+    pipe = wan21_vace_yukle(log=log)
+    w, h = _hizala(genislik, 16), _hizala(yukseklik, 16)
+    kare = _kare_sayisi_hesapla(sure_sn, fps=16)
+
+    video_frames = None
+    mask_frames = None
+    if ilk_kare is not None and Path(ilk_kare).is_file():
+        first_pil = Image.open(ilk_kare).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+        gray = Image.new("RGB", (w, h), (128, 128, 128))
+        mask_black = Image.new("L", (w, h), 0)
+        mask_white = Image.new("L", (w, h), 255)
+        if son_kare is not None and Path(son_kare).is_file():
+            last_pil = Image.open(son_kare).convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+            video_frames = [first_pil] + [gray] * (kare - 2) + [last_pil]
+            mask_frames = [mask_black] + [mask_white] * (kare - 2) + [mask_black]
+            mod_etiketi = "FLF2V (İlk+Son Kare)"
+        else:
+            video_frames = [first_pil] + [gray] * (kare - 1)
+            mask_frames = [mask_black] + [mask_white] * (kare - 1)
+            mod_etiketi = "VACE-I2V"
+    else:
+        mod_etiketi = "VACE-R2V (Tutarlı Karakter)"
+
+    ref_pils = None
+    if ref_gorseller:
+        valid_refs = [Image.open(p).convert("RGB") for p in ref_gorseller if p is not None and Path(p).is_file()]
+        if valid_refs:
+            ref_pils = valid_refs
+
+    if video_frames is None and not ref_pils:
+        # Saf VACE-T2V: tüm kareler gri + tüm maskeler beyaz (255=üret) → her diffusers sürümünde kararlı
+        gray = Image.new("RGB", (w, h), (128, 128, 128))
+        mask_white = Image.new("L", (w, h), 255)
+        video_frames = [gray] * kare
+        mask_frames = [mask_white] * kare
+        mod_etiketi = "VACE-T2V"
+
+    varsayilan_neg = (
+        "blurry, distorted face, flickering artifacts, low quality, text, watermark, static frozen frame"
+    )
+    uretici = torch.Generator(device="cpu").manual_seed(int(tohum or 42))
+    uid = uuid.uuid4().hex[:8]
+    hedef = Path(tempfile.gettempdir()) / f"vace_{uid}.mp4"
+    log(
+        f"🎬 Wan2.1-VACE [{mod_etiketi}]: {w}x{h}, {kare} kare, {adim} adım, "
+        f"ref={len(ref_pils or [])}, seed={tohum}"
+    )
+    vace_kwargs: Dict[str, Any] = {
+        "prompt": prompt,
+        "negative_prompt": neg_prompt or varsayilan_neg,
+        "height": h,
+        "width": w,
+        "num_frames": kare,
+        "num_inference_steps": max(12, min(50, int(adim or 30))),
+        "guidance_scale": 5.0,
+        "generator": uretici,
+    }
+    if video_frames is not None:
+        vace_kwargs["video"] = video_frames
+    if mask_frames is not None:
+        vace_kwargs["mask"] = mask_frames
+    if ref_pils is not None:
+        vace_kwargs["reference_images"] = ref_pils
+    sonuc = pipe(**vace_kwargs)
+    return _videoyu_yaz(sonuc, hedef, fps=16)
+
+
+def secimli_t2v_uret(
+    prompt: str,
+    model_key: Optional[str],
+    genislik: int,
+    yukseklik: int,
+    *,
+    neg_prompt: str = "",
+    sure_sn: float = 5.0,
+    adim: int = 25,
+    tohum: int = 42,
+    ref_gorseller: Optional[list[Path]] = None,
+    log=print,
+) -> Path:
+    """Doğrudan T2V için seçili video modelini (Wan2.2-TI2V-5B, Wan2.1-VACE, LTX-Video, Wan2.1-T2V-1.3B) çalıştırır."""
+    global _EXTRA_T2V_PIPE, _EXTRA_T2V_KEY
+    repo = _i2v_modeli_coz(model_key) if model_key else WAN21_T2V
+
+    if repo == WAN21_VACE:
+        return wan21_vace_uret(
+            prompt, genislik, yukseklik,
+            ref_gorseller=ref_gorseller, neg_prompt=neg_prompt,
+            sure_sn=sure_sn, adim=adim, tohum=tohum, log=log,
+        )
+
+    if repo == WAN22_TI2V:
+        import torch
+        from diffusers import AutoencoderKLWan, WanPipeline
+
+        if _EXTRA_T2V_PIPE is None or _EXTRA_T2V_KEY != WAN22_TI2V:
+            _gorsel_cache_temizle()
+            _video_cache_temizle()
+            log(f"⏳ {WAN22_TI2V} (WanPipeline T2V) yükleniyor…")
+            vae = AutoencoderKLWan.from_pretrained(WAN22_TI2V, subfolder="vae", torch_dtype=torch.float32)
+            pipe = WanPipeline.from_pretrained(WAN22_TI2V, vae=vae, torch_dtype=_dtype(), low_cpu_mem_usage=True)
+            pipe.enable_model_cpu_offload()
+            pipe.vae.enable_slicing()
+            pipe.vae.enable_tiling()
+            _EXTRA_T2V_PIPE, _EXTRA_T2V_KEY = pipe, WAN22_TI2V
+        w, h = _hizala(genislik, 32), _hizala(yukseklik, 32)
+        kare = _kare_sayisi_hesapla(sure_sn, fps=24)
+        uretici = torch.Generator(device="cpu").manual_seed(int(tohum or 42))
+        hedef = Path(tempfile.gettempdir()) / f"wan22_t2v_{uuid.uuid4().hex[:8]}.mp4"
+        varsayilan_neg = "blurry, deformed, low quality, flickering artifacts, text, watermark, static"
+        log(f"🎬 Wan2.2-TI2V-5B T2V: {w}x{h}, {kare} kare, {adim} adım")
+        sonuc = _EXTRA_T2V_PIPE(
+            prompt=prompt, negative_prompt=neg_prompt or varsayilan_neg,
+            height=h, width=w, num_frames=kare,
+            num_inference_steps=max(12, min(40, int(adim))), guidance_scale=5.0,
+            generator=uretici,
+        )
+        return _videoyu_yaz(sonuc, hedef, fps=24)
+
+    if repo == LTX_VIDEO:
+        import torch
+        from diffusers import LTXPipeline
+
+        if _EXTRA_T2V_PIPE is None or _EXTRA_T2V_KEY != LTX_VIDEO:
+            _gorsel_cache_temizle()
+            _video_cache_temizle()
+            log(f"⏳ {LTX_VIDEO} (LTXPipeline T2V) yükleniyor…")
+            dt = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
+            pipe = LTXPipeline.from_pretrained(LTX_VIDEO, torch_dtype=dt, low_cpu_mem_usage=True)
+            pipe.enable_model_cpu_offload()
+            if hasattr(pipe.vae, "enable_tiling"):
+                pipe.vae.enable_tiling()
+            _EXTRA_T2V_PIPE, _EXTRA_T2V_KEY = pipe, LTX_VIDEO
+        w, h = _hizala(genislik, 32), _hizala(yukseklik, 32)
+        kare = max(17, min(97, ((int(round(max(2.0, sure_sn) * 24)) - 1) // 8) * 8 + 1))
+        uretici = torch.Generator(device="cpu").manual_seed(int(tohum or 42))
+        hedef = Path(tempfile.gettempdir()) / f"ltx_t2v_{uuid.uuid4().hex[:8]}.mp4"
+        log(f"🎬 LTX-Video T2V: {w}x{h}, {kare} kare, {adim} adım")
+        sonuc = _EXTRA_T2V_PIPE(
+            prompt=prompt, negative_prompt=neg_prompt or None,
+            height=h, width=w, num_frames=kare,
+            num_inference_steps=max(12, min(40, int(adim))), guidance_scale=3.0,
+            generator=uretici,
+        )
+        return _videoyu_yaz(sonuc, hedef, fps=24)
+
+    return wan21_video_uret(prompt, genislik, yukseklik, sure_sn=sure_sn, adim=adim, tohum=tohum, log=log)
+
+
+def _i2v_segment_planla(sure_sn: float, tek_gecis_max_sn: float = 5.0, max_segment: int = 6) -> list[float]:
+    """İstenen süre tek GPU geçişini aştığında (ör. 10 sn > 5 sn) son-kare zincirleme segment sürelerini böler."""
+    hedef = max(1.5, min(30.0, float(sure_sn or 5.0)))
+    sinir = max(1.5, float(tek_gecis_max_sn or 5.0))
+    if hedef <= sinir + 0.2:
+        return [round(hedef, 2)]
+    adet = min(max_segment, max(2, int(-(-hedef // sinir))))
+    parca = round(min(sinir, hedef / adet), 2)
+    parcalar = [parca] * adet
+    # Toplam hedefin biraz üstünde/eşit kalmasını sağla (concat sonrası -t ile tam kesilir)
+    if sum(parcalar) < hedef - 0.1 and len(parcalar) < max_segment:
+        parcalar.append(round(max(1.5, min(sinir, hedef - sum(parcalar))), 2))
+    return parcalar
+
+
+def _son_kare_cikar(video_yol: Path, hedef_png: Path) -> Path:
+    """Bir segment MP4'ünün son karesini PNG olarak çıkarır (karakter tutarlılığı için)."""
+    r = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-sseof", "-0.08", "-i", str(video_yol),
+         "-vframes", "1", "-q:v", "2", str(hedef_png)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if r.returncode != 0 or not hedef_png.is_file() or hedef_png.stat().st_size == 0:
+        raise RuntimeError(f"Son kare çıkarılamadı: {(r.stderr or '')[-160:]}")
+    return hedef_png
+
+
+def _klipleri_zincirle(klipler: list[Path], hedef_mp4: Path,
+                       hedef_sure_sn: Optional[float] = None, fps: int = 16) -> Path:
+    """Son-kare zincirleme ile üretilen I2V segmentlerini tek sürekli MP4'te birleştirir."""
+    if not klipler:
+        raise RuntimeError("Birleştirilecek I2V segmenti yok")
+    if len(klipler) == 1:
+        if hedef_sure_sn and hedef_sure_sn > 0:
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(klipler[0]),
+                 "-t", f"{hedef_sure_sn:.3f}", "-c:v", "libx264", "-preset", "veryfast",
+                 "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(hedef_mp4)],
+                capture_output=True, text=True, timeout=300,
+            )
+            if r.returncode == 0 and hedef_mp4.is_file():
+                return hedef_mp4
+        shutil.copy2(klipler[0], hedef_mp4)
+        return hedef_mp4
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="gpu_chain_"))
+    try:
+        norm_paths: list[Path] = []
+        for idx, k in enumerate(klipler):
+            n_out = tmp_dir / f"seg_{idx}.mp4"
+            rn = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(k),
+                 "-r", str(max(8, int(fps))), "-c:v", "libx264", "-preset", "veryfast",
+                 "-crf", "20", "-pix_fmt", "yuv420p", "-an", str(n_out)],
+                capture_output=True, text=True, timeout=300,
+            )
+            if rn.returncode != 0 or not n_out.is_file():
+                raise RuntimeError(f"Segment normalize hatası: {(rn.stderr or '')[-160:]}")
+            norm_paths.append(n_out)
+        liste = tmp_dir / "concat.txt"
+        liste.write_text("\n".join(f"file '{p.as_posix()}'" for p in norm_paths), encoding="utf-8")
+        cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(liste)]
+        if hedef_sure_sn and hedef_sure_sn > 0:
+            cmd += ["-t", f"{hedef_sure_sn:.3f}"]
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(hedef_mp4)]
+        r2 = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if r2.returncode != 0 or not hedef_mp4.is_file():
+            raise RuntimeError(f"Zincir concat hatası: {(r2.stderr or '')[-160:]}")
+        return hedef_mp4
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _tek_gecis_i2v_uret(
+    gorsel_yolu: Path,
+    prompt: str,
+    repo: str,
+    genislik: int,
+    yukseklik: int,
+    neg_prompt: str = "",
+    sure_sn: float = 4.0,
+    adim: int = 24,
+    tohum: int = 42,
+    log=print,
+) -> Path:
+    """Seçilen I2V modeliyle tek geçişlik gerçek video difüzyonu çalıştırır."""
+    if repo == WAN21_VACE:
+        return wan21_vace_uret(
+            prompt, genislik, yukseklik,
+            ilk_kare=gorsel_yolu, neg_prompt=neg_prompt,
+            sure_sn=sure_sn, adim=adim, tohum=tohum, log=log,
+        )
+
     if repo == WAN21_I2V:
         _gorsel_cache_temizle()
         return wan21_i2v_uret(gorsel_yolu, prompt, genislik, yukseklik,
                               sure_sn=sure_sn, adim=adim, tohum=tohum, log=log)
-    if repo == WAN21_T2V:
-        _gorsel_cache_temizle()
-        return wan21_video_uret(prompt, genislik, yukseklik,
-                                sure_sn=sure_sn, adim=adim, tohum=tohum, log=log)
 
     import torch
     from diffusers.utils import load_image
@@ -721,27 +1073,289 @@ def secimli_i2v_uret(gorsel_yolu: Path, prompt: str, model_key: Optional[str],
     return _videoyu_yaz(sonuc, hedef, fps=7)
 
 
+def secimli_i2v_uret(gorsel_yolu: Path, prompt: str, model_key: Optional[str],
+                     genislik: int, yukseklik: int, neg_prompt: str = "",
+                     sure_sn: float = 4.0, adim: int = 24,
+                     tohum: int = 42, log=print) -> Path:
+    """Seçilen I2V modeliyle video üretir; süre modelin tek geçiş sınırını aşarsa son-kare zincirleme uygular."""
+    repo = _i2v_modeli_coz(model_key)
+    if repo == WAN21_T2V:
+        _gorsel_cache_temizle()
+        return wan21_video_uret(prompt, genislik, yukseklik,
+                                sure_sn=sure_sn, adim=adim, tohum=tohum, log=log)
+
+    tek_max = _I2V_TEK_GECIS_MAX_SN.get(repo, 5.0)
+    segmentler = _i2v_segment_planla(sure_sn, tek_max)
+    if len(segmentler) == 1:
+        return _tek_gecis_i2v_uret(
+            gorsel_yolu, prompt, repo, genislik, yukseklik,
+            neg_prompt=neg_prompt, sure_sn=segmentler[0], adim=adim, tohum=tohum, log=log,
+        )
+
+    log(f"🔗 Uzun video ({sure_sn:.1f}s > {tek_max:.1f}s): {len(segmentler)} segment son-kare I2V zinciri başlatılıyor…")
+    parcalar: list[Path] = []
+    gecici_kareler: list[Path] = []
+    aktif_gorsel = gorsel_yolu
+    try:
+        for idx, seg_sn in enumerate(segmentler):
+            log(f"   🎞️ Segment {idx + 1}/{len(segmentler)} ({seg_sn:.1f}s)…")
+            parca = _tek_gecis_i2v_uret(
+                aktif_gorsel, prompt, repo, genislik, yukseklik,
+                neg_prompt=neg_prompt, sure_sn=seg_sn, adim=adim,
+                tohum=int(tohum) + idx, log=log,
+            )
+            parcalar.append(parca)
+            if idx + 1 < len(segmentler):
+                son_png = Path(tempfile.gettempdir()) / f"lastframe_{uuid.uuid4().hex[:8]}.png"
+                _son_kare_cikar(parca, son_png)
+                gecici_kareler.append(son_png)
+                aktif_gorsel = son_png
+
+        hedef = Path(tempfile.gettempdir()) / f"i2v_chain_{uuid.uuid4().hex[:8]}.mp4"
+        fps = _I2V_MODEL_FPS.get(repo, 16)
+        cikti = _klipleri_zincirle(parcalar, hedef, hedef_sure_sn=sure_sn, fps=fps)
+        log(f"✅ Zincirli I2V video hazır: {cikti.stat().st_size // 1024} KB (~{sure_sn:.1f}s, {len(parcalar)} segment)")
+        return cikti
+    finally:
+        for p in gecici_kareler:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+        for p in parcalar:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 # -----------------------------------------------------------------------------
-# 4b. MUSICGEN — Ücretsiz Yerel AI Müzik Üretimi (transformers)
+# 4b. SUNO SEVİYESİ YEREL AI MÜZİK — ACE-Step 1.5 (Vokal+Söz) & MusicGen Stereo
 # -----------------------------------------------------------------------------
-def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "medium",
+def _ses_tensor_yukle(yol: Path, hedef_sr: int = 48000):
+    """Referans ses dosyasını (WAV/MP3/FLAC/OGG) hedef örnekleme hızında (2, N) float32 tensor yapar."""
+    import torch
+
+    kaynak = Path(yol).resolve()
+    if not kaynak.is_file():
+        raise FileNotFoundError(f"Referans ses dosyası bulunamadı: {kaynak}")
+    tmp_wav = Path(tempfile.gettempdir()) / f"ref_48k_{uuid.uuid4().hex[:8]}.wav"
+    err_log = Path(tempfile.gettempdir()) / f"ref_err_{uuid.uuid4().hex[:8]}.log"
+    try:
+        with err_log.open("wb") as err_fh:
+            r = subprocess.run(
+                ["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", f"file:{kaynak}",
+                 "-ac", "2", "-ar", str(int(hedef_sr)), "-f", "wav", "-c:a", "pcm_s16le", str(tmp_wav)],
+                stdout=subprocess.DEVNULL, stderr=err_fh, timeout=120,
+            )
+        if r.returncode != 0 or not tmp_wav.is_file():
+            err_tail = err_log.read_text(encoding="utf-8", errors="ignore")[-240:] if err_log.is_file() else ""
+            raise RuntimeError(f"Referans ses dönüştürülemedi: {err_tail}")
+        try:
+            import soundfile as sf
+            data, _ = sf.read(str(tmp_wav), dtype="float32", always_2d=True)  # (N, 2)
+            return torch.from_numpy(data.T.copy()).float()
+        except Exception:
+            import wave
+            with wave.open(str(tmp_wav), "rb") as wf:
+                raw = wf.readframes(wf.getnframes())
+            arr = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            arr = arr.reshape(-1, 2).T
+            return torch.from_numpy(arr.copy()).float()
+    finally:
+        tmp_wav.unlink(missing_ok=True)
+        err_log.unlink(missing_ok=True)
+
+
+def _stereo_wav_yaz(audio_cs: np.ndarray, sample_rate: int, hedef_yol: Path, log=print) -> Path:
+    """(channels, samples) float32 [-1, 1] dizisini 16-bit stereo WAV olarak yazar."""
+    arr = np.asarray(audio_cs, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr[None, :]
+    if arr.shape[0] == 1:
+        arr = np.repeat(arr, 2, axis=0)
+    elif arr.shape[0] > 2:
+        arr = arr[:2, :]
+    peak = float(np.max(np.abs(arr))) if arr.size else 0.0
+    if peak > 0.99:
+        arr = arr * (0.98 / peak)
+    try:
+        import soundfile as sf
+        sf.write(str(hedef_yol), arr.T, int(sample_rate), subtype="PCM_16")
+        return hedef_yol
+    except Exception as exc_sf:
+        log(f"⚠️ soundfile WAV yazımı başarısız ({type(exc_sf).__name__}), scipy/wave yedeğine geçiliyor…")
+    pcm = np.ascontiguousarray(np.clip(arr.T * 32767.0, -32768, 32767).astype(np.int16))
+    try:
+        from scipy.io.wavfile import write as wav_write
+        wav_write(str(hedef_yol), int(sample_rate), pcm)
+        return hedef_yol
+    except Exception as exc_sp:
+        log(f"⚠️ scipy WAV yazımı başarısız ({type(exc_sp).__name__}), stdlib wave yedeğine geçiliyor…")
+        import wave
+        with wave.open(str(hedef_yol), "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(int(sample_rate))
+            wf.writeframes(pcm.tobytes())
+        return hedef_yol
+
+
+def acestep_muzik_uret(
+    prompt: str,
+    *,
+    lyrics: str = "",
+    instrumental: bool = False,
+    vocal_language: str = "tr",
+    sure_sn: float = 60.0,
+    bpm: Optional[int] = None,
+    key_scale: str = "",
+    time_signature: str = "",
+    music_task: str = "text2music",
+    ref_audio_path: Optional[Path] = None,
+    audio_cover_strength: float = 0.85,
+    repaint_start: Optional[float] = None,
+    repaint_end: Optional[float] = None,
+    tohum: int = 42,
+    variant: str = "turbo",
+    hedef_yol: Optional[Path] = None,
+    bildirim_cb=None,
+    log=print,
+) -> Path:
+    """ACE-Step 1.5 XL Turbo (MIT) ile 48 kHz stereo vokal+sözlü veya enstrümantal tam şarkı üretir."""
+    global _ACESTEP_PIPE, _ACESTEP_KEY
+    import torch
+
+    def _ilerleme(pct: int, mesaj: str) -> None:
+        log(mesaj)
+        if callable(bildirim_cb):
+            try:
+                bildirim_cb(pct, mesaj)
+            except Exception:
+                pass
+
+    try:
+        from diffusers import AceStepPipeline
+    except ImportError as exc:
+        raise RuntimeError(
+            "AceStepPipeline kurulu diffusers sürümünde bulunamadı. "
+            "Kaggle hücresinde güncelleyin: pip install -U git+https://github.com/huggingface/diffusers.git"
+        ) from exc
+
+    # T4 (SM 7.5, <=16 GB VRAM) tespiti: Turbo + sequential CPU offload ile OOM önlenir
+    is_low_vram_t4 = False
+    if torch.cuda.is_available():
+        try:
+            major, _ = torch.cuda.get_device_capability(0)
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            is_low_vram_t4 = (major < 8) or (vram_gb < 18.0)
+        except Exception:
+            is_low_vram_t4 = True
+
+    repo = ACESTEP_SFT if ("sft" in str(variant or "").lower() and not is_low_vram_t4) else ACESTEP_TURBO
+    is_turbo = repo == ACESTEP_TURBO
+
+    if _ACESTEP_PIPE is None or _ACESTEP_KEY != repo:
+        _gorsel_cache_temizle()
+        _video_cache_temizle()
+        _muzik_cache_temizle()
+        offload_mod = "sequential CPU offload (T4 16GB güvenlik)" if is_low_vram_t4 else "model CPU offload"
+        _ilerleme(18, f"⏳ ACE-Step 1.5 yükleniyor: {repo} ({offload_mod} + VAE tiling)…")
+        dt = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+        pipe = AceStepPipeline.from_pretrained(repo, torch_dtype=dt, low_cpu_mem_usage=True)
+        if torch.cuda.is_available():
+            if is_low_vram_t4 and hasattr(pipe, "enable_sequential_cpu_offload"):
+                pipe.enable_sequential_cpu_offload()
+            else:
+                pipe.enable_model_cpu_offload()
+        vae = getattr(pipe, "vae", None)
+        if vae is not None and hasattr(vae, "enable_tiling"):
+            vae.enable_tiling()
+        _ACESTEP_PIPE = pipe
+        _ACESTEP_KEY = repo
+        _ilerleme(40, f"✅ ACE-Step 1.5 hazır ({repo}, 48 kHz stereo)")
+
+    _bosalt()
+    pipe = _ACESTEP_PIPE
+    sr = int(getattr(pipe, "sample_rate", 48000) or 48000)
+    try:
+        sn = max(10.0, min(240.0, float(sure_sn or 60.0)))
+    except (TypeError, ValueError):
+        sn = 60.0
+
+    clean_lyrics = "[Instrumental]" if (instrumental or not str(lyrics or "").strip()) else str(lyrics).strip()[:4096]
+    lang = str(vocal_language or "tr").strip().lower() or "unknown"
+    task_map = {"extend": "complete"}
+    eff_task = task_map.get(str(music_task or "text2music").strip().lower(), str(music_task or "text2music").strip().lower())
+
+    sig = inspect.signature(pipe.__call__)
+    sig_params = set(sig.parameters.keys())
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+
+    # Kural 1 (Dürüstlük): Cover / Repaint / Extend için referans ses + diffusers parametresi zorunludur!
+    if eff_task in ("cover", "repaint", "complete") and (ref_audio_path is None or not Path(ref_audio_path).is_file()):
+        raise ValueError(f"ACE-Step '{eff_task}' görevi için geçerli bir referans ses dosyası (ref_audio_path) zorunludur.")
+    if eff_task == "cover" and not (has_var_kw or "reference_audio" in sig_params):
+        raise RuntimeError("Kurulu diffusers AceStepPipeline sürümü 'cover' (reference_audio) parametresini desteklemiyor.")
+    if eff_task in ("repaint", "complete") and not (has_var_kw or "src_audio" in sig_params):
+        raise RuntimeError(f"Kurulu diffusers AceStepPipeline sürümü '{eff_task}' (src_audio) parametresini desteklemiyor.")
+
+    kwargs: Dict[str, Any] = {
+        "prompt": str(prompt or "").strip()[:512],
+        "lyrics": clean_lyrics,
+        "audio_duration": sn,
+        "vocal_language": lang,
+        "num_inference_steps": 8 if is_turbo else 32,
+        "guidance_scale": 1.0 if is_turbo else 7.0,
+        "shift": 3.0,
+        "generator": torch.Generator(device="cpu").manual_seed(int(tohum or 42)),
+        "task_type": eff_task,
+    }
+    if bpm:
+        kwargs["bpm"] = max(40, min(240, int(bpm)))
+    if str(key_scale or "").strip():
+        kwargs["keyscale"] = str(key_scale).strip()[:32]
+    if str(time_signature or "").strip():
+        kwargs["timesignature"] = str(time_signature).strip()[:12]
+
+    if ref_audio_path is not None and Path(ref_audio_path).is_file():
+        ref_tensor = _ses_tensor_yukle(Path(ref_audio_path), hedef_sr=sr)
+        if eff_task == "cover":
+            kwargs["reference_audio"] = ref_tensor
+            kwargs["audio_cover_strength"] = max(0.0, min(1.0, float(audio_cover_strength)))
+        else:
+            kwargs["src_audio"] = ref_tensor
+            if repaint_start is not None:
+                kwargs["repainting_start"] = max(0.0, float(repaint_start))
+            if repaint_end is not None:
+                kwargs["repainting_end"] = max(0.0, float(repaint_end))
+
+    call_kwargs = kwargs if has_var_kw else {k: v for k, v in kwargs.items() if k in sig_params}
+
+    _ilerleme(
+        55,
+        f"🎤 ACE-Step 1.5 üretimi: {sn:.0f}s · dil={lang} · görev={eff_task} · "
+        f"{'Enstrümantal' if clean_lyrics == '[Instrumental]' else 'Vokal+Söz'} (@{sr}Hz)",
+    )
+    with torch.inference_mode():
+        sonuc = pipe(**call_kwargs)
+
+    audios = getattr(sonuc, "audios", None)
+    if audios is None or len(audios) == 0:
+        raise RuntimeError("ACE-Step 1.5 boş ses çıktısı döndürdü")
+    audio_t = audios[0]
+    audio_np = audio_t.detach().cpu().float().numpy() if hasattr(audio_t, "detach") else np.asarray(audio_t, dtype=np.float32)
+
+    if hedef_yol is None:
+        hedef_yol = Path(tempfile.gettempdir()) / f"acestep_{uuid.uuid4().hex[:8]}.wav"
+    _stereo_wav_yaz(audio_np, sr, hedef_yol, log=log)
+    _ilerleme(82, f"✅ ACE-Step 1.5 şarkısı hazır: {hedef_yol.stat().st_size // 1024} KB ({sn:.0f}s, {sr}Hz stereo)")
+    return hedef_yol
+
+
+def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "stereo",
                hedef_yol: Optional[Path] = None, bildirim_cb=None, log=print) -> Path:
-    """MusicGen ile 32 kHz stereo WAV üretir (transformers, fp32 CUDA / CPU fallback).
-
-    T4 15 GB'da fp16 NaN riski olduğundan fp32 kullanılır; model ~1.5B (medium)
-    ~4.5 GB VRAM + aktivasyonlar ~6-7 GB → 15 GB T4'e sığar.
-
-    Args:
-        prompt: Müzik tanımı (örn. "upbeat electronic, 120 bpm, synth lead").
-        sure_sn: İstenen süre (sn). max_new_tokens ≈ sure * 50 (32 kHz / 512 hop).
-        model_key: "medium" (varsayılan) veya "small".
-        hedef_yol: İsteğe bağlı çıktı yolu; None ise geçici dosya.
-        bildirim_cb: İlerleme callback'i (pct: int, mesaj: str) -> None.
-        log: Konsol log fonksiyonu (mesaj: str) -> None.
-
-    Returns:
-        Yazılan WAV dosyasının Path'i.
-    """
+    """MusicGen Stereo Medium (varsayılan) veya small/medium ile 32 kHz gerçek stereo WAV üretir."""
     global _MUZIK_PIPE, _MUZIK_KEY
 
     import torch
@@ -754,7 +1368,13 @@ def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "medium",
             except Exception:
                 pass
 
-    repo = MUSICGEN_SMALL if "small" in str(model_key or "").lower() else MUSICGEN_MEDIUM
+    mk = str(model_key or "stereo").lower()
+    if "small" in mk:
+        repo = MUSICGEN_SMALL
+    elif "mono" in mk:
+        repo = MUSICGEN_MEDIUM
+    else:
+        repo = MUSICGEN_STEREO_MEDIUM
 
     if _MUZIK_PIPE is None or _MUZIK_KEY != repo:
         _muzik_cache_temizle()
@@ -762,65 +1382,47 @@ def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "medium",
         from transformers import AutoProcessor, MusicgenForConditionalGeneration
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        processor = AutoProcessor.from_pretrained(repo)
-        model = MusicgenForConditionalGeneration.from_pretrained(
-            repo, torch_dtype=torch.float32, low_cpu_mem_usage=True
-        ).to(device)
+        try:
+            processor = AutoProcessor.from_pretrained(repo)
+            model = MusicgenForConditionalGeneration.from_pretrained(
+                repo, torch_dtype=torch.float32, low_cpu_mem_usage=True
+            ).to(device)
+        except Exception as exc:
+            if repo == MUSICGEN_STEREO_MEDIUM:
+                log(f"⚠️ {repo} yüklenemedi ({type(exc).__name__}), {MUSICGEN_MEDIUM} yedeğine geçiliyor…")
+                repo = MUSICGEN_MEDIUM
+                processor = AutoProcessor.from_pretrained(repo)
+                model = MusicgenForConditionalGeneration.from_pretrained(
+                    repo, torch_dtype=torch.float32, low_cpu_mem_usage=True
+                ).to(device)
+            else:
+                raise
         _MUZIK_PIPE = (processor, model, device)
         _MUZIK_KEY = repo
         _ilerleme(40, f"✅ MusicGen hazır: {repo} @ {device} (fp32)")
 
     processor, model, device = _MUZIK_PIPE
 
-    # max_new_tokens ≈ saniye * 50 (32 kHz / 512 hop_length ≈ 62.5 token/sn,
-    # MusicGen varsayılan 50 token/sn ölçeğiyle güvenli üst sınır 1500)
     try:
-        sn = max(1.0, float(sure_sn))
+        sn = max(1.0, min(30.0, float(sure_sn)))
     except (TypeError, ValueError):
         sn = 15.0
     max_new = min(1500, max(128, int(sn * 50)))
 
-    _ilerleme(55, f"🎵 MusicGen üretimi: {sn:.1f}s → ~{max_new} token (@32kHz)")
+    _ilerleme(55, f"🎵 MusicGen üretimi: {sn:.1f}s → ~{max_new} token (@32kHz stereo)")
     inputs = processor(text=[prompt], padding=True, return_tensors="pt").to(device)
 
     with torch.inference_mode():
         cikti = model.generate(**inputs, do_sample=True, guidance_scale=3.0,
                                max_new_tokens=max_new)
 
-    # cikti: [batch, channels, samples] → float32 [-1, 1]
     audio = cikti[0].cpu().float().numpy()  # (channels, samples)
-    if audio.ndim == 1:
-        audio = audio[None, :]
-    # stereo'ya zorla (MusicGen mono üretebilir)
-    if audio.shape[0] == 1:
-        audio = np.repeat(audio, 2, axis=0)
-
-    sample_rate = 32000
+    sample_rate = int(getattr(getattr(model, "config", None), "audio_encoder", None).sampling_rate) if hasattr(getattr(getattr(model, "config", None), "audio_encoder", None), "sampling_rate") else 32000
     if hedef_yol is None:
         hedef_yol = Path(tempfile.gettempdir()) / f"musicgen_{uuid.uuid4().hex[:8]}.wav"
 
-    # 1. deneme: scipy.io.wavfile.write (int16 PCM)
-    yazildi = False
-    try:
-        from scipy.io.wavfile import write as wav_write
-        # float32 [-1,1] → int16
-        pcm = np.clip(audio.T * 32767, -32768, 32767).astype(np.int16)
-        wav_write(str(hedef_yol), sample_rate, pcm)
-        yazildi = True
-    except Exception:
-        pass
-
-    # 2. fallback: stdlib wave (scipy yoksa / hata verirse)
-    if not yazildi:
-        import wave
-        pcm = np.clip(audio.T * 32767, -32768, 32767).astype(np.int16)
-        with wave.open(str(hedef_yol), "wb") as wf:
-            wf.setnchannels(2)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(sample_rate)
-            wf.writeframes(pcm.tobytes())
-
-    _ilerleme(80, f"✅ Müzik hazır: {hedef_yol.stat().st_size // 1024} KB ({sn:.1f}s, 32kHz stereo)")
+    _stereo_wav_yaz(audio, sample_rate, hedef_yol)
+    _ilerleme(80, f"✅ Müzik hazır: {hedef_yol.stat().st_size // 1024} KB ({sn:.1f}s, {sample_rate}Hz stereo)")
     return hedef_yol
 
 
@@ -828,14 +1430,15 @@ def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "medium",
 # 4. GÖREV YÖNLENDİRME — iş kaydındaki `method` alanına göre
 # -----------------------------------------------------------------------------
 def _cozunurluk(oran: str, kalite: str = "480p") -> Tuple[int, int]:
-    """En-boy oranını Wan/FLUX sınırlarına uygun piksele çevirir.
-
-    ÖLÇÜM (2026-11-11, Kaggle T4 15.0 GB): Wan2.1-T2V-1.3B için 832x480 +
-    33 kare OOM verdi. Wan'ın "480p" sınıfı teknik olarak 832x480'dir ama
-    16 GB'da güvenli değil. Bu yüzden varsayılan 480p → 480x320 (VAE
-    slicing+tiling ile birlikte güvenli). `--kalite 832p` ile eski değer.
-    """
-    dikey = str(oran).replace(" ", "") == "9:16"
+    """En-boy oranını (16:9, 9:16, 1:1) Wan/FLUX/VACE 16-piksel sınırlarına çevirir."""
+    temiz = str(oran or "16:9").replace(" ", "")
+    if temiz == "1:1":
+        if kalite == "720p":
+            return (720, 720)
+        if kalite in ("832p", "480p-genis"):
+            return (640, 640)
+        return (480, 480)
+    dikey = temiz == "9:16"
     if kalite in ("832p", "480p-genis"):
         return (480, 832) if dikey else (832, 480)
     if kalite == "720p":
@@ -922,14 +1525,15 @@ def _medya_suresi(yol: Path) -> Optional[float]:
 
 
 def _medya_birlestir(video: Path, ses: Optional[Path], altyazi: Optional[Path],
-                     log=print) -> Path:
-    """Sesi/altyazıyı H.264+AAC MP4'e mux'lar; ses uzunsa videoyu pürüzsüz uzatır, libass yoksa soft-sub ekler."""
+                     log=print, hedef_sure_sn: Optional[float] = None) -> Path:
+    """Sesi/altyazıyı H.264+AAC MP4'e mux'lar; kısa ses videoyu kesmez, uzun ses videoyu uzatır."""
     if ses is None and altyazi is None:
         return video
     hedef = Path(tempfile.gettempdir()) / f"mux_{uuid.uuid4().hex[:8]}.mp4"
-    vid_dur = _medya_suresi(video) or 0.0
+    vid_dur = _medya_suresi(video) or float(hedef_sure_sn or 5.0)
     ses_dur = (_medya_suresi(ses) or 0.0) if ses is not None else 0.0
     videoyu_uzat = bool(ses is not None and ses_dur > vid_dur + 0.35)
+    hedef_cikis_sn = ses_dur if videoyu_uzat else max(vid_dur, float(hedef_sure_sn or 0.0))
 
     def _calistir(mod: str) -> subprocess.CompletedProcess:
         # mod: "burn" (libass yakma), "soft" (mov_text track), "none" (altyazısız)
@@ -951,9 +1555,10 @@ def _medya_birlestir(video: Path, ses: Optional[Path], altyazi: Optional[Path],
             cmd += ["-vf", f"subtitles=filename='{_ffmpeg_kacis(altyazi)}'"]
         cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
         if ses is not None:
-            cmd += ["-c:a", "aac", "-b:a", "192k"]
             if videoyu_uzat:
-                cmd += ["-t", f"{ses_dur:.2f}", "-shortest"]
+                cmd += ["-c:a", "aac", "-b:a", "192k", "-t", f"{ses_dur:.2f}", "-shortest"]
+            else:
+                cmd += ["-af", f"apad=whole_dur={hedef_cikis_sn:.3f}", "-c:a", "aac", "-b:a", "192k", "-t", f"{hedef_cikis_sn:.3f}"]
         cmd += ["-movflags", "+faststart", str(hedef)]
         return subprocess.run(cmd, capture_output=True, text=True, timeout=900)
 
@@ -1007,9 +1612,9 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
 
     desteklenen = {
         "image_first_preview", "image_then_i2v", "flux2_resim", "burc_video",
-        "wan_i2v", "i2v", "t2v_direct", "flux2", "hibrit", "hybrid",
+        "wan_i2v", "i2v", "vace_r2v", "flf2v", "t2v_direct", "flux2", "hibrit", "hybrid",
         "remotion_cinema", "blender_wan", "opus_canvas", "viral_shorts",
-        "musicgen", "gpu_muzik",
+        "musicgen", "gpu_muzik", "acestep", "gpu_acestep", "gpu-acestep-1.5",
     }
     mod = "remotion_cinema"
     for aday in (job.get("method"), job.get("workflow"), job.get("mode")):
@@ -1021,40 +1626,84 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
     oran = str(job.get("aspect_ratio") or "16:9")
     w, h = _cozunurluk(oran, secenekler.get("kalite", "480p"))
     tohum = int(job.get("seed") or 42)
-    sure_sn = float(job.get("sure_sn") or job.get("duration") or 15.0)
+    is_music_mod = mod in ("musicgen", "gpu_muzik", "acestep", "gpu_acestep", "gpu-acestep-1.5")
+    default_sure = 30.0 if is_music_mod else 5.0
+    sure_sn = float(job.get("sure_sn") or job.get("duration") or default_sure)
     flux_adim = secenekler.get("flux_adim")
-    muzik_model_key = (
+    muzik_model_key = str(
         job.get("audio_model")
         or job.get("music_model")
         or job.get("model_key")
         or secenekler.get("muzik_model")
-        or "medium"
+        or ("acestep-v15-xl-turbo" if mod in ("acestep", "gpu_acestep", "gpu-acestep-1.5") else "stereo")
     )
 
-    # MusicGen — ÖNCE müziği işle (VRAM temizliği için görsel/video KONTROLLERİNDEN ÖNCE)
-    if mod in ("musicgen", "gpu_muzik"):
+    # 1) MÜZİK İŞLERİ (ACE-Step 1.5 Suno Seviyesi + MusicGen Stereo)
+    if is_music_mod:
         _gorsel_cache_temizle()
         _video_cache_temizle()
         jid_str = str(job.get("job_id") or job.get("id") or "")
-        hedef = muzik_uret(
-            prompt, sure_sn=sure_sn, model_key=str(muzik_model_key),
-            bildirim_cb=(
-                (lambda pct, msg: ilerleme_bildir(sunucu, jid_str, pct, msg, token=token))
-                if (sunucu and jid_str)
-                else None
-            ),
-            log=log,
+        cb = (
+            (lambda pct, msg: ilerleme_bildir(sunucu, jid_str, pct, msg, token=token))
+            if (sunucu and jid_str)
+            else None
         )
-        return hedef
+        is_acestep = mod in ("acestep", "gpu_acestep", "gpu-acestep-1.5") or "acestep" in muzik_model_key.lower()
+        if is_acestep:
+            ref_audio_path: Optional[Path] = None
+            ref_audio_url = str(job.get("ref_audio_url") or "").strip()
+            try:
+                if ref_audio_url:
+                    if not sunucu:
+                        raise ValueError("ref_audio_url için sunucu adresi gerekli")
+                    ref_audio_path = _indir(
+                        sunucu, ref_audio_url,
+                        Path(tempfile.gettempdir())
+                        / f"refaud_{uuid.uuid4().hex[:8]}{_medya_uzantisi(ref_audio_url, '.wav')}",
+                        token,
+                    )
+                elif secenekler.get("ref_audio_path") and Path(str(secenekler["ref_audio_path"])).is_file():
+                    ref_audio_path = Path(str(secenekler["ref_audio_path"]))
 
-    if mod in ("flux2_resim", "image_first_preview"):
-        return secimli_gorsel_uret(
-            prompt, image_model_key, w, h, neg_prompt=neg_prompt,
-            adim=flux_adim, tohum=tohum, log=log,
+                style_parts = [str(job.get("raw_prompt") or prompt).strip()]
+                if job.get("genre"):
+                    style_parts.append(str(job["genre"]).strip())
+                if job.get("mood"):
+                    style_parts.append(str(job["mood"]).strip())
+                ace_prompt = ", ".join(p for p in style_parts if p)[:512]
+                job["_engine_label"] = "Kaggle GPU ACE-Step 1.5 (48kHz Stereo)"
+                return acestep_muzik_uret(
+                    ace_prompt,
+                    lyrics=str(job.get("lyrics") or ""),
+                    instrumental=bool(job.get("instrumental", False)),
+                    vocal_language=str(job.get("vocal_language") or "tr"),
+                    sure_sn=sure_sn,
+                    bpm=job.get("bpm"),
+                    key_scale=str(job.get("key_scale") or ""),
+                    time_signature=str(job.get("time_signature") or ""),
+                    music_task=str(job.get("music_task") or "text2music"),
+                    ref_audio_path=ref_audio_path,
+                    audio_cover_strength=float(job.get("audio_cover_strength") or 0.85),
+                    repaint_start=job.get("repaint_start"),
+                    repaint_end=job.get("repaint_end"),
+                    tohum=tohum,
+                    variant="sft" if "sft" in muzik_model_key.lower() else "turbo",
+                    bildirim_cb=cb,
+                    log=log,
+                )
+            finally:
+                if ref_audio_path is not None and ref_audio_url:
+                    ref_audio_path.unlink(missing_ok=True)
+        job["_engine_label"] = "Kaggle GPU MusicGen Stereo"
+        return muzik_uret(
+            prompt, sure_sn=sure_sn, model_key=muzik_model_key,
+            bildirim_cb=cb, log=log,
         )
 
+    # 2) GİRDİ MEDYALARI (Görsel + Bitiş Karesi + Ses + Altyazı) — flux2_resim ÖNCESİNDE indirilir!
     gecici: list[Path] = []
     gorsel_yolu: Optional[Path] = None
+    son_kare_yolu: Optional[Path] = None
     img_url = str(job.get("input_image_url") or job.get("image_url") or "").strip()
     if img_url:
         if not sunucu:
@@ -1069,38 +1718,84 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
     elif secenekler.get("image_path") and Path(str(secenekler["image_path"])).is_file():
         gorsel_yolu = Path(str(secenekler["image_path"]))
 
-    ses, altyazi = _opsiyonel_medya(job, sunucu, token, log)
-    gecici += [p for p in (ses, altyazi) if p is not None]
+    end_img_url = str(job.get("end_image_url") or "").strip()
+    if end_img_url:
+        if not sunucu:
+            raise ValueError("end_image_url için sunucu adresi gerekli")
+        son_kare_yolu = _indir(
+            sunucu, end_img_url,
+            Path(tempfile.gettempdir())
+            / f"bitis_{uuid.uuid4().hex[:8]}{_medya_uzantisi(end_img_url, '.png')}",
+            token,
+        )
+        gecici.append(son_kare_yolu)
+    elif secenekler.get("end_image_path") and Path(str(secenekler["end_image_path"])).is_file():
+        son_kare_yolu = Path(str(secenekler["end_image_path"]))
 
     try:
+        if mod in ("flux2_resim", "image_first_preview"):
+            job["_engine_label"] = f"Kaggle GPU {image_model_key or 'flux2-klein'}"
+            img_kw: Dict[str, Any] = {"neg_prompt": neg_prompt, "adim": flux_adim, "tohum": tohum, "log": log}
+            if gorsel_yolu is not None:
+                img_kw["ref_gorsel"] = gorsel_yolu
+            return secimli_gorsel_uret(prompt, image_model_key, w, h, **img_kw)
+
+        ses, altyazi = _opsiyonel_medya(job, sunucu, token, log)
+        gecici += [p for p in (ses, altyazi) if p is not None]
+
         if mod == "flux2":
-            png = secimli_gorsel_uret(
-                prompt, image_model_key, w, h, neg_prompt=neg_prompt,
-                adim=flux_adim, tohum=tohum, log=log,
-            )
+            img_kw2: Dict[str, Any] = {"neg_prompt": neg_prompt, "adim": flux_adim, "tohum": tohum, "log": log}
+            if gorsel_yolu is not None:
+                img_kw2["ref_gorsel"] = gorsel_yolu
+            png = secimli_gorsel_uret(prompt, image_model_key, w, h, **img_kw2)
             gecici.append(png)
             hedef = png.with_suffix(".mp4")
             r = subprocess.run(
                 ["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", str(png),
-                 "-t", "3", "-vf", f"scale={w}:{h},format=yuv420p",
+                 "-t", f"{max(3.0, sure_sn):.2f}", "-vf", f"scale={w}:{h},format=yuv420p",
                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                  "-movflags", "+faststart", str(hedef)],
                 capture_output=True, text=True, timeout=300,
             )
             if r.returncode != 0:
                 raise RuntimeError(f"Görsel MP4'e çevrilemedi: {(r.stderr or '')[-200:]}")
-            return _medya_birlestir(hedef, ses, altyazi, log=log)
+            return _medya_birlestir(hedef, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
+
+        if mod == "vace_r2v":
+            if gorsel_yolu is None:
+                raise ValueError("vace_r2v (Tutarlı Karakter) için karakter portre/referans görseli gerekli")
+            job["_engine_label"] = "Kaggle GPU Wan2.1-VACE-1.3B (R2V)"
+            video = wan21_vace_uret(
+                i2v_prompt, w, h,
+                ref_gorseller=[gorsel_yolu], neg_prompt=neg_prompt,
+                sure_sn=sure_sn, adim=int(secenekler.get("i2v_adim", 30)),
+                tohum=tohum, log=log,
+            )
+            return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
+
+        if mod == "flf2v":
+            if gorsel_yolu is None or son_kare_yolu is None:
+                raise ValueError("flf2v (İlk+Son Kare Geçişi) için hem başlangıç hem bitiş görseli gerekli")
+            job["_engine_label"] = "Kaggle GPU Wan2.1-VACE-1.3B (FLF2V)"
+            video = wan21_vace_uret(
+                i2v_prompt, w, h,
+                ilk_kare=gorsel_yolu, son_kare=son_kare_yolu,
+                neg_prompt=neg_prompt, sure_sn=sure_sn,
+                adim=int(secenekler.get("i2v_adim", 30)), tohum=tohum, log=log,
+            )
+            return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
 
         if mod in ("wan_i2v", "i2v"):
             if gorsel_yolu is None:
                 raise ValueError(
                     "wan_i2v için `image_path` veya `input_image_url` gerekli (görsel yok)")
+            job["_engine_label"] = f"Kaggle GPU {i2v_model_key or 'wan2.1-i2v-14b'}"
             video = secimli_i2v_uret(
                 gorsel_yolu, i2v_prompt, i2v_model_key, w, h,
                 neg_prompt=neg_prompt, sure_sn=sure_sn,
                 adim=int(secenekler.get("i2v_adim", 20)), tohum=tohum, log=log,
             )
-            return _medya_birlestir(video, ses, altyazi, log=log)
+            return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
 
         if mod in ("image_then_i2v", "burc_video"):
             if gorsel_yolu is None:
@@ -1111,12 +1806,13 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
                 gecici.append(gorsel_yolu)
                 _gorsel_cache_temizle()
                 _on_izleme_gonder_opsiyonel(sunucu, job, gorsel_yolu, token, log=log)
+            job["_engine_label"] = f"Kaggle GPU {image_model_key or 'flux2'}->{i2v_model_key or 'wan2.1-i2v-14b'}"
             video = secimli_i2v_uret(
                 gorsel_yolu, i2v_prompt, i2v_model_key, w, h,
                 neg_prompt=neg_prompt, sure_sn=sure_sn,
                 adim=int(secenekler.get("i2v_adim", 20)), tohum=tohum, log=log,
             )
-            return _medya_birlestir(video, ses, altyazi, log=log)
+            return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
 
         if mod in ("hibrit", "hybrid") and gorsel_yolu is not None:
             video = secimli_i2v_uret(
@@ -1124,14 +1820,16 @@ def gorev_isle(job: Dict[str, Any], secenekler: Dict[str, Any], log=print,
                 neg_prompt=neg_prompt, sure_sn=sure_sn,
                 adim=int(secenekler.get("i2v_adim", 20)), tohum=tohum, log=log,
             )
-            return _medya_birlestir(video, ses, altyazi, log=log)
+            return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
 
-        # Yalnız t2v_direct / eski doğrudan T2V modları
-        video = wan21_video_uret(
-            prompt, w, h, sure_sn=sure_sn,
-            adim=int(secenekler.get("t2v_adim", 25)), tohum=tohum, log=log,
+        # Doğrudan T2V (seçilen video modelini onurlandır: Wan2.2-TI2V-5B / Wan2.1-VACE / LTX / Wan2.1-T2V-1.3B)
+        job["_engine_label"] = f"Kaggle GPU T2V {i2v_model_key or 'wan2.1-t2v-1.3b'}"
+        video = secimli_t2v_uret(
+            prompt, i2v_model_key, w, h, neg_prompt=neg_prompt,
+            sure_sn=sure_sn, adim=int(secenekler.get("t2v_adim", 25)),
+            tohum=tohum, ref_gorseller=[gorsel_yolu] if gorsel_yolu else None, log=log,
         )
-        return _medya_birlestir(video, ses, altyazi, log=log)
+        return _medya_birlestir(video, ses, altyazi, log=log, hedef_sure_sn=sure_sn)
     finally:
         for yol in gecici:
             try:
@@ -1207,8 +1905,9 @@ def ilerleme_bildir(sunucu: str, job_id: str, pct: int, asama: str,
 
 def yukle(sunucu: str, job_id: str, dosya: Path,
           token: Optional[str] = None,
-          media_type: str = "video") -> Optional[Dict[str, Any]]:
-    """Üretilen MP4/PNG/WAV/MP3'ü sunucuya yükler. Döner: sunucu yanıtı veya None."""
+          media_type: str = "video",
+          engine_label: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Üretilen MP4/PNG/WAV/MP3/FLAC'ı sunucuya yükler. Döner: sunucu yanıtı veya None."""
     gorsel = media_type == "image"
     ses = media_type == "audio"
     if gorsel:
@@ -1222,19 +1921,28 @@ def yukle(sunucu: str, job_id: str, dosya: Path,
     else:
         mime = "video/mp4"
     sinir = "----Fabrika" + uuid.uuid4().hex
-    govde = b"".join([
+    parcalar = [
         f"--{sinir}\r\n".encode(),
         b'Content-Disposition: form-data; name="job_id"\r\n\r\n',
         job_id.encode(), b"\r\n",
         f"--{sinir}\r\n".encode(),
         b'Content-Disposition: form-data; name="media_type"\r\n\r\n',
         media_type.encode(), b"\r\n",
+    ]
+    if engine_label:
+        parcalar.extend([
+            f"--{sinir}\r\n".encode(),
+            b'Content-Disposition: form-data; name="engine_label"\r\n\r\n',
+            str(engine_label)[:120].encode("utf-8"), b"\r\n",
+        ])
+    parcalar.extend([
         f"--{sinir}\r\n".encode(),
         f'Content-Disposition: form-data; name="file"; filename="{dosya.name}"\r\n'.encode(),
         f"Content-Type: {mime}\r\n\r\n".encode(),
         dosya.read_bytes(), b"\r\n",
         f"--{sinir}--\r\n".encode(),
     ])
+    govde = b"".join(parcalar)
     basliklar = {
         "Content-Type": f"multipart/form-data; boundary={sinir}",
         **_auth_headers(token),
@@ -1300,7 +2008,10 @@ def _tek_is_isle(sunucu: str, isci_id: str, secenekler: Dict[str, Any],
         yukleme_turu = "video"
         asama_mesaj = "Video yükleniyor"
     ilerleme_bildir(sunucu, jid, 85, asama_mesaj, token=token)
-    yanit = yukle(sunucu, jid, cikti, token=token, media_type=yukleme_turu)
+    yanit = yukle(
+        sunucu, jid, cikti, token=token, media_type=yukleme_turu,
+        engine_label=str(job.get("_engine_label") or "") or None,
+    )
     if yanit and yanit.get("success"):
         sayac["tamam"] += 1
         print(f"✅ Yüklendi: {yanit.get('output_url')} "
@@ -1339,8 +2050,8 @@ def main() -> int:
     ap.add_argument("--flux-adim", type=int, default=4)
     ap.add_argument("--modlar", default=None,
                     help="İş filtresi: 'all', 'musicgen', 'video', 'image' — claim'e ?mod= olarak gönderilir")
-    ap.add_argument("--muzik-model", choices=["medium", "small"], default="medium",
-                    help="MusicGen modeli (varsayılan: medium)")
+    ap.add_argument("--muzik-model", choices=["stereo", "medium", "small", "acestep-turbo", "acestep-sft"], default="stereo",
+                    help="Varsayılan yerel müzik modeli (ACE-Step 1.5 veya MusicGen Stereo)")
     ap.add_argument("--gpu-kontrol", action="store_true",
                     help="Yalnız GPU ve model kullanılabilirliğini raporla, çık")
     args = ap.parse_args()
@@ -1365,12 +2076,14 @@ def main() -> int:
             import torch
 
             print(f"torch={torch.__version__}  diffusers={diffusers.__version__}")
-            print(f"Flux2Pipeline: {hasattr(diffusers, 'Flux2Pipeline')}")
+            print(f"Flux2KleinPipeline: {hasattr(diffusers, 'Flux2KleinPipeline')}")
             print(f"WanPipeline: {hasattr(diffusers, 'WanPipeline')}")
             print(f"WanImageToVideoPipeline: {hasattr(diffusers, 'WanImageToVideoPipeline')}")
+            print(f"WanVACEPipeline (Tutarlı Karakter R2V + FLF2V): {hasattr(diffusers, 'WanVACEPipeline')}")
+            print(f"AceStepPipeline (Suno Seviyesi Müzik): {hasattr(diffusers, 'AceStepPipeline')}")
         except Exception as e:
             print(f"⚠️ diffusers/torch eksik: {e}")
-        # MusicGen transformers kontrolü
+        # MusicGen + soundfile kontrolü
         try:
             import transformers
             print(f"transformers={transformers.__version__}")
@@ -1378,7 +2091,7 @@ def main() -> int:
             print(f"AutoProcessor: {hasattr(transformers, 'AutoProcessor')}")
         except Exception as e:
             print(f"⚠️ transformers eksik: {e}")
-        print(f"Önerilen modeller: {FLUX2_KLEIN} / {WAN21_T2V} / {WAN21_I2V} / {MUSICGEN_MEDIUM}")
+        print(f"Önerilen modeller: {FLUX2_KLEIN} / {WAN21_VACE} / {WAN21_I2V} / {ACESTEP_TURBO} / {MUSICGEN_STEREO_MEDIUM}")
         return 0
 
     isci_id = args.isci_id or f"{_isci_turu()}_{uuid.uuid4().hex[:8]}"
