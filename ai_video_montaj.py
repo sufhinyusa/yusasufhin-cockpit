@@ -668,16 +668,26 @@ def sahneleri_uret(
 def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
                  sure_sn: float, zoom_in: bool = True,
                  hareket: Optional[str] = None) -> bool:
-    """Tek sahneyi Ken Burns (`zoompan` / `pan`) hareketiyle MP4'e çevirir.
-
-    NOT: `zoompan` filtresinde `d=90` yazmak her giriş karesini 90 kez
-    çoğaltır → 274 saniyelik dosya üretir (2026-11-10'da yaşandı). Bu yüzden
-    `d=1` kullanılır: her giriş karesi tam bir çıkış karesi olur, süreyi
-    `-frames:v` belirler.
-    """
-    render_fps = 24 if os.environ.get("RENDER") else 30
-    kare = max(1, int(sure_sn * render_fps))
+    """Tek sahneyi gerçek float64 alt-piksel 30fps kamera hareketiyle (sıfır adım atlama) MP4'e çevirir."""
+    render_fps = 30
+    kare = max(render_fps, int(round(sure_sn * render_fps)))
     mod = (hareket or ("zoom_in" if zoom_in else "zoom_out")).strip().lower()
+
+    # 1. Öncelik: Gerçek float64 alt-piksel PIL afin motoru (sıfır integer zoompan sıçraması!)
+    try:
+        from hyperframes_motor import render_smooth_camera_clip
+
+        sm = render_smooth_camera_clip(
+            sahne_png, cikti, genislik, yukseklik, sure_sn,
+            camera_motion=mod, fps=render_fps, audio_path=None,
+        )
+        if sm.get("ok") and cikti.is_file() and cikti.stat().st_size > 2000:
+            return True
+    except Exception as e:
+        logger.debug("[AIVideoMontaj] Alt-piksel kamera motoru yedeğe düştü: %s", e)
+
+    # 2. Yedek: 4× üst-örneklemeli tek-kare 30fps FFmpeg zoompan (sinüzoidal smoothstep)
+    ease = f"(0.5-0.5*cos(PI*on/{kare}))"
     x_ifade = "iw/2-(iw/zoom/2)"
     y_ifade = "ih/2-(ih/zoom/2)"
     if mod in ("wind_cloth_glow", "locked", "static", "sabit"):
@@ -686,54 +696,53 @@ def _sahne_video(sahne_png: Path, cikti: Path, genislik: int, yukseklik: int,
         x_ifade = "iw/2-(iw/zoom/2)"
         y_ifade = "ih/2-(ih/zoom/2)"
     elif mod in ("pan_right", "pan_right_60fps"):
-        z_ifade = "1.12"
-        x_ifade = f"(iw-iw/zoom)*on/{kare}"
+        z_ifade = "1.16"
+        x_ifade = f"(iw-iw/zoom)*(0.04+0.92*{ease})"
     elif mod == "pan_left":
-        z_ifade = "1.12"
-        x_ifade = f"(iw-iw/zoom)*(1-on/{kare})"
+        z_ifade = "1.16"
+        x_ifade = f"(iw-iw/zoom)*(0.96-0.92*{ease})"
     elif mod in ("crane_up", "tilt_up"):
-        z_ifade = "1.14"
-        y_ifade = f"(ih-ih/zoom)*(1-on/{kare})"
+        z_ifade = "1.16"
+        y_ifade = f"(ih-ih/zoom)*(0.95-0.90*{ease})"
+    elif mod in ("crane_down", "tilt_down"):
+        z_ifade = "1.16"
+        y_ifade = f"(ih-ih/zoom)*(0.05+0.90*{ease})"
     elif mod in ("dolly_zoom", "vertigo"):
-        # Hızlı perspektif baskısı + hafif odak kayması
-        z_ifade = f"1.0+0.26*on/{kare}"
-        x_ifade = "iw/2-(iw/zoom/2)"
-        y_ifade = "ih/2-(ih/zoom/2)"
+        z_ifade = f"1.0+0.26*{ease}"
     elif mod in ("fpv_drone", "fpv"):
-        z_ifade = f"1.04+0.20*on/{kare}"
-        x_ifade = f"(iw-iw/zoom)*(0.5+0.28*sin(2*PI*on/{kare}))"
-        y_ifade = f"(ih-ih/zoom)*(0.55-0.18*on/{kare})"
+        z_ifade = f"1.06+0.20*{ease}"
+        x_ifade = f"(iw-iw/zoom)*(0.5+0.30*sin(2*PI*on/{kare}))"
+        y_ifade = f"(ih-ih/zoom)*(0.60-0.22*{ease})"
     elif mod in ("handheld_track", "handheld"):
-        z_ifade = "1.10"
-        x_ifade = f"(iw-iw/zoom)*(0.35+0.30*on/{kare}+0.05*sin(6*PI*on/{kare}))"
-        y_ifade = f"(ih-ih/zoom)*(0.50+0.04*cos(5*PI*on/{kare}))"
+        z_ifade = "1.14"
+        x_ifade = f"(iw-iw/zoom)*(0.32+0.36*{ease}+0.04*sin(4*PI*on/{kare}))"
+        y_ifade = f"(ih-ih/zoom)*(0.50+0.04*cos(3*PI*on/{kare}))"
     elif mod in ("orbital", "bullet_time"):
-        z_ifade = "1.15"
-        x_ifade = f"(iw-iw/zoom)*(0.5+0.45*sin(PI*on/{kare}-PI/2))"
-        y_ifade = f"(ih-ih/zoom)*(0.5+0.08*sin(2*PI*on/{kare}))"
-    elif mod in ("zoom_in", "push_in", "slow_dolly_in"):
-        z_ifade = "min(zoom+0.0015,1.18)"
-    elif mod in ("zoom_out", "pull_out", "reveal_pull_out"):
-        z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"
+        z_ifade = "1.16"
+        x_ifade = f"(iw-iw/zoom)*(0.5+0.44*sin(PI*on/{kare}-PI/2))"
+        y_ifade = f"(ih-ih/zoom)*(0.5+0.14*sin(2*PI*on/{kare}))"
+    elif mod in ("zoom_in", "push_in", "slow_dolly_in", "otomatik"):
+        z_ifade = f"1.0+0.18*{ease}"
     else:
-        z_ifade = "if(eq(on,1),1.18,max(zoom-0.0015,1.0))"
+        z_ifade = f"1.18-0.18*{ease}"
 
+    ss = 4 if max(genislik, yukseklik) <= 1280 else 2
     cmd = [
         _ffmpeg(), "-y", "-hide_banner", "-loglevel", "error",
-        "-loop", "1", "-framerate", str(render_fps), "-t", f"{sure_sn:.3f}", "-i", str(sahne_png),
+        "-i", str(sahne_png),
         "-vf", (
-            f"scale={int(genislik * 1.18)}:{int(yukseklik * 1.18)},"
+            f"scale={int(genislik * ss)}:{int(yukseklik * ss)}:flags=lanczos:force_original_aspect_ratio=increase,"
+            f"crop={int(genislik * ss)}:{int(yukseklik * ss)},"
             f"zoompan=z='{z_ifade}':x='{x_ifade}':y='{y_ifade}':"
-            f"d=1:s={genislik}x{yukseklik}:fps={render_fps},setsar=1,format=yuv420p"
+            f"d={kare}:s={genislik}x{yukseklik}:fps={render_fps},setsar=1,format=yuv420p"
         ),
-        "-frames:v", str(kare),
-        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-threads", "1", "-crf", "24",
+        "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-threads", "1", "-crf", "21",
         "-pix_fmt", "yuv420p",
         str(cikti),
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        return r.returncode == 0 and cikti.is_file() and cikti.stat().st_size > 5000
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=max(180, int(sure_sn * 6)))
+        return r.returncode == 0 and cikti.is_file() and cikti.stat().st_size > 2000
     except Exception as e:
         logger.warning("[AIVideoMontaj] Sahne render hatası: %s", e)
         return False
@@ -770,12 +779,12 @@ def montaj_birlestir(sahne_mp4leri: List[Path], hedef: Path,
     cmd += [
         "-filter_complex", filtre,
         "-map", onceki,
-        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-crf", "24",
+        "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-threads", "1", "-crf", "21",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(hedef),
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=max(300, int(len(sahne_mp4leri) * sure_sn * 6)))
         if r.returncode != 0:
             logger.warning("[AIVideoMontaj] Birleştirme hatası: %s", (r.stderr or "")[-300:])
             return False
@@ -814,7 +823,7 @@ def ai_video_uret(
     baslangic = time.time()
 
     if hedef_sure_sn is not None and float(hedef_sure_sn) > 0:
-        istenen = max(3.0, min(60.0, float(hedef_sure_sn)))
+        istenen = max(3.0, min(180.0, float(hedef_sure_sn)))
         n_eff = max(1, int(sahne_sayisi))
         sahne_sure_sn = max(2.0, (istenen + max(0, n_eff - 1) * GECIS_SN) / n_eff)
     else:

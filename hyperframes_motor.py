@@ -22,6 +22,7 @@ from __future__ import annotations
 import html as _html
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -81,44 +82,270 @@ def verify_onscreen_metrics(narration_text: str, source_text: str) -> Dict[str, 
     }
 
 
-def _kamera_filtre_ifadesi(camera_motion: str, kare: int, genislik: int, yukseklik: int) -> str:
-    """Seçili kamera hareketi için pürüzsüz FFmpeg `zoompan` filtresi üretir."""
+def _kamera_kanonik(camera_motion: str) -> str:
+    """Kamera hareketi takma adlarını kanonik önayar adına indirger."""
     cam = (camera_motion or "otomatik").strip().lower()
-    # Eş anlamlı hareket adlarını kanonik isimlere indir (slow_dolly_in→push_in vb.).
-    cam = {
+    return {
         "slow_dolly_in": "push_in",
+        "zoom_in": "push_in",
         "slow_zoom_out": "pull_out",
+        "zoom_out": "pull_out",
+        "reveal_pull_out": "pull_out",
         "pan_right_60fps": "pan_right",
+        "tilt_up": "crane_up",
+        "tilt_down": "crane_down",
+        "vertigo": "dolly_zoom",
+        "bullet_time": "orbital",
+        "fpv": "fpv_drone",
+        "handheld": "handheld_track",
     }.get(cam, cam)
-    k = max(24, kare)
+
+
+def _kamera_kare_durumu(camera_motion: str, u: float) -> Tuple[float, float, float, float]:
+    """0..1 zaman oranı için kayan noktalı (zoom, cx_norm, cy_norm, aci_derece) döner.
+
+    Sinüzoidal S-eğrisi (smoothstep: 0.5 - 0.5*cos(pi*u)) ile yumuşak hızlanma/yavaşlama sağlar.
+    """
+    cam = _kamera_kanonik(camera_motion)
+    t = max(0.0, min(1.0, float(u)))
+    ease = 0.5 - 0.5 * math.cos(math.pi * t)
+
+    if cam in ("locked", "static", "sabit", "wind_cloth_glow"):
+        return (1.0, 0.5, 0.5, 0.0)
+    if cam == "pull_out":
+        return (1.18 - 0.18 * ease, 0.5, 0.5, 0.0)
+    if cam == "pan_right":
+        return (1.16, 0.04 + 0.92 * ease, 0.5, 0.0)
+    if cam == "pan_left":
+        return (1.16, 0.96 - 0.92 * ease, 0.5, 0.0)
+    if cam == "crane_up":
+        return (1.14 + 0.04 * ease, 0.5, 0.95 - 0.90 * ease, 0.0)
+    if cam == "crane_down":
+        return (1.18 - 0.04 * ease, 0.5, 0.05 + 0.90 * ease, 0.0)
+    if cam == "dolly_zoom":
+        return (1.0 + 0.28 * ease, 0.5, 0.52 - 0.06 * ease, 0.0)
+    if cam == "orbital":
+        return (
+            1.16 + 0.04 * math.sin(math.pi * t),
+            0.5 + 0.44 * math.sin(math.pi * t - math.pi / 2.0),
+            0.5 + 0.16 * math.sin(2.0 * math.pi * t),
+            1.1 * math.sin(2.0 * math.pi * t),
+        )
+    if cam == "fpv_drone":
+        return (
+            1.08 + 0.22 * ease,
+            0.5 + 0.34 * math.sin(2.0 * math.pi * t),
+            0.62 - 0.24 * ease,
+            2.0 * math.sin(2.0 * math.pi * t),
+        )
+    if cam == "handheld_track":
+        return (
+            1.14,
+            0.30 + 0.40 * ease + 0.04 * math.sin(4.0 * math.pi * t),
+            0.50 + 0.05 * math.cos(3.0 * math.pi * t),
+            0.65 * math.sin(3.0 * math.pi * t),
+        )
+    if cam == "whip_pan":
+        fast = 0.5 - 0.5 * math.cos(math.pi * min(1.0, t * 1.35))
+        return (1.20, 0.02 + 0.96 * fast, 0.5, 0.0)
+    # push_in / otomatik
+    return (1.0 + 0.18 * ease, 0.5, 0.5, 0.0)
+
+
+def render_smooth_camera_clip(
+    image_path: Path,
+    out_mp4: Path,
+    genislik: int,
+    yukseklik: int,
+    sure_sn: float,
+    camera_motion: str = "push_in",
+    fps: int = 30,
+    audio_path: Optional[Path] = None,
+    ass_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """IEEE-754 float64 alt-piksel afin dönüşümle (sıfır adım atlama) 30fps akıcı kamera klibi üretir.
+
+    FFmpeg `zoompan` filtresi x/y koordinatlarını tam piksele yuvarladığı için yavaş
+    hareketlerde adım adım sıçrama (jitter) yapar; PIL `Image.Transform.AFFINE`
+    doğrudan kayan noktalı alt-piksel örnekleme (BILINEAR/BICUBIC) ile sinematik akıcılık
+    ve düşük RAM (<6 MB) sağlar.
+    """
+    try:
+        from PIL import Image
+    except Exception as exc:
+        return {"ok": False, "error": f"Pillow kullanılamıyor: {exc}"}
+
+    src = Path(image_path)
+    out = Path(out_mp4)
+    if not src.is_file():
+        return {"ok": False, "error": "Kaynak görsel bulunamadı."}
+
+    w = max(64, int(genislik) - (int(genislik) % 2))
+    h = max(64, int(yukseklik) - (int(yukseklik) % 2))
+    sure = max(1.0, min(180.0, float(sure_sn or 5.0)))
+    eff_fps = max(24, min(60, int(fps or 30)))
+    n_frames = max(eff_fps, int(round(sure * eff_fps)))
+    cam = _kamera_kanonik(camera_motion)
+    is_locked = cam in ("locked", "static", "sabit", "wind_cloth_glow")
+
+    im = Image.open(src).convert("RGB")
+    iw, ih = im.size
+    target_ar = w / max(1.0, float(h))
+    if iw / max(1.0, float(ih)) > target_ar:
+        nw = max(2, int(round(ih * target_ar)))
+        left = (iw - nw) // 2
+        im = im.crop((left, 0, left + nw, ih))
+    else:
+        nh = max(2, int(round(iw / target_ar)))
+        top = (ih - nh) // 2
+        im = im.crop((0, top, iw, top + nh))
+    iw, ih = im.size
+
+    on_render = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+    resample = Image.Resampling.BILINEAR if (on_render or n_frames > 360) else Image.Resampling.BICUBIC
+    ff = _ffmpeg_bin()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    has_audio = bool(audio_path and Path(audio_path).is_file() and Path(audio_path).stat().st_size > 500)
+    use_sub = bool(ass_path and Path(ass_path).is_file())
+
+    def _pipe_encode(with_sub: bool) -> subprocess.CompletedProcess[str]:
+        gecici = out.with_name(f".{out.stem}.{time.time_ns()}.smooth.mp4")
+        cmd = [
+            ff, "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}", "-r", str(eff_fps), "-i", "pipe:0",
+        ]
+        if has_audio:
+            cmd += ["-i", str(audio_path)]
+        elif audio_path is not None:
+            cmd += ["-f", "lavfi", "-t", f"{sure:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+
+        vf_list = ["setsar=1", "format=yuv420p"]
+        if with_sub and ass_path:
+            kacis = str(Path(ass_path)).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+            vf_list.insert(0, f"subtitles=filename='{kacis}'")
+        cmd += ["-vf", ",".join(vf_list)]
+
+        if has_audio or audio_path is not None:
+            cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+        else:
+            cmd += ["-map", "0:v:0", "-an"]
+
+        preset = "ultrafast" if (on_render and sure > 30.0) else "veryfast"
+        cmd += [
+            "-c:v", "libx264", "-preset", preset, "-tune", "film", "-crf", "20",
+            "-threads", "1" if on_render else "0",
+            "-pix_fmt", "yuv420p",
+        ]
+        if has_audio:
+            cmd += ["-af", f"apad=whole_dur={sure:.3f}", "-c:a", "aac", "-b:a", "128k"]
+        elif audio_path is not None:
+            cmd += ["-c:a", "aac", "-b:a", "128k"]
+        cmd += ["-t", f"{sure:.3f}", "-movflags", "+faststart", str(gecici)]
+
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        stderr_out = b""
+        try:
+            assert proc.stdin is not None
+            if is_locked:
+                locked_bytes = im.resize((w, h), Image.Resampling.LANCZOS).tobytes()
+                for _ in range(n_frames):
+                    proc.stdin.write(locked_bytes)
+            else:
+                denom = max(1, n_frames - 1)
+                ox_c = (w - 1) * 0.5
+                oy_c = (h - 1) * 0.5
+                for i in range(n_frames):
+                    z, cx_n, cy_n, ang_deg = _kamera_kare_durumu(cam, i / denom)
+                    crop_w = iw / z
+                    crop_h = ih / z
+                    sx_c = crop_w * 0.5 + (iw - crop_w) * cx_n
+                    sy_c = crop_h * 0.5 + (ih - crop_h) * cy_n
+                    scale_x = crop_w / w
+                    scale_y = crop_h / h
+                    if abs(ang_deg) > 1e-4:
+                        rad = math.radians(ang_deg)
+                        cs = math.cos(rad)
+                        sn = math.sin(rad)
+                        a = cs * scale_x
+                        b = -sn * scale_y
+                        d = sn * scale_x
+                        e = cs * scale_y
+                    else:
+                        a, b, d, e = scale_x, 0.0, 0.0, scale_y
+                    c = sx_c - (a * ox_c + b * oy_c)
+                    f = sy_c - (d * ox_c + e * oy_c)
+                    frame = im.transform((w, h), Image.Transform.AFFINE, (a, b, c, d, e, f), resample=resample)
+                    proc.stdin.write(frame.tobytes())
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        finally:
+            try:
+                if proc.stdin and not proc.stdin.closed:
+                    proc.stdin.close()
+            except OSError:
+                pass
+            if proc.stderr:
+                stderr_out = proc.stderr.read()
+                proc.stderr.close()
+            rc = proc.wait(timeout=max(180, int(sure * 6)))
+
+        if rc == 0 and gecici.is_file() and gecici.stat().st_size > 2000:
+            os.replace(gecici, out)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        gecici.unlink(missing_ok=True)
+        return subprocess.CompletedProcess(cmd, rc or 1, "", stderr_out.decode("utf-8", errors="replace"))
+
+    res = _pipe_encode(with_sub=use_sub)
+    if res.returncode != 0 and use_sub:
+        res = _pipe_encode(with_sub=False)
+    if res.returncode != 0 or not out.is_file():
+        return {"ok": False, "error": f"Alt-piksel kamera render hatası: {(res.stderr or '')[-220:]}"}
+    return {"ok": True, "path": out, "fps": eff_fps, "frames": n_frames, "resolution": f"{w}x{h}"}
+
+
+def _kamera_filtre_ifadesi(camera_motion: str, kare: int, genislik: int, yukseklik: int) -> str:
+    """Seçili kamera hareketi için 4× üst-örneklemeli (alt-piksel) 30fps FFmpeg `zoompan` filtresi üretir."""
+    cam = _kamera_kanonik(camera_motion)
+    k = max(30, kare)
+    ease = f"(0.5-0.5*cos(PI*on/{k}))"
     if cam in ("locked", "static", "sabit", "wind_cloth_glow"):
         # GERÇEK kilitli kare: zum yok, pan yok, sin/cos kamera kayması yok.
         z = "1.0"
         x = "iw/2-(iw/zoom/2)"
         y = "ih/2-(ih/zoom/2)"
     elif cam == "orbital":
-        # Nazik yörünge; sin/cos salınımı YALNIZ orbitalde uygulanır.
-        z = "1.10+0.05*sin(2*PI*on/{k})".format(k=k)
-        x = "(iw-iw/zoom)*(0.5+0.35*sin(2*PI*on/{k}))".format(k=k)
-        y = "(ih-ih/zoom)*(0.5+0.25*cos(2*PI*on/{k}))".format(k=k)
+        z = f"1.14+0.04*sin(PI*on/{k})"
+        x = f"(iw-iw/zoom)*(0.5+0.42*sin(PI*on/{k}-PI/2))"
+        y = f"(ih-ih/zoom)*(0.5+0.16*sin(2*PI*on/{k}))"
     elif cam == "pull_out":
-        z = f"if(eq(on,1),1.20,max(1.20-0.20*(on/{k}),1.0))"
+        z = f"1.18-0.18*{ease}"
         x = "iw/2-(iw/zoom/2)"
         y = "ih/2-(ih/zoom/2)"
     elif cam in ("pan_right", "pan_left"):
-        z = "1.14"
-        x = f"(iw-iw/zoom)*(on/{k})" if cam == "pan_right" else f"(iw-iw/zoom)*(1-on/{k})"
+        z = "1.16"
+        x = f"(iw-iw/zoom)*(0.04+0.92*{ease})" if cam == "pan_right" else f"(iw-iw/zoom)*(0.96-0.92*{ease})"
+        y = "ih/2-(ih/zoom/2)"
+    elif cam in ("crane_up", "crane_down"):
+        z = "1.16"
+        x = "iw/2-(iw/zoom/2)"
+        y = f"(ih-ih/zoom)*(0.95-0.90*{ease})" if cam == "crane_up" else f"(ih-ih/zoom)*(0.05+0.90*{ease})"
+    elif cam == "dolly_zoom":
+        z = f"1.0+0.26*{ease}"
+        x = "iw/2-(iw/zoom/2)"
         y = "ih/2-(ih/zoom/2)"
     else:
-        # push_in / zoom_in / otomatik
-        z = f"min(1.0+0.18*(on/{k}),1.20)"
+        # push_in / otomatik
+        z = f"1.0+0.18*{ease}"
         x = "iw/2-(iw/zoom/2)"
         y = "ih/2-(ih/zoom/2)"
 
+    ss = 4 if max(genislik, yukseklik) <= 1280 else 2
+    sw, sh = int(genislik * ss), int(yukseklik * ss)
     return (
-        f"scale={int(genislik * 1.25)}:{int(yukseklik * 1.25)}:force_original_aspect_ratio=increase,"
-        f"crop={int(genislik * 1.25)}:{int(yukseklik * 1.25)},"
-        f"zoompan=z='{z}':x='{x}':y='{y}':d=1:s={genislik}x{yukseklik}:fps=24,"
+        f"scale={sw}:{sh}:flags=lanczos:force_original_aspect_ratio=increase,"
+        f"crop={sw}:{sh},"
+        f"zoompan=z='{z}':x='{x}':y='{y}':d={k}:s={genislik}x{yukseklik}:fps=30,"
         f"setsar=1,vignette=PI/6,format=yuv420p"
     )
 
@@ -271,7 +498,7 @@ def _concat_mp4_segments(segment_paths: List[Path], out_mp4: Path, target_durati
             norm = tmp_dir / f"seg_{i}.mp4"
             rn = subprocess.run(
                 [ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(sp),
-                 "-r", "24", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-crf", "22",
+                 "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-threads", "1", "-crf", "21",
                  "-pix_fmt", "yuv420p", "-an", str(norm)],
                 capture_output=True, text=True, timeout=120,
             )
@@ -312,50 +539,55 @@ def instant_i2v_motion(
         return {"ok": False, "error": "Kaynak görsel bulunamadı."}
 
     w, h = _cozunurluk(aspect_ratio)
-    sure = max(3.0, min(60.0, float(duration_sec or 5.0)))
-    kare = max(24, int(round(sure * 24)))
-    ff = _ffmpeg_bin()
+    sure = max(3.0, min(180.0, float(duration_sec or 5.0)))
     out.parent.mkdir(parents=True, exist_ok=True)
-    gecici = out.with_name(f".{out.stem}.{time.time_ns()}.part.mp4")
 
-    vf_parts = [_kamera_filtre_ifadesi(camera_motion, kare, w, h)]
-    if ass_path and Path(ass_path).is_file():
-        kacis = str(Path(ass_path)).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-        vf_parts.append(f"subtitles=filename='{kacis}'")
+    # 1. Öncelik: Gerçek float64 alt-piksel 30fps akıcı kamera motoru (sıfır adım atlama)
+    smooth_res = render_smooth_camera_clip(
+        src, out, w, h, sure,
+        camera_motion=camera_motion,
+        fps=30,
+        audio_path=audio_path if audio_path is not None else Path("__silent__"),
+        ass_path=ass_path,
+    )
+    if not smooth_res.get("ok"):
+        # Yedek: 4× üst-örneklemeli tek-kare 30fps FFmpeg zoompan
+        kare = max(30, int(round(sure * 30)))
+        ff = _ffmpeg_bin()
+        gecici = out.with_name(f".{out.stem}.{time.time_ns()}.part.mp4")
+        vf_parts = [_kamera_filtre_ifadesi(camera_motion, kare, w, h)]
+        if ass_path and Path(ass_path).is_file():
+            kacis = str(Path(ass_path)).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+            vf_parts.append(f"subtitles=filename='{kacis}'")
+        has_audio = bool(audio_path and Path(audio_path).is_file() and Path(audio_path).stat().st_size > 500)
 
-    has_audio = bool(audio_path and Path(audio_path).is_file() and Path(audio_path).stat().st_size > 500)
+        def _run_ffmpeg(vf_str: str) -> subprocess.CompletedProcess[str]:
+            cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", "-i", str(src)]
+            if has_audio:
+                cmd += ["-i", str(audio_path)]
+            else:
+                cmd += ["-f", "lavfi", "-t", f"{sure:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+            cmd += [
+                "-vf", vf_str,
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-threads", "1", "-crf", "21", "-pix_fmt", "yuv420p",
+            ]
+            if has_audio:
+                cmd += ["-af", f"apad=whole_dur={sure:.3f}"]
+            cmd += [
+                "-c:a", "aac", "-b:a", "128k",
+                "-t", f"{sure:.3f}", "-movflags", "+faststart",
+                str(gecici),
+            ]
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=max(180, int(sure * 6)))
 
-    def _run_ffmpeg(vf_str: str) -> subprocess.CompletedProcess[str]:
-        cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", "-loop", "1", "-framerate", "24", "-t", f"{sure:.3f}", "-i", str(src)]
-        if has_audio:
-            cmd += ["-i", str(audio_path)]
-        else:
-            cmd += ["-f", "lavfi", "-t", f"{sure:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
-        cmd += [
-            "-vf", vf_str,
-            "-map", "0:v:0", "-map", "1:a:0",
-            "-frames:v", str(kare),
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-threads", "1", "-crf", "24", "-pix_fmt", "yuv420p",
-        ]
-        # KISA SES VİDEOYU KESMEMELİ: apad ile kalan süreyi sessizlikle doldur, -t ile tam hedef sürede bitir.
-        if has_audio:
-            cmd += ["-af", f"apad=whole_dur={sure:.3f}"]
-        cmd += [
-            "-c:a", "aac", "-b:a", "128k",
-            "-t", f"{sure:.3f}", "-movflags", "+faststart",
-            str(gecici),
-        ]
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-
-    res = _run_ffmpeg(",".join(vf_parts))
-    if res.returncode != 0 and len(vf_parts) > 1:
-        # Altyazı filtresi (libass eksikliği vb.) başarısızsa altyazısız dene
-        res = _run_ffmpeg(vf_parts[0])
-    if res.returncode != 0 or not gecici.is_file():
-        gecici.unlink(missing_ok=True)
-        return {"ok": False, "error": f"FFmpeg hareket render hatası: {(res.stderr or '')[-200:]}"}
-
-    os.replace(gecici, out)
+        res = _run_ffmpeg(",".join(vf_parts))
+        if res.returncode != 0 and len(vf_parts) > 1:
+            res = _run_ffmpeg(vf_parts[0])
+        if res.returncode != 0 or not gecici.is_file():
+            gecici.unlink(missing_ok=True)
+            return {"ok": False, "error": f"FFmpeg hareket render hatası: {(res.stderr or '')[-200:]}"}
+        os.replace(gecici, out)
     try:
         from video_render import video_kalite_denetle
         kalite = video_kalite_denetle(out, beklenen_oran=aspect_ratio)
@@ -611,15 +843,27 @@ def hyperframes_studio_render(
     import ai_video_montaj as _avm
 
     dusuk_bellek = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
-    target_dur = max(3.0, min(60.0, float(duration_sec or 9.0)))
-    gecis_sn = 0.45
+    target_dur = max(3.0, min(180.0, float(duration_sec or 9.0)))
+    gecis_sn = 0.50
     w, h = _cozunurluk(aspect_ratio)
     if dusuk_bellek:
         oran = (aspect_ratio or "16:9").replace(" ", "")
         w, h = (480, 854) if oran == "9:16" else (480, 480) if oran == "1:1" else (854, 480)
-        sahneler_say = 2 if target_dur <= 10.0 else 3
+        sahneler_say = (
+            2 if target_dur <= 10.0 else
+            3 if target_dur <= 22.0 else
+            4 if target_dur <= 45.0 else
+            6 if target_dur <= 90.0 else 8
+        )
     else:
-        sahneler_say = max(2, min(5, len(image_prompts) or (2 if target_dur <= 6.0 else 3 if target_dur <= 15.0 else 4)))
+        hedef_adet = (
+            2 if target_dur <= 8.0 else
+            3 if target_dur <= 18.0 else
+            4 if target_dur <= 35.0 else
+            6 if target_dur <= 75.0 else
+            8 if target_dur <= 120.0 else 10
+        )
+        sahneler_say = max(2, min(10, max(len(image_prompts), hedef_adet) if target_dur > 18.0 else (len(image_prompts) or hedef_adet)))
     # xfade örtüşmesini tam telafi eden sahne süresi hesabı:
     # N * sahne_suresi - (N - 1) * gecis_sn == target_dur
     sahne_suresi = max(2.0, (target_dur + max(0, sahneler_say - 1) * gecis_sn) / sahneler_say)

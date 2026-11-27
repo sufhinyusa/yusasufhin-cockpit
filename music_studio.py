@@ -73,14 +73,14 @@ MUSIC_MODELS: List[Dict[str, Any]] = [
         "supports_vocals": True,
         "supports_lyrics": True,
         "supports_tasks": ["text2music", "cover", "repaint", "extend"],
-        "max_duration_sec": 240,
+        "max_duration_sec": 360,
         "default_duration_sec": 60,
         "format": "wav",
-        "description": "Vokal/söz içeren istekleri yalnızca vokal destekli modellere yönlendirir; ücretli API yoksa ücretsiz Kaggle GPU ACE-Step 1.5 kuyruğuna düşer.",
+        "description": "Vokal/söz içeren istekleri yalnızca vokal destekli modellere yönlendirir; ücretli API yoksa ücretsiz Kaggle GPU ACE-Step 1.5 kuyruğuna düşer (6 dk'ya kadar).",
     },
     {
         "id": "gpu-acestep-1.5",
-        "name": "🚀 Kaggle/Colab Ücretsiz GPU ACE-Step 1.5 (Suno Seviyesi · Vokal + Türkçe Söz + 4 dk)",
+        "name": "🚀 Kaggle/Colab Ücretsiz GPU ACE-Step 1.5 (Suno Seviyesi · Vokal + Türkçe Söz + 6 dk)",
         "provider": "gpu_queue",
         "env_key": None,
         "repo": "ACE-Step/acestep-v15-xl-turbo-diffusers",
@@ -88,10 +88,10 @@ MUSIC_MODELS: List[Dict[str, Any]] = [
         "supports_vocals": True,
         "supports_lyrics": True,
         "supports_tasks": ["text2music", "cover", "repaint", "extend"],
-        "max_duration_sec": 240,
+        "max_duration_sec": 360,
         "default_duration_sec": 60,
         "format": "wav",
-        "description": "MIT lisanslı 5B flow-matching DiT (48 kHz gerçek stereo): Türkçe/çok dilli vokal, [Verse]/[Chorus] şarkı yapısı, BPM, gam, Cover/Repaint ve 4 dk'ya kadar tam şarkı (Kaggle T4 ücretsiz).",
+        "description": "MIT lisanslı 5B flow-matching DiT (48 kHz gerçek stereo): Türkçe/çok dilli vokal, [Verse]/[Chorus] şarkı yapısı, BPM, gam, Cover/Repaint ve 6 dk'ya kadar tam şarkı (4 dk tek geçiş + 6 dk kesintisiz uzatma).",
     },
     {
         "id": "lyria-3.5",
@@ -155,17 +155,17 @@ MUSIC_MODELS: List[Dict[str, Any]] = [
     },
     {
         "id": "gpu-musicgen",
-        "name": "🎹 Kaggle/Colab Ücretsiz GPU MusicGen Stereo (Hızlı Enstrümantal · 30 sn)",
+        "name": "🎹 Kaggle/Colab Ücretsiz GPU MusicGen Stereo (Enstrümantal · 2 dk'ya kadar)",
         "provider": "gpu_queue",
         "env_key": None,
         "repo": "facebook/musicgen-stereo-medium",
         "supports_vocals": False,
         "supports_lyrics": False,
         "supports_tasks": ["text2music"],
-        "max_duration_sec": 30,
-        "default_duration_sec": 15,
+        "max_duration_sec": 120,
+        "default_duration_sec": 30,
         "format": "wav",
-        "description": "Meta MusicGen Stereo Medium (32 kHz gerçek stereo) Kaggle/Colab T4 GPU işçisinde yerel çalışır; yalnızca enstrümantal (vokal için ACE-Step 1.5 kullanın).",
+        "description": "Meta MusicGen Stereo Medium (32 kHz gerçek stereo) Kaggle/Colab T4 GPU işçisinde yerel çalışır; çok pencereli kesintisiz geçişle 2 dk'ya kadar enstrümantal üretir.",
     },
     {
         "id": "local-musicgen-mac",
@@ -716,7 +716,7 @@ def _gpu_kuyruga_al(
     """İşi Kaggle/Colab GPU kuyruğuna yazar (ACE-Step 1.5 veya MusicGen Stereo)."""
     is_acestep = chosen_model == "gpu-acestep-1.5"
     audio_model = "acestep-v15-xl-turbo" if is_acestep else "musicgen-stereo-medium"
-    max_cap = 240 if is_acestep else 30
+    max_cap = 360 if is_acestep else 120
     effective_dur = max(5, min(max_cap, int(dur)))
     payload: Dict[str, Any] = {
         "job_id": job_id,

@@ -912,9 +912,9 @@ def secimli_t2v_uret(
     return wan21_video_uret(prompt, genislik, yukseklik, sure_sn=sure_sn, adim=adim, tohum=tohum, log=log)
 
 
-def _i2v_segment_planla(sure_sn: float, tek_gecis_max_sn: float = 5.0, max_segment: int = 6) -> list[float]:
-    """İstenen süre tek GPU geçişini aştığında (ör. 10 sn > 5 sn) son-kare zincirleme segment sürelerini böler."""
-    hedef = max(1.5, min(30.0, float(sure_sn or 5.0)))
+def _i2v_segment_planla(sure_sn: float, tek_gecis_max_sn: float = 5.0, max_segment: int = 12) -> list[float]:
+    """İstenen süre tek GPU geçişini aştığında (ör. 10–60 sn > 5 sn) son-kare zincirleme segment sürelerini böler."""
+    hedef = max(1.5, min(60.0, float(sure_sn or 5.0)))
     sinir = max(1.5, float(tek_gecis_max_sn or 5.0))
     if hedef <= sinir + 0.2:
         return [round(hedef, 2)]
@@ -1201,6 +1201,52 @@ def _stereo_wav_yaz(audio_cs: np.ndarray, sample_rate: int, hedef_yol: Path, log
         return hedef_yol
 
 
+def _stereo_crossfade_birlestir(parcalar: list, sample_rate: int, gecis_sn: float = 2.5):
+    """Birden fazla gerçek AI stereo dalga formunu eşit-güçlü kosinüs geçişiyle (cos²+sin²=1) birleştirir."""
+    import numpy as np
+
+    normlar = []
+    for p in parcalar:
+        a = np.asarray(p, dtype=np.float32)
+        if a.ndim == 1:
+            a = np.stack([a, a], axis=0)
+        elif a.ndim == 2 and a.shape[0] > 2 and a.shape[1] <= 2:
+            a = a.T
+        if a.shape[0] == 1:
+            a = np.repeat(a, 2, axis=0)
+        elif a.shape[0] > 2:
+            a = a[:2]
+        normlar.append(a)
+    if not normlar:
+        return np.zeros((2, int(sample_rate)), dtype=np.float32)
+    out = normlar[0]
+    for nxt in normlar[1:]:
+        cf = int(min(sample_rate * max(0.2, float(gecis_sn)), out.shape[1] // 3, nxt.shape[1] // 3))
+        if cf <= 1:
+            out = np.concatenate([out, nxt], axis=1)
+            continue
+        t = np.linspace(0.0, np.pi * 0.5, cf, dtype=np.float32)
+        fade_out = np.cos(t)[None, :]
+        fade_in = np.sin(t)[None, :]
+        orta = out[:, -cf:] * fade_out + nxt[:, :cf] * fade_in
+        out = np.concatenate([out[:, :-cf], orta, nxt[:, cf:]], axis=1)
+    return out
+
+
+def _acestep_tek_gecis(pipe, kwargs: Dict[str, Any], has_var_kw: bool, sig_params: set):
+    import numpy as np
+    import torch
+
+    call_kwargs = kwargs if has_var_kw else {k: v for k, v in kwargs.items() if k in sig_params}
+    with torch.inference_mode():
+        sonuc = pipe(**call_kwargs)
+    audios = getattr(sonuc, "audios", None)
+    if audios is None or len(audios) == 0:
+        raise RuntimeError("ACE-Step 1.5 boş ses çıktısı döndürdü")
+    audio_t = audios[0]
+    return audio_t.detach().cpu().float().numpy() if hasattr(audio_t, "detach") else np.asarray(audio_t, dtype=np.float32)
+
+
 def acestep_muzik_uret(
     prompt: str,
     *,
@@ -1283,7 +1329,7 @@ def acestep_muzik_uret(
     pipe = _ACESTEP_PIPE
     sr = int(getattr(pipe, "sample_rate", 48000) or 48000)
     try:
-        sn = max(10.0, min(240.0, float(sure_sn or 60.0)))
+        sn = max(10.0, min(360.0, float(sure_sn or 60.0)))
     except (TypeError, ValueError):
         sn = 60.0
 
@@ -1304,51 +1350,68 @@ def acestep_muzik_uret(
     if eff_task in ("repaint", "complete") and not (has_var_kw or "src_audio" in sig_params):
         raise RuntimeError(f"Kurulu diffusers AceStepPipeline sürümü '{eff_task}' (src_audio) parametresini desteklemiyor.")
 
-    kwargs: Dict[str, Any] = {
-        "prompt": str(prompt or "").strip()[:512],
-        "lyrics": clean_lyrics,
-        "audio_duration": sn,
-        "vocal_language": lang,
-        "num_inference_steps": 8 if is_turbo else 32,
-        "guidance_scale": 1.0 if is_turbo else 7.0,
-        "shift": 3.0,
-        "generator": torch.Generator(device="cpu").manual_seed(int(tohum or 42)),
-        "task_type": eff_task,
-    }
-    if bpm:
-        kwargs["bpm"] = max(40, min(240, int(bpm)))
-    if str(key_scale or "").strip():
-        kwargs["keyscale"] = str(key_scale).strip()[:32]
-    if str(time_signature or "").strip():
-        kwargs["timesignature"] = str(time_signature).strip()[:12]
+    def _base_kwargs(seg_dur: float, seg_seed: int, seg_lyrics: str, seg_prompt: str) -> Dict[str, Any]:
+        kw: Dict[str, Any] = {
+            "prompt": str(seg_prompt or "").strip()[:512],
+            "lyrics": seg_lyrics,
+            "audio_duration": seg_dur,
+            "vocal_language": lang,
+            "num_inference_steps": 8 if is_turbo else 32,
+            "guidance_scale": 1.0 if is_turbo else 7.0,
+            "shift": 3.0,
+            "generator": torch.Generator(device="cpu").manual_seed(int(seg_seed)),
+            "task_type": eff_task,
+        }
+        if bpm:
+            kw["bpm"] = max(40, min(240, int(bpm)))
+        if str(key_scale or "").strip():
+            kw["keyscale"] = str(key_scale).strip()[:32]
+        if str(time_signature or "").strip():
+            kw["timesignature"] = str(time_signature).strip()[:12]
+        return kw
 
-    if ref_audio_path is not None and Path(ref_audio_path).is_file():
-        ref_tensor = _ses_tensor_yukle(Path(ref_audio_path), hedef_sr=sr)
-        if eff_task == "cover":
-            kwargs["reference_audio"] = ref_tensor
-            kwargs["audio_cover_strength"] = max(0.0, min(1.0, float(audio_cover_strength)))
-        else:
-            kwargs["src_audio"] = ref_tensor
-            if repaint_start is not None:
-                kwargs["repainting_start"] = max(0.0, float(repaint_start))
-            if repaint_end is not None:
-                kwargs["repainting_end"] = max(0.0, float(repaint_end))
-
-    call_kwargs = kwargs if has_var_kw else {k: v for k, v in kwargs.items() if k in sig_params}
-
-    _ilerleme(
-        55,
-        f"🎤 ACE-Step 1.5 üretimi: {sn:.0f}s · dil={lang} · görev={eff_task} · "
-        f"{'Enstrümantal' if clean_lyrics == '[Instrumental]' else 'Vokal+Söz'} (@{sr}Hz)",
-    )
-    with torch.inference_mode():
-        sonuc = pipe(**call_kwargs)
-
-    audios = getattr(sonuc, "audios", None)
-    if audios is None or len(audios) == 0:
-        raise RuntimeError("ACE-Step 1.5 boş ses çıktısı döndürdü")
-    audio_t = audios[0]
-    audio_np = audio_t.detach().cpu().float().numpy() if hasattr(audio_t, "detach") else np.asarray(audio_t, dtype=np.float32)
+    if sn <= 240.0:
+        kwargs = _base_kwargs(sn, int(tohum or 42), clean_lyrics, prompt)
+        if ref_audio_path is not None and Path(ref_audio_path).is_file():
+            ref_tensor = _ses_tensor_yukle(Path(ref_audio_path), hedef_sr=sr)
+            if eff_task == "cover":
+                kwargs["reference_audio"] = ref_tensor
+                kwargs["audio_cover_strength"] = max(0.0, min(1.0, float(audio_cover_strength)))
+            else:
+                kwargs["src_audio"] = ref_tensor
+                if repaint_start is not None:
+                    kwargs["repainting_start"] = max(0.0, float(repaint_start))
+                if repaint_end is not None:
+                    kwargs["repainting_end"] = max(0.0, float(repaint_end))
+        _ilerleme(
+            55,
+            f"🎤 ACE-Step 1.5 üretimi: {sn:.0f}s · dil={lang} · görev={eff_task} · "
+            f"{'Enstrümantal' if clean_lyrics == '[Instrumental]' else 'Vokal+Söz'} (@{sr}Hz)",
+        )
+        audio_np = _acestep_tek_gecis(pipe, kwargs, has_var_kw, sig_params)
+    else:
+        # 240–360 sn uzun parça: 2 aşamalı gerçek ACE-Step 1.5 üretimi + 3.0s eşit-güçlü kosinüs geçiş
+        gecis = 3.0
+        seg1_dur = min(210.0, sn * 0.55)
+        seg2_dur = min(210.0, sn - seg1_dur + gecis)
+        satirlar = clean_lyrics.splitlines()
+        orta_i = max(1, len(satirlar) // 2)
+        lyr1 = clean_lyrics if clean_lyrics == "[Instrumental]" else "\n".join(satirlar[:orta_i]).strip() or clean_lyrics
+        lyr2 = clean_lyrics if clean_lyrics == "[Instrumental]" else "\n".join(satirlar[orta_i:]).strip() or clean_lyrics
+        _ilerleme(48, f"🎤 ACE-Step 1.5 uzun parça 1/2: {seg1_dur:.0f}s (@{sr}Hz stereo)…")
+        p1 = _acestep_tek_gecis(pipe, _base_kwargs(seg1_dur, int(tohum or 42), lyr1, prompt), has_var_kw, sig_params)
+        _bosalt()
+        _ilerleme(68, f"🎤 ACE-Step 1.5 uzun parça 2/2 (devam): {seg2_dur:.0f}s (@{sr}Hz stereo)…")
+        p2 = _acestep_tek_gecis(
+            pipe,
+            _base_kwargs(seg2_dur, int(tohum or 42) + 1, lyr2, f"{prompt}, seamless musical continuation, matching tempo and instrumentation"),
+            has_var_kw,
+            sig_params,
+        )
+        audio_np = _stereo_crossfade_birlestir([p1, p2], sr, gecis_sn=gecis)
+        max_samples = int(round(sn * sr))
+        if audio_np.shape[1] > max_samples:
+            audio_np = audio_np[:, :max_samples]
 
     if hedef_yol is None:
         hedef_yol = Path(tempfile.gettempdir()) / f"acestep_{uuid.uuid4().hex[:8]}.wav"
@@ -1408,20 +1471,38 @@ def muzik_uret(prompt: str, sure_sn: float = 15.0, model_key: str = "stereo",
     processor, model, device = _MUZIK_PIPE
 
     try:
-        sn = max(1.0, min(30.0, float(sure_sn)))
+        sn = max(1.0, min(120.0, float(sure_sn)))
     except (TypeError, ValueError):
         sn = 15.0
-    max_new = min(1500, max(128, int(sn * 50)))
 
-    _ilerleme(55, f"🎵 MusicGen üretimi: {sn:.1f}s → ~{max_new} token (@32kHz stereo)")
-    inputs = processor(text=[prompt], padding=True, return_tensors="pt").to(device)
-
-    with torch.inference_mode():
-        cikti = model.generate(**inputs, do_sample=True, guidance_scale=3.0,
-                               max_new_tokens=max_new)
-
-    audio = cikti[0].cpu().float().numpy()  # (channels, samples)
     sample_rate = int(getattr(getattr(model, "config", None), "audio_encoder", None).sampling_rate) if hasattr(getattr(getattr(model, "config", None), "audio_encoder", None), "sampling_rate") else 32000
+    gecis_sn = 2.0
+    if sn <= 30.0:
+        max_new = min(1500, max(128, int(sn * 50)))
+        _ilerleme(55, f"🎵 MusicGen üretimi: {sn:.1f}s → ~{max_new} token (@{sample_rate}Hz stereo)")
+        inputs = processor(text=[prompt], padding=True, return_tensors="pt").to(device)
+        with torch.inference_mode():
+            cikti = model.generate(**inputs, do_sample=True, guidance_scale=3.0, max_new_tokens=max_new)
+        audio = cikti[0].cpu().float().numpy()
+    else:
+        # 31–120 sn: çok pencereli gerçek stereo üretim + 2.0s eşit-güçlü kosinüs geçiş
+        pencere_max = 28.0
+        parca_say = min(5, max(2, int(-(-(sn + gecis_sn) // (pencere_max - gecis_sn)))))
+        parca_sn = min(30.0, (sn + (parca_say - 1) * gecis_sn) / parca_say)
+        max_new = min(1500, max(256, int(parca_sn * 50)))
+        inputs = processor(text=[prompt], padding=True, return_tensors="pt").to(device)
+        parcalar = []
+        for idx in range(parca_say):
+            pct = 48 + int((idx / max(1, parca_say)) * 30)
+            _ilerleme(pct, f"🎵 MusicGen uzun stereo pencere {idx + 1}/{parca_say} ({parca_sn:.1f}s @ {sample_rate}Hz)…")
+            with torch.inference_mode():
+                cikti = model.generate(**inputs, do_sample=True, guidance_scale=3.0, max_new_tokens=max_new)
+            parcalar.append(cikti[0].cpu().float().numpy())
+        audio = _stereo_crossfade_birlestir(parcalar, sample_rate, gecis_sn=gecis_sn)
+        max_samples = int(round(sn * sample_rate))
+        if audio.shape[1] > max_samples:
+            audio = audio[:, :max_samples]
+
     if hedef_yol is None:
         hedef_yol = Path(tempfile.gettempdir()) / f"musicgen_{uuid.uuid4().hex[:8]}.wav"
 

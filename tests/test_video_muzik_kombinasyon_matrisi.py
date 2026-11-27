@@ -670,7 +670,7 @@ def test_enqueue_music_gpu_job_handles_malformed_numbers_safely(cockpit_env):
     assert rec["bpm"] is None
     assert rec["audio_cover_strength"] == 0.85
     assert rec["repaint_start"] is None
-    assert rec["repaint_end"] == 240.0
+    assert rec["repaint_end"] == 360.0
     assert rec["seed"] is None
     assert rec["sure_sn"] == 120
 
@@ -777,5 +777,79 @@ def test_burc_video_inherits_character_vault_profile(cockpit_env):
     assert task["seed"] == 884422
     assert "sapphire cloak" in task["character_bible"]
     assert task["input_image_url"] is not None
+
+
+def test_v36_smooth_subpixel_30fps_camera_zero_frozen_and_long_durations(cockpit_env, tmp_path):
+    """v36: Float64 alt-piksel 30fps kamera (sıfır adım/donma), 180s video ve 360s/120s uzun müzik."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    import gpu_worker as gw
+    import hyperframes_motor as hf
+
+    # 1. Zengin dokulu test görseli üzerinde push_in ve orbital 30fps akıcılık denetimi
+    src = tmp_path / "rich_scene.png"
+    im = Image.new("RGB", (640, 360), (20, 40, 80))
+    dr = ImageDraw.Draw(im)
+    for y in range(0, 360, 4):
+        dr.line([(0, y), (640, y)], fill=(int(30 + y * 0.5), int(50 + (y % 90)), int(140 - y * 0.2)))
+    for x in range(20, 620, 45):
+        dr.rectangle([x, 60, x + 22, 300], fill=(220 - (x % 120), 140, 90))
+    im.save(src, "PNG")
+
+    for cam in ("push_in", "orbital"):
+        out_mp4 = tmp_path / f"smooth_{cam}.mp4"
+        res = hf.render_smooth_camera_clip(src, out_mp4, 320, 180, 2.0, camera_motion=cam, fps=30)
+        assert res["ok"] is True and res["fps"] == 30
+        pr = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate,nb_frames",
+             "-of", "csv=p=0", str(out_mp4)],
+            capture_output=True, text=True, check=True,
+        )
+        assert "30/1" in pr.stdout
+        raw = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(out_mp4), "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+            capture_output=True, check=True,
+        ).stdout
+        fr = np.frombuffer(raw, dtype=np.uint8).reshape((-1, 180, 320)).astype(np.float32)
+        diffs = [float(np.abs(fr[i + 1] - fr[i]).mean()) for i in range(len(fr) - 1)]
+        mid = diffs[5:-5]
+        # Eski bug: push_in 55/59 kare donuyordu; orbital 0.03-5.6 testere yapıyordu!
+        assert sum(1 for d in mid if d < 0.05) == 0, f"{cam} donmuş kare içeriyor: {mid[:15]}"
+
+    # 2. Uzun video (120s / 180s) ve uzun müzik (360s ACE-Step, 120s MusicGen) sınırları
+    c = cockpit_env["client"]
+    r_v = c.post(
+        "/api/studio/video/generate",
+        headers=cockpit_env["auth"],
+        json={"prompt": "Uzun belgesel sahnesi", "duration": 120, "workflow": "image_first_preview", "render_target": "kaggle_32gb"},
+    )
+    assert r_v.status_code == 200
+    assert float(r_v.json()["task"]["duration"]) == 120.0
+
+    r_m1 = c.post(
+        "/api/music/generate",
+        headers=cockpit_env["auth"],
+        json={"model_id": "gpu-acestep-1.5", "prompt": "Uzun epik senfoni", "duration_sec": 360},
+    )
+    assert r_m1.status_code == 200 and r_m1.json()["job"]["duration_sec"] == 360
+
+    r_m2 = c.post(
+        "/api/music/generate",
+        headers=cockpit_env["auth"],
+        json={"model_id": "gpu-musicgen", "prompt": "Uzun Anadolu lo-fi", "duration_sec": 120, "instrumental": True},
+    )
+    assert r_m2.status_code == 200 and r_m2.json()["job"]["duration_sec"] == 120
+
+    # 3. GPU I2V 60sn zincirleme + stereo eşit-güçlü crossfade birleştirme
+    segs_60 = gw._i2v_segment_planla(60.0, 5.0)
+    assert len(segs_60) == 12 and sum(segs_60) >= 59.9
+
+    sr = 1000
+    a1 = np.ones((2, 5000), dtype=np.float32) * 0.5
+    a2 = np.ones((2, 5000), dtype=np.float32) * 0.5
+    joined = gw._stereo_crossfade_birlestir([a1, a2], sr, gecis_sn=1.0)
+    assert joined.shape == (2, 9000)
+    assert float(np.max(np.abs(joined))) <= 0.72
+
 
 

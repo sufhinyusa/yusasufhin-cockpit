@@ -1428,7 +1428,7 @@ def _enqueue_music_gpu_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     req_method = str(payload.get("method") or "").strip().lower()
     req_model = str(payload.get("model_id") or payload.get("audio_model") or "").strip().lower()
     is_acestep = req_method in ("acestep", "gpu_acestep") or "acestep" in req_model
-    max_cap = 240 if is_acestep else 30
+    max_cap = 360 if is_acestep else 120
     dur = _safe_opt_int(payload.get("duration_sec"), 5, max_cap) or (60 if is_acestep else 15)
     eff_method = "acestep" if is_acestep else "musicgen"
     eff_audio_model = str(payload.get("audio_model") or ("acestep-v15-xl-turbo" if is_acestep else "musicgen-stereo-medium"))
@@ -1454,8 +1454,8 @@ def _enqueue_music_gpu_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         "music_task": str(payload.get("music_task") or "text2music")[:24],
         "ref_audio_url": str(payload.get("ref_audio_url") or "") or None,
         "audio_cover_strength": 0.85 if cov_strength is None else cov_strength,
-        "repaint_start": _safe_opt_float(payload.get("repaint_start"), 0.0, 240.0),
-        "repaint_end": _safe_opt_float(payload.get("repaint_end"), 0.0, 240.0),
+        "repaint_start": _safe_opt_float(payload.get("repaint_start"), 0.0, 360.0),
+        "repaint_end": _safe_opt_float(payload.get("repaint_end"), 0.0, 360.0),
         "seed": _safe_opt_int(payload.get("seed"), 0, 2147483647),
         "audio_model": eff_audio_model,
         "music_model": eff_audio_model,
@@ -2280,7 +2280,7 @@ def _run_instant_cloud_render_sync(
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     w, h = _cozunurluk(aspect_ratio)
     clean_prompts = [p for p in (image_prompts or []) if p and str(p).strip()] or [prompt]
-    hedef_sure = max(3.0, min(60.0, float(duration_sec or 5.0)))
+    hedef_sure = max(3.0, min(180.0, float(duration_sec or 5.0)))
     input_ref = MEDIA_DIR / f"{job_id}_input.png"
     ref_path = input_ref if input_ref.is_file() else None
 
@@ -2578,7 +2578,7 @@ async def generate_lab_video(req: Request):
     execution_mode = str(body.get("execution_mode") or "").strip().lower()
     source_url = str(body.get("source_url") or "").strip()
     try:
-        sure_sn = max(3.0, min(60.0, float(body.get("duration") or body.get("sure_sn") or 5.0)))
+        sure_sn = max(3.0, min(180.0, float(body.get("duration") or body.get("sure_sn") or 5.0)))
     except (TypeError, ValueError):
         sure_sn = 5.0
     job_id = _new_job_id()
@@ -3350,7 +3350,7 @@ async def studio_stitch_clips(req: Request):
     klipler: List[Path] = []
     shot_items: List[Dict[str, Any]] = []
     if use_shots:
-        for idx, sh in enumerate(raw_shots[:10]):
+        for idx, sh in enumerate(raw_shots[:24]):
             if not isinstance(sh, dict):
                 continue
             src_mp4: Optional[Path] = None
@@ -3368,7 +3368,7 @@ async def studio_stitch_clips(req: Request):
             if src_mp4 is None and src_png is None:
                 continue
             try:
-                dur = max(1.5, min(20.0, float(sh.get("duration_sec") or 3.5)))
+                dur = max(1.5, min(30.0, float(sh.get("duration_sec") or 3.5)))
             except (TypeError, ValueError):
                 dur = 3.5
             shot_items.append({
@@ -3406,8 +3406,8 @@ async def studio_stitch_clips(req: Request):
                 if item["mp4"] is not None:
                     r = subprocess.run(
                         [ff, "-y", "-loglevel", "error", "-i", str(item["mp4"]),
-                         "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps=24,setsar=1",
-                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-an", "-pix_fmt", "yuv420p", str(norm)],
+                         "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps=30,setsar=1",
+                         "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-crf", "20", "-an", "-pix_fmt", "yuv420p", str(norm)],
                         capture_output=True, text=True, timeout=180,
                     )
                     if r.returncode != 0:
@@ -3633,7 +3633,7 @@ async def studio_video_generate(req: Request):
                 raw_seed = int(cprof["seed"])
             char_ref_bytes = cstore.get_reference_image_bytes(character_id)
     try:
-        sure_sn = max(3.0, min(60.0, float(body.get("duration") or body.get("sure_sn") or ch_cfg.get("duration") or 5.0)))
+        sure_sn = max(3.0, min(180.0, float(body.get("duration") or body.get("sure_sn") or ch_cfg.get("duration") or 5.0)))
     except (TypeError, ValueError):
         sure_sn = 5.0
     job_id = _new_job_id()
