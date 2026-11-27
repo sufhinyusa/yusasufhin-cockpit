@@ -200,8 +200,14 @@ def render_smooth_camera_clip(
         top = (ih - nh) // 2
         im = im.crop((0, top, iw, top + nh))
     iw, ih = im.size
-
     on_render = bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+    if on_render:
+        # Render 0.1-vCPU üzerinde L2 önbellek dostu tek ön-ölçekleme (zoom <=1.32 için tam keskinlik)
+        max_sw = max(w + 256, int(round(w * 1.35)))
+        if iw > max_sw:
+            max_sh = max(2, int(round(ih * (max_sw / iw))))
+            im = im.resize((max_sw, max_sh), Image.Resampling.LANCZOS)
+            iw, ih = im.size
     resample = Image.Resampling.BILINEAR if (on_render or n_frames > 360) else Image.Resampling.BICUBIC
     ff = _ffmpeg_bin()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -230,7 +236,7 @@ def render_smooth_camera_clip(
         else:
             cmd += ["-map", "0:v:0", "-an"]
 
-        preset = "ultrafast" if (on_render and sure > 30.0) else "veryfast"
+        preset = "ultrafast" if on_render else "veryfast"
         cmd += [
             "-c:v", "libx264", "-preset", preset, "-tune", "film", "-crf", "20",
             "-threads", "1" if on_render else "0",

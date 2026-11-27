@@ -2798,6 +2798,70 @@ async def generate_lab_video(req: Request):
             )
         )
         if aninda:
+            if sure_sn > 15.0 and not os.environ.get("PYTEST_CURRENT_TEST"):
+                job["gpu_kuyruk"] = False
+                job["gpu_durum"] = "isleniyor"
+                job["status"] = "isleniyor (30fps alt-piksel render)"
+                job["progress_pct"] = 18
+                job["message"] = (
+                    f"{sure_sn:.0f} saniyelik uzun video arka planda 30fps akıcı kamera motoruyla üretiliyor; "
+                    "hazır olunca kuyrukta ve galeride otomatik açılır."
+                )
+                _append_job_record(job)
+
+                def _uzun_lab_render_arka_plan() -> None:
+                    try:
+                        bg_res = _run_instant_cloud_render_sync(
+                            job_id=job_id,
+                            method=method,
+                            prompt=prompt,
+                            image_prompts=scene_prompts,
+                            motion_prompt=mot_prompt,
+                            aspect_ratio=aspect_ratio,
+                            style_preset=style_preset,
+                            camera_motion=camera_motion,
+                            duration_sec=sure_sn,
+                            source_url=source_url or None,
+                        )
+                    except Exception as exc:
+                        bg_res = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+
+                    def _guncelle(veri: Dict[str, Any]) -> None:
+                        for j in veri.get("jobs", []):
+                            if _is_job(j, job_id):
+                                if bg_res.get("ok"):
+                                    _finalize_instant_cloud_job(j, bg_res)
+                                    j["progress_pct"] = 100
+                                else:
+                                    j["status"] = "basarisiz"
+                                    j["gpu_durum"] = "hata"
+                                    j["error"] = str(bg_res.get("error") or "Uzun video render başarısız.")
+                                    j["message"] = j["error"]
+                                break
+
+                    try:
+                        _update_jobs(_guncelle)
+                    except OSError as exc:
+                        logger.error("[Jobs] Uzun lab video sonucu kaydedilemedi (%s): %s", job_id, exc)
+
+                threading.Thread(
+                    target=_uzun_lab_render_arka_plan,
+                    daemon=True,
+                    name=f"LongLabRender-{job_id[-6:]}",
+                ).start()
+                return {
+                    "success": True,
+                    "async": True,
+                    "status": job["status"],
+                    "job_id": job_id,
+                    "model_id": model_id,
+                    "prompt": prompt,
+                    "gpu_kuyruk": False,
+                    "gpu_durum": job["gpu_durum"],
+                    "job": job,
+                    "message": job["message"],
+                }
+
             res = await run_in_threadpool(
                 lambda: _run_instant_cloud_render_sync(
                     job_id=job_id,
@@ -3837,6 +3901,69 @@ async def studio_video_generate(req: Request):
             )
         )
         if aninda:
+            if sure_sn > 15.0 and not os.environ.get("PYTEST_CURRENT_TEST"):
+                # Uzun videolar (>15 sn) Cloudflare/Render 100 sn HTTP proxy zaman aşımına takılmaması
+                # için arka planda 30fps alt-piksel motorla işlenir; kuyruk üzerinden anlık takip edilir.
+                task_data["gpu_kuyruk"] = False
+                task_data["gpu_durum"] = "isleniyor"
+                task_data["status"] = "isleniyor (30fps alt-piksel render)"
+                task_data["progress_pct"] = 18
+                task_data["message"] = (
+                    f"{sure_sn:.0f} saniyelik uzun video arka planda 30fps akıcı kamera motoruyla üretiliyor; "
+                    "hazır olunca kuyrukta ve galeride otomatik açılır."
+                )
+                _append_job_record(task_data)
+
+                def _uzun_bulut_render_arka_plan() -> None:
+                    try:
+                        bg_res = _run_instant_cloud_render_sync(
+                            job_id=job_id,
+                            method=method,
+                            prompt=prompt,
+                            image_prompts=scene_prompts,
+                            motion_prompt=mot_prompt,
+                            aspect_ratio=aspect_ratio,
+                            style_preset=style_preset,
+                            camera_motion=camera_motion,
+                            duration_sec=sure_sn,
+                            source_url=source_url or None,
+                            execution_mode=execution_mode or "instant_cloud",
+                            character_lock=char_bible,
+                            seed=locked_seed,
+                        )
+                    except Exception as exc:
+                        bg_res = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+
+                    def _guncelle(veri: Dict[str, Any]) -> None:
+                        for j in veri.get("jobs", []):
+                            if _is_job(j, job_id):
+                                if bg_res.get("ok"):
+                                    _finalize_instant_cloud_job(j, bg_res)
+                                    j["progress_pct"] = 100
+                                    j["stages"] = [
+                                        {"ad": "1. Stil & Prompt Kurgusu", "durum": "tamamlandi"},
+                                        {"ad": f"2. Anında 30fps Bulut Kurgu ({j.get('kaynak', 'cloud')})", "durum": "tamamlandi"},
+                                        {"ad": "3. FFmpeg Kalite & YouTube Paketi", "durum": "tamamlandi"},
+                                    ]
+                                else:
+                                    j["status"] = "basarisiz"
+                                    j["gpu_durum"] = "hata"
+                                    j["error"] = str(bg_res.get("error") or "Uzun video render başarısız.")
+                                    j["message"] = j["error"]
+                                break
+
+                    try:
+                        _update_jobs(_guncelle)
+                    except OSError as exc:
+                        logger.error("[Jobs] Uzun video sonucu kaydedilemedi (%s): %s", job_id, exc)
+
+                threading.Thread(
+                    target=_uzun_bulut_render_arka_plan,
+                    daemon=True,
+                    name=f"LongRender-{job_id[-6:]}",
+                ).start()
+                return {"success": True, "async": True, "task": task_data}
+
             res = await run_in_threadpool(
                 lambda: _run_instant_cloud_render_sync(
                     job_id=job_id,

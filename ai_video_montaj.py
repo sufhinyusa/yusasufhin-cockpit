@@ -776,10 +776,11 @@ def montaj_birlestir(sahne_mp4leri: List[Path], hedef: Path,
         offset += sure_sn - gecis_sn
     filtre = filtre.rstrip(";")
 
+    preset_m = "ultrafast" if (os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID")) else "veryfast"
     cmd += [
         "-filter_complex", filtre,
         "-map", onceki,
-        "-c:v", "libx264", "-preset", "veryfast", "-tune", "film", "-threads", "1", "-crf", "21",
+        "-c:v", "libx264", "-preset", preset_m, "-tune", "film", "-threads", "1", "-crf", "21",
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(hedef),
     ]
