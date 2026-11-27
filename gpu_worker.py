@@ -1259,15 +1259,19 @@ def acestep_muzik_uret(
         _gorsel_cache_temizle()
         _video_cache_temizle()
         _muzik_cache_temizle()
-        offload_mod = "sequential CPU offload (T4 16GB güvenlik)" if is_low_vram_t4 else "model CPU offload"
-        _ilerleme(18, f"⏳ ACE-Step 1.5 yükleniyor: {repo} ({offload_mod} + VAE tiling)…")
+        # NOT: AceStepPipeline'da enable_sequential_cpu_offload() alt katmanları meta tensor'a
+        # taşıdığı için pipeline içindeki doğrudan öznitelik erişiminde (Kaggle T4'te ölçüldü)
+        # `NotImplementedError: Cannot copy out of meta tensor; no data!` verir.
+        # enable_model_cpu_offload() bileşenleri gerçek CPU RAM'de tutup tek tek GPU'ya taşır
+        # (tepe VRAM ~8-9 GB, tek Tesla T4 15 GB'a güvenle sığar).
+        _ilerleme(18, f"⏳ ACE-Step 1.5 yükleniyor: {repo} (model CPU offload + VAE tiling)…")
         dt = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         pipe = AceStepPipeline.from_pretrained(repo, torch_dtype=dt, low_cpu_mem_usage=True)
         if torch.cuda.is_available():
-            if is_low_vram_t4 and hasattr(pipe, "enable_sequential_cpu_offload"):
-                pipe.enable_sequential_cpu_offload()
-            else:
+            if hasattr(pipe, "enable_model_cpu_offload"):
                 pipe.enable_model_cpu_offload()
+            else:
+                pipe = pipe.to("cuda")
         vae = getattr(pipe, "vae", None)
         if vae is not None and hasattr(vae, "enable_tiling"):
             vae.enable_tiling()
