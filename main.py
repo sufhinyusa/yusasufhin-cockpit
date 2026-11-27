@@ -2143,7 +2143,7 @@ async def api_upsert_character(
         )
         char = CharacterStore(DATA_DIR, MEDIA_DIR).upsert_character(
             name=str(body.get("name") or ""),
-            character_bible=str(body.get("character_bible") or body.get("character_lock") or ""),
+            character_bible=str(body.get("character_bible") or body.get("character_lock") or body.get("description") or ""),
             char_id=str(body.get("id") or body.get("char_id") or "").strip() or None,
             style_preset=str(body.get("style_preset") or "cinematic_realism"),
             seed=body.get("seed"),
@@ -3128,7 +3128,7 @@ async def studio_preview_image(req: Request):
     if not prompt:
         return JSONResponse(status_code=400, content={"success": False, "detail": "Önizleme için prompt gerekli."})
 
-    channel = str(body.get("channel") or "Astroloji_Kova")
+    channel = str(body.get("channel") or "Genel_Sinematik")
     ch_cfg = ChannelStore(DATA_DIR).get_channel(channel) or {}
     style_preset = str(body.get("style_preset") or ch_cfg.get("style_preset") or "cinematic_realism")
     camera_motion = str(body.get("camera_motion") or ch_cfg.get("camera_motion") or "otomatik")
@@ -3598,7 +3598,7 @@ async def studio_video_generate(req: Request):
         body = {}
     if not isinstance(body, dict):
         body = {}
-    channel = str(body.get("channel") or "Astroloji_Kova")
+    channel = str(body.get("channel") or "Genel_Sinematik")
     ch_cfg = ChannelStore(DATA_DIR).get_channel(channel) or {}
 
     prompt = str(body.get("prompt") or ch_cfg.get("default_prompt") or "Günün sinematik videosu")

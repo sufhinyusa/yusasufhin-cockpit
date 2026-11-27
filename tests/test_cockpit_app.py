@@ -2907,3 +2907,24 @@ def test_v35_email_app_password_validation_and_no_telegram_spam_on_email_test(cl
     assert tg_calls == []
     assert relay_payloads and relay_payloads[-1]["send_telegram"] is False
 
+    # 4. Kanal belirtilmeden video üretilince varsayılan olarak Astroloji_Kova/astrology_mystic enjekte edilmemeli
+    r_vid = client.post(
+        "/api/studio/video/generate",
+        headers=auth_headers,
+        json={"prompt": "Kapadokya sıcak hava balonları", "workflow": "image_first_preview", "render_target": "kaggle_32gb"},
+    )
+    assert r_vid.status_code == 200
+    vt = r_vid.json()["task"]
+    assert vt["channel"] == "Genel_Sinematik"
+    assert vt["style_preset"] == "cinematic_realism"
+
+    # 5. Karakter Kasası `description` alan adını da kabul etmeli
+    r_ch = client.post(
+        "/api/studio/characters",
+        headers=auth_headers,
+        json={"name": "Kaptan Test", "description": "35-year-old Turkish captain in dark navy peacoat"},
+    )
+    assert r_ch.status_code == 200
+    assert r_ch.json()["character"]["character_bible"].startswith("35-year-old")
+
+

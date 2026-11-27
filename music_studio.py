@@ -886,12 +886,15 @@ def generate_song_lyrics(
 
     def _call_gemini(api_key: str) -> str:
         for model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            gen_cfg: Dict[str, Any] = {"temperature": 0.85, "maxOutputTokens": 2400}
+            if model.startswith("gemini-2.5"):
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
             resp = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
                 headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.85, "maxOutputTokens": 900},
+                    "generationConfig": gen_cfg,
                 },
                 timeout=30,
             )
